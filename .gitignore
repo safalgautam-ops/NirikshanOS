@@ -10,3 +10,7 @@ storage/outputs/*
 !storage/outputs/.gitkeep
 
 .pytest_cache/
+
+# Frontend build tooling (Tailwind) - app/static/css/tailwind.css is committed,
+# node_modules is not. Run `npm install && npm run build:css` to rebuild.
+node_modules/

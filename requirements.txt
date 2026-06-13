@@ -5,5 +5,8 @@ uvicorn[standard]
 # MySQL wire-protocol driver only - no ORM (see structure.md)
 asyncmy
 
+# Required by asyncmy for MySQL 8's default caching_sha2_password auth
+cryptography
+
 # Redis client (sessions, pub/sub, rate limiting - implemented in later weeks)
 redis

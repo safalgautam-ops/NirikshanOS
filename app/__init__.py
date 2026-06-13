@@ -52,8 +52,8 @@ def create_app() -> Quart:
 
     @app.route("/")
     async def dashboard():
-        # Renders app/templates/dashboard/index.html via layouts/base.html.
-        return await render_template("dashboard/index.html")
+        # Renders app/templates/dashboard/dashboard.html via layouts/base.html.
+        return await render_template("dashboard/dashboard.html")
 
     @app.route("/healthz")
     async def healthz():
