@@ -1,3 +1,4 @@
+#dockerfile defines the image used to run the web service (quart app)
 FROM python:3.12-slim
 
 WORKDIR /app

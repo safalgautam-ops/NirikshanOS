@@ -1,0 +1,9 @@
+# Web framework (ASGI) and server
+quart
+uvicorn[standard]
+
+# MySQL wire-protocol driver only - no ORM (see structure.md)
+asyncmy
+
+# Redis client (sessions, pub/sub, rate limiting - implemented in later weeks)
+redis
