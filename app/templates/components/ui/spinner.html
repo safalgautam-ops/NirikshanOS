@@ -1,0 +1,14 @@
+{#
+  Spinner - animated loading icon.
+
+  Usage:
+    {% from "components/ui/spinner.html" import spinner %}
+    {{ spinner() }}
+    {{ spinner(extra_classes="size-6 text-primary") }}
+#}
+{% macro spinner(extra_classes="size-4") %}
+<svg role="status" aria-label="Loading" class="animate-spin {{ extra_classes }}" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" class="opacity-25"/>
+  <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" stroke-width="4" stroke-linecap="round" class="opacity-75"/>
+</svg>
+{% endmacro %}

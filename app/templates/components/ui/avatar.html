@@ -1,0 +1,23 @@
+{#
+  Avatar - circular image with initials fallback.
+
+  Usage:
+    {% from "components/ui/avatar.html" import avatar %}
+    {{ avatar(initials="JS") }}
+    {{ avatar(src="/static/img/user.png", initials="JS", size="lg") }}
+
+  Params:
+    src     - image URL (optional)
+    initials - 1-2 letter fallback shown when src is empty
+    size    - sm | md | lg (default: md)
+#}
+{% macro avatar(src="", initials="?", size="md") %}
+{% set sizes = {"sm": "h-7 w-7 text-xs", "md": "h-9 w-9 text-sm", "lg": "h-12 w-12 text-base"} %}
+<span class="relative flex shrink-0 overflow-hidden rounded-full bg-muted items-center justify-center font-medium text-muted-foreground {{ sizes[size] }}">
+  {% if src %}
+  <img src="{{ src }}" alt="{{ initials }}" class="aspect-square h-full w-full object-cover">
+  {% else %}
+  {{ initials }}
+  {% endif %}
+</span>
+{% endmacro %}

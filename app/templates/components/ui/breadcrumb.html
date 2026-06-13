@@ -1,0 +1,30 @@
+{#
+  Breadcrumb - page location trail.
+
+  Usage:
+    {% from "components/ui/breadcrumb.html" import breadcrumb %}
+    {{ breadcrumb([("Dashboard", "/"), ("Cases", "/cases"), ("CASE-001", None)]) }}
+
+  Params:
+    items - list of (label, href) tuples; href=None renders the current page (no link)
+#}
+{% macro breadcrumb(items) %}
+<nav aria-label="breadcrumb">
+  <ol class="flex flex-wrap items-center gap-1.5 text-sm text-muted-foreground sm:gap-2.5">
+    {% for label, href in items %}
+    {% if not loop.first %}
+    <li aria-hidden="true" role="presentation" class="[&>svg]:size-4">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="size-4"><path d="M9 6l6 6-6 6"/></svg>
+    </li>
+    {% endif %}
+    <li class="inline-flex items-center gap-1.5">
+      {% if href %}
+      <a href="{{ href }}" class="transition-colors hover:text-foreground">{{ label }}</a>
+      {% else %}
+      <span aria-current="page" class="font-normal text-foreground">{{ label }}</span>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ol>
+</nav>
+{% endmacro %}

@@ -1,0 +1,36 @@
+{#
+  Sidebar - primary navigation, fixed width on desktop.
+
+  Usage:
+    {% from "dashboard/components/sidebar.html" import sidebar %}
+    {{ sidebar(active="dashboard") }}
+
+  Params:
+    active - key of the current nav item, used to highlight it
+#}
+{% macro sidebar(active="dashboard") %}
+{% set nav_items = [
+  ("dashboard", "Dashboard", "/"),
+  ("cases", "Cases", "/cases"),
+  ("evidence", "Evidence", "/evidence"),
+  ("analysis", "Analysis", "/analysis"),
+  ("notes", "Notes", "/notes"),
+  ("reports", "Reports", "/reports"),
+  ("audit", "Audit Log", "/audit")
+] %}
+<aside class="hidden md:flex md:w-60 md:flex-col md:fixed md:inset-y-0 border-r border-sidebar-border bg-sidebar text-sidebar-foreground">
+    <div class="flex h-14 items-center px-4 border-b border-sidebar-border">
+        <span class="font-semibold text-sidebar-accent-foreground">NirikshanOS</span>
+    </div>
+    <nav class="flex-1 overflow-y-auto p-2 space-y-1">
+        {% for key, label, href in nav_items %}
+        {% set is_active = key == active %}
+        <a href="{{ href }}"
+           class="flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors
+                  {% if is_active %}bg-sidebar-accent text-sidebar-accent-foreground{% else %}text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground{% endif %}">
+            {{ label }}
+        </a>
+        {% endfor %}
+    </nav>
+</aside>
+{% endmacro %}

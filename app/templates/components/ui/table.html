@@ -1,0 +1,40 @@
+{#
+  Table - data table shell.
+
+  Usage:
+    {% from "components/ui/table.html" import table_open, table_close, thead, tbody, tr, th, td %}
+    {{ table_open() }}
+      {{ thead() }}<tr>{{ th("Name") }}{{ th("Status") }}</tr></thead>
+      {{ tbody() }}
+        <tr>{{ td("Evidence.dd") }}{{ td("Hashed") }}</tr>
+      </tbody>
+    {{ table_close() }}
+
+  th/td are returned as raw strings (not open tags) since their content is
+  usually short; thead/tbody/table_open are open tags so rows/cells nest freely.
+#}
+{% macro table_open(extra_classes="") %}
+<div class="relative w-full overflow-x-auto">
+  <table class="w-full text-sm caption-bottom {{ extra_classes }}">
+{% endmacro %}
+
+{% macro table_close() %}
+  </table>
+</div>
+{% endmacro %}
+
+{% macro thead() %}
+<thead class="[&_tr]:border-b [&_tr]:border-border">
+{% endmacro %}
+
+{% macro tbody() %}
+<tbody class="[&_tr:last-child]:border-0 [&_tr]:border-b [&_tr]:border-border [&_tr]:hover:bg-muted/50">
+{% endmacro %}
+
+{% macro th(label, extra_classes="") %}
+<th class="h-10 px-2.5 text-left align-middle font-medium text-muted-foreground whitespace-nowrap {{ extra_classes }}">{{ label }}</th>
+{% endmacro %}
+
+{% macro td(content, extra_classes="") %}
+<td class="p-2.5 align-middle {{ extra_classes }}">{{ content }}</td>
+{% endmacro %}

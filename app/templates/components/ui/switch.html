@@ -1,0 +1,17 @@
+{#
+  Switch - on/off toggle, peer pattern (native checkbox + styled track/thumb).
+
+  Usage:
+    {% from "components/ui/switch.html" import switch %}
+    {{ switch("notifications", checked=True) }}
+#}
+{% macro switch(name, checked=False, value="on", attrs="", extra_classes="") %}
+<label class="relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center {{ extra_classes }}">
+  <input type="checkbox" id="{{ name }}" name="{{ name }}" value="{{ value }}" {% if checked %}checked{% endif %}
+         class="peer sr-only" {{ attrs|safe }}>
+  {# track #}
+  <span class="absolute inset-0 rounded-full bg-input transition-colors peer-checked:bg-primary peer-focus-visible:ring-2 peer-focus-visible:ring-ring peer-focus-visible:ring-offset-1 peer-focus-visible:ring-offset-background peer-disabled:opacity-50"></span>
+  {# thumb #}
+  <span class="pointer-events-none absolute left-px top-px size-4 rounded-full bg-background shadow-sm transition-transform peer-checked:translate-x-4"></span>
+</label>
+{% endmacro %}

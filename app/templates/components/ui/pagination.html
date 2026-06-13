@@ -1,0 +1,41 @@
+{#
+  Pagination - page links driven by a Page object (app/core/db/pagination.py).
+
+  Usage:
+    {% from "components/ui/pagination.html" import pagination %}
+    {{ pagination(page, base_url="/cases") }}
+
+  Params:
+    page     - Page instance: has .page, .total_pages, .has_prev, .has_next
+    base_url - path to link to; ?page=N is appended
+#}
+{% macro pagination(page, base_url) %}
+{% set link_classes = "inline-flex h-9 min-w-9 items-center justify-center rounded-md px-3 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground" %}
+<nav aria-label="pagination" class="mx-auto flex w-full justify-center">
+  <ul class="flex flex-row items-center gap-1">
+    <li>
+      {% if page.has_prev %}
+      <a href="{{ base_url }}?page={{ page.page - 1 }}" aria-label="Go to previous page" class="{{ link_classes }} border border-border">Previous</a>
+      {% else %}
+      <span aria-disabled="true" class="{{ link_classes }} border border-border opacity-50 pointer-events-none">Previous</span>
+      {% endif %}
+    </li>
+    {% for p in range(1, page.total_pages + 1) %}
+    <li>
+      {% if p == page.page %}
+      <span aria-current="page" class="{{ link_classes }} border border-border bg-accent">{{ p }}</span>
+      {% else %}
+      <a href="{{ base_url }}?page={{ p }}" class="{{ link_classes }}">{{ p }}</a>
+      {% endif %}
+    </li>
+    {% endfor %}
+    <li>
+      {% if page.has_next %}
+      <a href="{{ base_url }}?page={{ page.page + 1 }}" aria-label="Go to next page" class="{{ link_classes }} border border-border">Next</a>
+      {% else %}
+      <span aria-disabled="true" class="{{ link_classes }} border border-border opacity-50 pointer-events-none">Next</span>
+      {% endif %}
+    </li>
+  </ul>
+</nav>
+{% endmacro %}

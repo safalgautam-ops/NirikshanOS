@@ -1,0 +1,141 @@
+{% extends "layouts/base.html" %}
+{% block title %}Dashboard - NirikshanOS{% endblock %}
+
+{% from "dashboard/components/sidebar.html" import sidebar %}
+{% from "dashboard/components/topbar.html" import topbar %}
+{% from "dashboard/components/stat_card.html" import stat_card %}
+{% from "components/ui/card.html" import card_open, card_close, card_header, card_title, card_description, card_content %}
+{% from "components/ui/badge.html" import badge %}
+{% from "components/ui/button.html" import button %}
+{% from "components/ui/dialog.html" import dialog %}
+{% from "components/ui/menu.html" import menu, menu_item, menu_separator %}
+{% from "components/ui/tabs.html" import tabs_open, tabs_close, tabs_list, tab_trigger, tab_panel %}
+{% from "components/ui/accordion.html" import accordion_open, accordion_close, accordion_item %}
+{% from "components/ui/tooltip.html" import tooltip %}
+{% from "components/ui/toggle.html" import toggle %}
+{% from "components/ui/switch.html" import switch %}
+{% from "components/ui/checkbox.html" import checkbox %}
+{% from "components/ui/progress.html" import progress %}
+{% from "components/ui/alert.html" import alert %}
+
+{% block body %}
+{{ sidebar(active="dashboard") }}
+
+{# md:pl-60 leaves room for the fixed sidebar; sidebar is hidden below md #}
+<div class="flex flex-col md:pl-60">
+    {{ topbar("Dashboard") }}
+
+    <main class="flex-1 space-y-6 p-4 md:p-6">
+        <div>
+            <h2 class="text-xl font-semibold">Welcome to NirikshanOS</h2>
+            <p class="text-sm text-muted-foreground">
+                Foundation is up: Quart + uvicorn behind nginx, MySQL and Redis connected.
+                Database connectivity check: <a class="underline" href="/healthz">/healthz</a>.
+            </p>
+        </div>
+
+        {# Stat grid: 1 column on mobile, up to 4 on large screens #}
+        <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {{ stat_card("Open Cases", "0", change="No cases yet") }}
+            {{ stat_card("Evidence Items", "0") }}
+            {{ stat_card("Running Jobs", "0") }}
+            {{ stat_card("Active Users", "1") }}
+        </div>
+
+        {# Recent cases - empty state until the cases feature lands in Week 3 #}
+        {{ card_open() }}
+            {{ card_header() }}
+                {{ card_title("Recent Cases") }}
+                {{ card_description("Latest cases across the platform") }}
+            </div>
+            {{ card_content() }}
+                <div class="rounded-md border border-border">
+                    <table class="w-full text-sm">
+                        <thead>
+                            <tr class="border-b border-border text-left text-muted-foreground">
+                                <th class="px-4 py-2 font-medium">Case</th>
+                                <th class="px-4 py-2 font-medium">Status</th>
+                                <th class="px-4 py-2 font-medium">Updated</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td class="px-4 py-6 text-muted-foreground" colspan="3">
+                                    No cases yet. {{ badge("Week 3", variant="outline") }}
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        {{ card_close() }}
+
+        {# Component demo - exercises every interactive UI macro so behavior can be checked in the browser #}
+        {{ card_open() }}
+            {{ card_header() }}
+                {{ card_title("Component Demo") }}
+                {{ card_description("Interactive examples of the shared UI macros") }}
+            </div>
+            {{ card_content("space-y-6") }}
+
+                {{ alert("This card is for development only - safe to delete once feature pages exist.", title="Demo", variant="info") }}
+
+                {# Dialog #}
+                <div x-data="{ open: false }">
+                    <span @click="open = true">{{ button("Open dialog", variant="primary") }}</span>
+                    {% call dialog() %}
+                        <h2 class="text-lg font-semibold">Delete case?</h2>
+                        <p class="mt-2 text-sm text-muted-foreground">This action cannot be undone.</p>
+                        <div class="mt-4 flex justify-end gap-2">
+                            <span @click="open = false">{{ button("Cancel", variant="outline") }}</span>
+                            {{ button("Delete", variant="destructive") }}
+                        </div>
+                    {% endcall %}
+                </div>
+
+                {# Dropdown menu #}
+                {% call menu(trigger=button("Actions menu", variant="outline")) %}
+                    {{ menu_item("Edit case", href="#") }}
+                    {{ menu_item("Export report", href="#") }}
+                    {{ menu_separator() }}
+                    {{ menu_item("Delete case", href="#", variant="destructive") }}
+                {% endcall %}
+
+                {# Tabs #}
+                {{ tabs_open("overview") }}
+                    {{ tabs_list() }}
+                        {{ tab_trigger("overview", "Overview") }}
+                        {{ tab_trigger("timeline", "Timeline") }}
+                    </div>
+                    {{ tab_panel("overview") }}
+                        <p class="text-sm text-muted-foreground">Overview panel content.</p>
+                    </div>
+                    {{ tab_panel("timeline") }}
+                        <p class="text-sm text-muted-foreground">Timeline panel content.</p>
+                    </div>
+                {{ tabs_close() }}
+
+                {# Accordion #}
+                {{ accordion_open() }}
+                    {{ accordion_item(0, "What is NirikshanOS?") }}
+                        A browser-based DFIR case management platform.
+                    </div></div>
+                    {{ accordion_item(1, "How do I create a case?") }}
+                        Case creation lands in Week 3.
+                    </div></div>
+                {{ accordion_close() }}
+
+                {# Tooltip, toggle, switch, checkbox, progress #}
+                <div class="flex flex-wrap items-center gap-4">
+                    {{ tooltip(trigger=button("Hover me", variant="secondary"), text="Tooltip content") }}
+                    {{ toggle("Pinned", pressed=False) }}
+                    {{ switch("notify", checked=True) }}
+                    {{ checkbox("agree", label="I agree") }}
+                </div>
+
+                {{ progress(value=65, label="Evidence processing") }}
+            </div>
+        {{ card_close() }}
+    </main>
+</div>
+{% endblock %}

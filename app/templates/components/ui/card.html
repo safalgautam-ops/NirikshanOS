@@ -1,0 +1,45 @@
+{#
+  Card - shadcn-style card shell.
+
+  Usage:
+    {% from "components/ui/card.html" import card_open, card_close, card_header, card_title, card_description, card_content, card_footer %}
+    {{ card_open() }}
+      {{ card_header() }}
+        {{ card_title("Title") }}
+        {{ card_description("Subtext") }}
+      {{ "</div>"|safe }}
+      {{ card_content() }}
+        ... body ...
+      {{ "</div>"|safe }}
+    {{ card_close() }}
+
+  Cards are split into open/close + section helpers (rather than one macro
+  taking a body string) so any markup - including other macros - can go inside.
+#}
+{% macro card_open(extra_classes="") %}
+<div class="rounded-xl border border-border bg-card text-card-foreground shadow-sm {{ extra_classes }}">
+{% endmacro %}
+
+{% macro card_close() %}
+</div>
+{% endmacro %}
+
+{% macro card_header(extra_classes="") %}
+<div class="flex flex-col gap-1.5 p-6 {{ extra_classes }}">
+{% endmacro %}
+
+{% macro card_title(text, extra_classes="") %}
+<h3 class="text-base font-semibold leading-none {{ extra_classes }}">{{ text }}</h3>
+{% endmacro %}
+
+{% macro card_description(text, extra_classes="") %}
+<p class="text-sm text-muted-foreground {{ extra_classes }}">{{ text }}</p>
+{% endmacro %}
+
+{% macro card_content(extra_classes="") %}
+<div class="px-6 pb-6 {{ extra_classes }}">
+{% endmacro %}
+
+{% macro card_footer(extra_classes="") %}
+<div class="flex items-center px-6 pb-6 {{ extra_classes }}">
+{% endmacro %}

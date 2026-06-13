@@ -1,0 +1,10 @@
+{#
+  Skeleton - loading placeholder block.
+
+  Usage:
+    {% from "components/ui/skeleton.html" import skeleton %}
+    {{ skeleton(extra_classes="h-4 w-32") }}
+#}
+{% macro skeleton(extra_classes="") %}
+<div class="animate-pulse rounded-md bg-muted {{ extra_classes }}"></div>
+{% endmacro %}

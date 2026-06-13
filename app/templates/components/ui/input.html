@@ -1,0 +1,28 @@
+{#
+  Input - text input with shadcn styling.
+
+  Usage:
+    {% from "components/ui/input.html" import input %}
+    {{ input("search", placeholder="Search cases...", type="search") }}
+    {{ input("email", type="email", required=True) }}
+
+  Params:
+    name        - form field name (also used as id)
+    type        - input type (default: text)
+    value       - current value
+    placeholder - placeholder text
+    required    - bool
+    attrs       - raw extra attributes string, e.g. 'x-model="query"'
+#}
+{% macro input(name, type="text", value="", placeholder="", required=False, attrs="", extra_classes="") %}
+<input
+  id="{{ name }}"
+  name="{{ name }}"
+  type="{{ type }}"
+  value="{{ value }}"
+  placeholder="{{ placeholder }}"
+  {% if required %}required{% endif %}
+  class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 {{ extra_classes }}"
+  {{ attrs|safe }}
+>
+{% endmacro %}

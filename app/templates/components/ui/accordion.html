@@ -1,0 +1,27 @@
+{#
+  Accordion - collapsible item list, Alpine-driven (single item open at a time).
+
+  Usage:
+    {% from "components/ui/accordion.html" import accordion_open, accordion_close, accordion_item %}
+    {{ accordion_open() }}
+      {{ accordion_item(0, "Section 1") }}Content 1{{ "</div></div>"|safe }}
+      {{ accordion_item(1, "Section 2") }}Content 2{{ "</div></div>"|safe }}
+    {{ accordion_close() }}
+#}
+{% macro accordion_open(extra_classes="") %}
+<div x-data="{ open: null }" class="divide-y divide-border {{ extra_classes }}">
+{% endmacro %}
+
+{% macro accordion_close() %}
+</div>
+{% endmacro %}
+
+{% macro accordion_item(index, title) %}
+<div>
+  <button type="button" @click="open = (open === {{ index }} ? null : {{ index }})"
+    class="flex w-full items-center justify-between py-3.5 text-left text-sm font-medium transition-colors hover:underline">
+    <span>{{ title }}</span>
+    <svg :class="open === {{ index }} ? 'rotate-180' : ''" class="size-4 shrink-0 text-muted-foreground transition-transform" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+  </button>
+  <div x-show="open === {{ index }}" x-cloak x-collapse class="pb-3.5 text-sm text-muted-foreground">
+{% endmacro %}

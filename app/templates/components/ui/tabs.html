@@ -1,0 +1,35 @@
+{#
+  Tabs - Alpine-driven tab switcher.
+
+  Usage:
+    {% from "components/ui/tabs.html" import tabs_open, tabs_close, tabs_list, tab_trigger, tab_panel %}
+    {{ tabs_open("overview") }}
+      {{ tabs_list() }}
+        {{ tab_trigger("overview", "Overview") }}
+        {{ tab_trigger("timeline", "Timeline") }}
+      </div>
+      {{ tab_panel("overview") }}...{{ "</div>"|safe }}
+      {{ tab_panel("timeline") }}...{{ "</div>"|safe }}
+    {{ tabs_close() }}
+#}
+{% macro tabs_open(default_tab, extra_classes="") %}
+<div x-data="{ tab: '{{ default_tab }}' }" class="flex flex-col gap-2 {{ extra_classes }}">
+{% endmacro %}
+
+{% macro tabs_close() %}
+</div>
+{% endmacro %}
+
+{% macro tabs_list(extra_classes="") %}
+<div role="tablist" class="inline-flex h-9 items-center gap-1 rounded-lg bg-muted p-1 {{ extra_classes }}">
+{% endmacro %}
+
+{% macro tab_trigger(value, label) %}
+<button type="button" role="tab" @click="tab = '{{ value }}'"
+  :class="tab === '{{ value }}' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'"
+  class="inline-flex h-7 items-center justify-center rounded-md px-3 text-sm font-medium transition-colors">{{ label }}</button>
+{% endmacro %}
+
+{% macro tab_panel(value, extra_classes="") %}
+<div role="tabpanel" x-show="tab === '{{ value }}'" x-cloak class="{{ extra_classes }}">
+{% endmacro %}

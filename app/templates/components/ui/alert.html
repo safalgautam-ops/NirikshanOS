@@ -1,0 +1,23 @@
+{#
+  Alert - inline message banner.
+
+  Usage:
+    {% from "components/ui/alert.html" import alert %}
+    {{ alert("Evidence hash verified.", title="Success", variant="success") }}
+
+  Params:
+    variant - default | error | info | success | warning
+#}
+{% macro alert(description, title="", variant="default", extra_classes="") %}
+{% set variants = {
+  "default": "bg-transparent",
+  "error": "border-destructive/40 bg-destructive/5 text-destructive",
+  "info": "border-info/40 bg-info/5 text-info",
+  "success": "border-success/40 bg-success/5 text-success",
+  "warning": "border-warning/40 bg-warning/5 text-warning"
+} %}
+<div role="alert" class="relative w-full rounded-xl border px-3.5 py-3 text-sm text-card-foreground {{ variants[variant] }} {{ extra_classes }}">
+  {% if title %}<div class="font-medium">{{ title }}</div>{% endif %}
+  <div class="text-muted-foreground">{{ description }}</div>
+</div>
+{% endmacro %}

@@ -1,0 +1,35 @@
+{#
+  Dialog - modal overlay, Alpine-driven.
+
+  Usage:
+    {% from "components/ui/dialog.html" import dialog %}
+    {% from "components/ui/button.html" import button %}
+    <div x-data="{ open: false }">
+      <span @click="open = true">{{ button("Delete case", variant="destructive") }}</span>
+      {% call dialog() %}
+        <h2 class="text-lg font-semibold">Delete case?</h2>
+        <p class="mt-2 text-sm text-muted-foreground">This cannot be undone.</p>
+        <div class="mt-4 flex justify-end gap-2">
+          <span @click="open = false">{{ button("Cancel", variant="outline") }}</span>
+          {{ button("Delete", variant="destructive") }}
+        </div>
+      {% endcall %}
+    </div>
+
+  Expects an ancestor with `x-data="{ open: false }"` (or any boolean named
+  `open` in scope) to control visibility, and something that sets `open = true`.
+#}
+{% macro dialog() %}
+<template x-teleport="body">
+  <div x-show="open" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4">
+    {# backdrop #}
+    <div x-show="open" x-transition.opacity @click="open = false" class="fixed inset-0 bg-black/50"></div>
+    {# panel #}
+    <div x-show="open" x-transition x-trap.noscroll="open" @keydown.escape.window="open = false"
+         role="dialog" aria-modal="true"
+         class="relative z-10 w-full max-w-md rounded-xl border border-border bg-card p-6 text-card-foreground shadow-lg">
+      {{ caller() }}
+    </div>
+  </div>
+</template>
+{% endmacro %}
