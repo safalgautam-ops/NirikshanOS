@@ -9,6 +9,13 @@ BetterAuth convention: a user's password isn't a column on `user` at
 all. It lives in `account`, as the row where providerId = 'credential'
 for that user - the same table a future Google/GitHub login would add a
 row to (providerId = 'google', with OAuth tokens instead of a password).
+
+So "email + password login" is just one provider among potentially many.
+The password is the credential for the 'credential' provider specifically.
+If Alice later adds "Sign in with Google," that's a new row in the same account table with providerId
+= 'google' and OAuth tokens instead of a password — the user row doesn't change at all.
+This is why the password isn't on user: the design treats all login methods uniformly as rows in account,
+and a password is simply the data for one particular method.
 """
 
 from app.core.db.pool import execute, fetchone
@@ -30,7 +37,7 @@ async def get_user_by_id(user_id: str) -> tuple | None:
 
 
 async def create_user(*, name: str, email: str) -> str:
-    user_id = new_id()
+    user_id = new_id()  # mint the UUID primary key up front
     await execute(
         "INSERT INTO user (id, name, email) VALUES (%s, %s, %s)",
         (user_id, name, email),

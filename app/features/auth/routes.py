@@ -64,7 +64,9 @@ async def register_view():
             except AuthError as exc:
                 error = str(exc)
             else:
-                return redirect(url_for("auth.login"))
+                return redirect(
+                    url_for("auth.login")
+                )  # auth is the blueprint, login is the name of a view function
 
     return await render_template("auth/register.html", error=error)
 
