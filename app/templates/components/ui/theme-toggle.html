@@ -5,18 +5,16 @@
     {% from "components/ui/theme-toggle.html" import theme_toggle %}
     {{ theme_toggle() }}
 
-  Relies on the inline script in layouts/base.html <head>, which applies the
-  saved theme before first paint (avoids a light-mode flash on dark-first load).
+  The click handler lives in static/js/theme.js (id="theme-toggle"), not an
+  Alpine @click - the CSP build's expression parser only allows a single,
+  simple expression and can't touch globals like `document`/`localStorage`.
+  That same file also applies the saved theme before first paint.
 #}
 {% macro theme_toggle() %}
 <button
   type="button"
+  id="theme-toggle"
   aria-label="Toggle theme"
-  x-data
-  @click="
-    document.documentElement.classList.toggle('dark');
-    localStorage.theme = document.documentElement.classList.contains('dark') ? 'dark' : 'light';
-  "
   class="inline-flex items-center justify-center h-9 w-9 rounded-md hover:bg-accent hover:text-accent-foreground transition-colors"
 >
   {# Sun icon: shown in dark mode (click to go light) #}

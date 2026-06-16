@@ -1,32 +1,51 @@
-<!DOCTYPE html>
-{# Dark mode is the default - the inline script below only removes `.dark` if the user explicitly chose light. #}
+<!doctype html>
+{# Dark mode is the default (hardcoded into HTML) - the inline script below only
+removes `.dark` if the user explicitly chose light. #}
 <html lang="en" class="dark">
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>{% block title %}NirikshanOS{% endblock %}</title>
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>{% block title %}NirikshanOS{% endblock %}</title>
 
-    {# Compiled from app/static/css/input.css via `npm run build:css` - contains Tailwind + design tokens #}
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/tailwind.css') }}">
+        <link
+            rel="stylesheet"
+            href="{{ url_for('static', filename='css/tailwind.css') }}"
+        />
 
-    {# Runs before paint: applies the saved theme so there's no light-mode flash on a dark-first site #}
-    <script>
-        if (localStorage.theme === 'light') {
-            document.documentElement.classList.remove('dark');
-        }
-    </script>
+        {# Inline <script> blocks are blocked by CSP script-src 'self' (no
+        'unsafe-inline'), so this lives in its own same-origin file. Not
+        deferred: runs immediately, before paint, to avoid a theme flash. #}
+        <script src="{{ url_for('static', filename='js/theme.js') }}"></script>
 
-    {# Vendored locally (app/static/js/vendor) so CSP can stay default-src 'self' - no third-party script origins #}
-    {# Alpine.js plugins must load before Alpine core (defer preserves this order) #}
-    <script defer src="{{ url_for('static', filename='js/vendor/alpine-collapse.min.js') }}"></script>
-    {# focus plugin powers x-trap (keeps keyboard focus inside open dialogs) #}
-    <script defer src="{{ url_for('static', filename='js/vendor/alpine-focus.min.js') }}"></script>
-    {# Alpine.js - small reactive behaviors (dropdowns, toggles) without a build step #}
-    <script defer src="{{ url_for('static', filename='js/vendor/alpine.min.js') }}"></script>
-    {# HTMX - partial page updates via hx-get/hx-post attributes #}
-    <script src="{{ url_for('static', filename='js/vendor/htmx.min.js') }}"></script>
-</head>
-<body class="min-h-screen bg-background text-foreground antialiased">
-    {% block body %}{% endblock %}
-</body>
+        {# Vendored locally so CSP can stay `default-src 'self'`. Plugins must
+        load before Alpine core - defer preserves this script-tag order. #}
+        <script
+            defer
+            src="{{ url_for('static', filename='js/vendor/alpine-collapse.min.js') }}"
+        ></script>
+        <script
+            defer
+            src="{{ url_for('static', filename='js/vendor/alpine-focus.min.js') }}"
+        ></script>
+        {# @alpinejs/csp build: parses x-data/x-show/etc. itself instead of new
+        Function()/eval(), so it runs under CSP with no 'unsafe-eval'. The
+        regular alpinejs/dist build fails every directive silently here. There's
+        a special version of Alpine called the "CSP build." It's the exact same
+        library, except it was rewritten to use Way 2 — the careful little
+        assistant that reads the text character by character instead of using
+        the magic machine. Since this version never touches the forbidden magic
+        machine, the security guard has nothing to object to. Everything works.
+        The only tradeoff: that careful little assistant only understands simple
+        recipes (basic things like open = true or count + 1). It can't handle
+        complicated JavaScript. But Alpine attributes are always simple anyway,
+        so that limitation never actually bites you. #}
+        <script
+            defer
+            src="{{ url_for('static', filename='js/vendor/alpine.min.js') }}"
+        ></script>
+        <script src="{{ url_for('static', filename='js/vendor/htmx.min.js') }}"></script>
+    </head>
+    <body class="min-h-screen bg-background text-foreground antialiased">
+        {% block body %}{% endblock %}
+    </body>
 </html>

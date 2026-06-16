@@ -115,7 +115,6 @@ ALTER TABLE `passkey`   ADD CONSTRAINT `passkey_userId_user_id_fk`   FOREIGN KEY
 ALTER TABLE `session`   ADD CONSTRAINT `session_userId_user_id_fk`   FOREIGN KEY (`userId`) REFERENCES `user`(`id`) ON DELETE cascade ON UPDATE cascade;
 ALTER TABLE `twoFactor` ADD CONSTRAINT `twoFactor_userId_user_id_fk` FOREIGN KEY (`userId`) REFERENCES `user`(`id`) ON DELETE cascade ON UPDATE cascade;
 
-CREATE INDEX `user_username_unique`        ON `user`         (`username`);
 CREATE INDEX `account_user_idx`            ON `account`      (`userId`);
 CREATE INDEX `passkey_user_idx`            ON `passkey`      (`userId`);
 CREATE INDEX `session_user_idx`            ON `session`      (`userId`);

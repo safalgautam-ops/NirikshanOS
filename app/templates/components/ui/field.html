@@ -1,0 +1,52 @@
+{#
+  Field - form layout primitives (Better Auth / shadcn "Field" pattern).
+
+  Usage:
+    {% from "components/ui/field.html" import field_group_open, field_group_close,
+        field_open, field_close, field_label, field_description, field_separator %}
+    {% from "components/ui/input.html" import input %}
+
+    {{ field_group_open() }}
+      {{ field_open() }}
+        {{ field_label("Email", for_id="email") }}
+        {{ input("email", type="email", required=True) }}
+      {{ field_close() }}
+      {{ field_separator("Or continue with") }}
+    {{ field_group_close() }}
+
+  Open/close pairs (not single macros taking a body string) so any markup
+  - including other macros - can go inside, same convention as card.html.
+#}
+
+{% macro field_group_open(extra_classes="") %}
+<div class="flex flex-col gap-6 {{ extra_classes }}">
+{% endmacro %}
+
+{% macro field_group_close() %}
+</div>
+{% endmacro %}
+
+{% macro field_open(extra_classes="") %}
+<div class="flex flex-col gap-2 {{ extra_classes }}">
+{% endmacro %}
+
+{% macro field_close() %}
+</div>
+{% endmacro %}
+
+{% macro field_label(text, for_id="", extra_classes="") %}
+<label {% if for_id %}for="{{ for_id }}"{% endif %} class="text-sm font-medium leading-none {{ extra_classes }}">{{ text }}</label>
+{% endmacro %}
+
+{% macro field_description(text, extra_classes="") %}
+<p class="text-sm text-muted-foreground {{ extra_classes }}">{{ text }}</p>
+{% endmacro %}
+
+{# Horizontal divider with centered text, e.g. "Or continue with" #}
+{% macro field_separator(text="", extra_classes="") %}
+<div class="relative flex items-center gap-2 {{ extra_classes }}">
+  <div class="h-px flex-1 bg-border"></div>
+  {% if text %}<span class="text-xs text-muted-foreground">{{ text }}</span>{% endif %}
+  <div class="h-px flex-1 bg-border"></div>
+</div>
+{% endmacro %}

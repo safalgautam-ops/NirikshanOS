@@ -10,3 +10,6 @@ cryptography
 
 # Redis client (sessions, pub/sub, rate limiting - implemented in later weeks)
 redis
+
+# Password hashing (Argon2id) for the auth feature
+argon2-cffi

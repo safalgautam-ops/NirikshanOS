@@ -13,8 +13,11 @@ from quart import Quart, render_template
 
 from app.config import Config
 from app.core.db.pool import close_pool, get_pool, init_pool
+from app.core.security.csrf import apply_csrf_protection
 from app.core.security.headers import apply_security_headers
+from app.core.security.sessions import apply_session_loader, login_required
 from app.extensions import close_redis, get_redis, init_redis
+from app.features.auth.routes import auth_bp
 
 
 def create_app() -> Quart:
@@ -27,6 +30,12 @@ def create_app() -> Quart:
 
     # Registers the after_request hook that adds CSP/X-Frame-Options/etc.
     apply_security_headers(app)
+    # Sets g.user_id from the session cookie on every request.
+    apply_session_loader(app)
+    # Double-submit cookie CSRF check on every POST/PUT/PATCH/DELETE.
+    apply_csrf_protection(app)
+
+    app.register_blueprint(auth_bp)
 
     @app.before_serving
     async def startup() -> None:
@@ -51,6 +60,7 @@ def create_app() -> Quart:
         await close_redis()
 
     @app.route("/")
+    @login_required
     async def dashboard():
         # Renders app/templates/dashboard/dashboard.html via layouts/base.html.
         return await render_template("dashboard/dashboard.html")

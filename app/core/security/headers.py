@@ -8,7 +8,9 @@ SECURITY_HEADERS = {
     "Referrer-Policy": "same-origin",  # prevents leaking referrer info to other origins
     # CSP is a security policy that prevents loading resources from other origins
     # default-src 'self' means only resources from the same origin are allowed with default rule for all content types
-    "Content-Security-Policy": "default-src 'self'",  # prevents Cross-Site Scripting (XSS) attacks
+    # style-src allows 'unsafe-inline' for inline style="" attributes (e.g. dynamic
+    # progress bar widths); script-src stays at the strict default-src 'self'.
+    "Content-Security-Policy": "default-src 'self'; style-src 'self' 'unsafe-inline'",  # prevents Cross-Site Scripting (XSS) attacks
 }
 
 

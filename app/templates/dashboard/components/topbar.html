@@ -8,6 +8,8 @@
 {% from "components/ui/input.html" import input %}
 {% from "components/ui/theme-toggle.html" import theme_toggle %}
 {% from "components/ui/avatar.html" import avatar %}
+{% from "components/ui/menu.html" import menu %}
+{% from "macros/csrf.html" import csrf_field %}
 
 {% macro topbar(title) %}
 <header class="sticky top-0 z-10 flex h-14 items-center gap-4 border-b border-border bg-background/95 backdrop-blur px-4 md:px-6">
@@ -17,7 +19,12 @@
             {{ input("search", type="search", placeholder="Search...") }}
         </div>
         {{ theme_toggle() }}
-        {{ avatar(initials="AD") }}
+        {% call menu(trigger=avatar(initials="AD"), align="end") %}
+          <form method="post" action="{{ url_for('auth.logout') }}">
+            {{ csrf_field() }}
+            <button type="submit" class="flex w-full cursor-pointer items-center rounded-sm px-2 py-1.5 text-left text-sm text-destructive transition-colors hover:bg-destructive/10">Log out</button>
+          </form>
+        {% endcall %}
     </div>
 </header>
 {% endmacro %}

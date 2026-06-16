@@ -1,0 +1,13 @@
+{#
+  CSRF hidden field - include inside every <form method="post">.
+
+  Usage:
+    {% from "macros/csrf.html" import csrf_field %}
+    <form method="post">
+      {{ csrf_field() }}
+      ...
+    </form>
+#}
+{% macro csrf_field() %}
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+{% endmacro %}
