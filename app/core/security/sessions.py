@@ -1,22 +1,27 @@
 """Server-side sessions, backed by the `session` table.
 
-This is the opaque token session pattern, and the docstring nails the security property:
-the browser holds nothing but a random string. There's no signed payload, no user ID, no expiry baked into the cookie
-— just a meaningless 43-character token. Everything that means anything
-(who you are, when the session dies) lives in the session table. Because the token carries no information,
-the client can't tamper with it to escalate privileges or extend its own expiry;
-the worst it can do is send a token that doesn't match any row, which reads as "not logged in."
+The browser holds nothing but an opaque random token. Everything that
+matters (who the user is, when the session dies) lives in MySQL. There's
+nothing for the client to forge or tamper with.
 
-This contrasts with the stateless approach (e.g. JWTs), where the cookie itself contains signed claims and
-the server trusts the signature without a DB lookup.
+Why this module uses orm.py instead of raw execute/fetchone
+-----------------------------------------------------------
+All DB writes and reads go through the generic ORM helpers (db_insert,
+db_delete, db_get) with SESSION_SCHEMA as the schema. This is the same
+approach as repository.py: pass a table name + schema dict instead of
+building SQL by hand.
 
-This design pays a DB read on every request in exchange for instant, reliable revocation
-(delete_session and the session is dead immediately) and zero forgery surface.
-For an auth system that's usually the right call.
+The one exception: db_get's `extra_condition` param.
+  db_get("session", ..., extra_condition="expiresAt > UTC_TIMESTAMP()")
 
-apply_session_loader() runs before every request and sets `g.user_id`
-(or None), so routes/templates can check "am I logged in" without each
-one re-reading the cookie and querying the DB.
+This is needed because the expiry check compares a column to a DB function
+call — not to a Python value — which the WHERE dict ({column: value}) can't
+express. extra_condition is a hardcoded string from our own code, not
+user input, so it's safe to include verbatim in the SQL.
+
+apply_session_loader() runs before every request and sets g.user_id
+(or None), so every route can check "am I logged in?" via g.user_id
+without repeating the cookie-read + DB-lookup logic itself.
 """
 
 import secrets
@@ -25,66 +30,90 @@ from functools import wraps
 
 from quart import Quart, Response, g, redirect, request, url_for
 
-from app.core.db.pool import execute, fetchone
+from app.core.db.fields import DateTimeField, StringField
+from app.core.db.orm import Schema, db_delete, db_get, db_insert
 from app.core.utils.ids import new_id
 
-# name of the cookie -- the label the token is saved under in the browser
-# The word "session_token" is only the label you'd see in browser devtools.
-# The real secret is the token stored inside the cookie, not this name.
+# The label this cookie is stored under in the browser.
+# The security comes from the random VALUE inside the cookie, not this name.
 SESSION_COOKIE = "session_token"
-# how long a session lasts: 30 days
-# timedelta is Python's way of representing a duration (spans 30 days)
-# it feeds two different places that need to agree:
-# Server side: expires_at = datetime.now(timezone.utc) + SESSION_TTL → the expiresAt written to the DB row.
-# Browser side: max_age=int(SESSION_TTL.total_seconds()) → how long the browser keeps the cookie
-# (.total_seconds() converts the 30-day span to a raw number of seconds,
-# ~2,592,000, because max_age wants seconds).
+
+# 30 days expressed as a Python timedelta. Used in two places:
+#   expires_at = now + SESSION_TTL  → stored in the DB row
+#   max_age = SESSION_TTL.total_seconds() → tells the browser when to drop the cookie
+# Both must agree so the browser and the DB expire the session at the same time.
 SESSION_TTL = timedelta(days=30)
 
+# Schema for the `session` table.
+# Passed to db_insert / db_get / db_delete so they know which columns are
+# valid, what types to validate, and which columns to SELECT.
+SESSION_SCHEMA: Schema = {
+    "id": StringField(max_length=191, required=False),
+    # expiresAt is a datetime object in Python; asyncmy sends it as a
+    # MySQL TIMESTAMP. DateTimeField validates it's really a datetime.
+    "expiresAt": DateTimeField(),
+    "token": StringField(max_length=255),
+    "ipAddress": StringField(max_length=255, required=False),
+    "userAgent": StringField(max_length=65535, required=False),
+    "userId": StringField(max_length=191),
+}
 
-# issue a new session at login
+
 async def create_session(user_id: str, ip: str | None, user_agent: str | None) -> str:
-    # secrets.token_urlsafe: cryptographically random, not guessable - (~43 char URL-safe string: 32 random bytes + base64url-encodes them).
-    # this is the only thing(this token is the entire secret) the browser gets, so it must be unforgeable.
+    # secrets.token_urlsafe(32) produces 43 URL-safe characters of
+    # cryptographic randomness. This token is the entire secret — the
+    # browser gets it, and we look it up on every request.
     token = secrets.token_urlsafe(32)
     expires_at = datetime.now(timezone.utc) + SESSION_TTL
-    await execute(
-        "INSERT INTO session (id, expiresAt, token, ipAddress, userAgent, userId) "
-        "VALUES (%s, %s, %s, %s, %s, %s)",
-        (new_id(), expires_at, token, ip, user_agent, user_id),
-    )
+
+    # db_insert validates every value against SESSION_SCHEMA before writing.
+    # Columns not passed (updatedAt etc.) use MySQL's DEFAULT values.
+    await db_insert("session", SESSION_SCHEMA, {
+        "id": new_id(),
+        "expiresAt": expires_at,
+        "token": token,
+        "ipAddress": ip,
+        "userAgent": user_agent,
+        "userId": user_id,
+    })
     return token
 
 
 async def get_user_id_for_token(token: str) -> str | None:
-    # expiresAt > now: an expired row is treated as if it doesn't exist.
-    row = await fetchone(
-        "SELECT userId FROM session WHERE token = %s AND expiresAt > UTC_TIMESTAMP()",
-        (token,),  # the database driver expects the parameters as a sequence (a tuple)
+    # extra_condition "expiresAt > UTC_TIMESTAMP()" adds an expiry check
+    # that the WHERE dict can't express (column vs DB function, not column
+    # vs Python value). It's a hardcoded string — never user input.
+    row = await db_get(
+        "session",
+        SESSION_SCHEMA,
+        where={"token": token},
+        extra_condition="expiresAt > UTC_TIMESTAMP()",
     )
-    return row[0] if row else None
+    return row["userId"] if row else None
 
 
 async def delete_session(token: str) -> None:
-    await execute("DELETE FROM session WHERE token = %s", (token,))
+    # db_delete whitelists "token" against SESSION_SCHEMA before it
+    # touches the SQL — no raw string building here.
+    await db_delete("session", SESSION_SCHEMA, where={"token": token})
 
 
-# once the session cookie is set, the browser attaches it to every request going to your site
-# the browser attaches the cookie based on where the request is going, not where it came from.
-# so if a request is heading to our app, the browser includes my session cookie -- even if some other website triggered that request.
-# that's called CSRF: a malicious site making your browser send authenticated requests to a site you're logged into, riding on your cookie
 def set_session_cookie(response: Response, token: str) -> None:
     response.set_cookie(
         SESSION_COOKIE,
         token,
         max_age=int(SESSION_TTL.total_seconds()),
-        httponly=True,  # not readable from JS (the cookie is invisible to document.cookie) - mitigates token theft via XSS
-        # Among Strict, Lax, None; Strict blocks the cookie on all cross-site requests(clicking link the friend sent you, you land on the page logged out)
-        # Lax is the middle ground: top-level navigation (you click a link, or type the URL): cookie is sent
-        # Background / embedded requests (a form POST, an image load, a script fetch), a page fires without you navigating: cookie is withheld
+        # httponly: the cookie is invisible to JavaScript (document.cookie).
+        # This means XSS can't steal the session token even if it runs.
+        httponly=True,
+        # samesite="Lax": the browser sends the cookie on top-level
+        # navigation (you click a link to the site) but withholds it on
+        # background cross-site requests (image loads, AJAX from evil.com).
+        # This is a second layer on top of CSRF token protection.
         samesite="Lax",
-        # secure=True tells the browser to send the cookie only over HTTPS, which would break local development
-        # over http://localhost. The instruction to flip it to True behind TLS in production is important since plain HTTP the token travels in cleartext
+        # secure=False for local HTTP development. Behind a TLS-terminating
+        # reverse proxy in production, set this to True — otherwise the
+        # session token travels in cleartext.
         secure=False,
     )
 
@@ -94,20 +123,22 @@ def clear_session_cookie(response: Response) -> None:
 
 
 def apply_session_loader(app: Quart) -> None:
+    # Runs before every request. Reads the session cookie → looks up the
+    # user id in MySQL → stores it in g.user_id for the rest of the request.
+    # g (the "request context global") lives exactly one request — it's
+    # created fresh each time and thrown away when the response is sent.
     @app.before_request
     async def load_session() -> None:
         token = request.cookies.get(SESSION_COOKIE)
         g.user_id = await get_user_id_for_token(token) if token else None
 
 
-# decorator wrapping a route to redirect to othe login page if g.user_id is NONE
 def login_required(view):
-    @wraps(
-        view
-    )  # preserves the wrapped function's name and metadata because Quart/Flask identify endpoints by function name
-    # wrapped is the route - Quart has registered it as the handler for some URL.
-    # So when a request matches that URL, Quart calls wrapped, and Quart is what fills in the arguments, pulled from the URL's dynamic segments.
-    # a request to /posts/42/edit makes Quart called wrapped(post_id=42)
+    # A decorator: wraps a route function so that unauthenticated requests
+    # are redirected to the login page before the route body ever runs.
+    # @wraps preserves the original function's name — Quart uses the name
+    # to identify route endpoints (e.g. url_for("dashboard")).
+    @wraps(view)
     async def wrapped(*args, **kwargs):
         if g.user_id is None:
             return redirect(url_for("auth.login"))

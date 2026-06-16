@@ -30,12 +30,12 @@ async def authenticate(*, email: str, password: str) -> str:
         # Same message as "wrong password" - don't reveal which emails exist.
         raise AuthError("Invalid email or password.")
 
-    user_id, _name, _email, is_active, _two_factor_enabled = user
-    if not is_active:
+    # user is now a plain dict returned by db_get — access values by key.
+    if not user["isActive"]:
         raise AuthError("This account has been disabled.")
 
-    password_hash = await repository.get_credential_password_hash(user_id)
+    password_hash = await repository.get_credential_password_hash(user["id"])
     if not password_hash or not verify_password(password_hash, password):
         raise AuthError("Invalid email or password.")
 
-    return user_id
+    return user["id"]
