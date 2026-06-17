@@ -17,11 +17,9 @@ async def register(*, name: str, email: str, password: str) -> str:
     if await repository.get_user_by_email(email):
         raise AuthError("An account with that email already exists.")
 
-    user_id = await repository.create_user(name=name, email=email)
-    await repository.create_credential_account(
-        user_id=user_id, password_hash=hash_password(password)
+    return await repository.create_user_with_password(
+        name=name, email=email, password_hash=hash_password(password)
     )
-    return user_id
 
 
 async def authenticate(*, email: str, password: str) -> str:
