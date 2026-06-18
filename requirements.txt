@@ -8,8 +8,21 @@ asyncmy
 # Required by asyncmy for MySQL 8's default caching_sha2_password auth
 cryptography
 
-# Redis client (sessions, pub/sub, rate limiting - implemented in later weeks)
+# Redis client (sessions, pub/sub, rate limiting)
 redis
 
-# Password hashing (Argon2id) for the auth feature
+# Password hashing (Argon2id)
 argon2-cffi
+
+# Async HTTP client - OAuth token exchange, Resend email API
+httpx
+
+# TOTP (time-based one-time passwords for 2FA / authenticator apps)
+pyotp
+
+# QR code image generation (for TOTP setup page)
+qrcode[pil]
+Pillow
+
+# WebAuthn / Passkeys (server-side challenge + verification)
+webauthn

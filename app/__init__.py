@@ -9,7 +9,7 @@ uvicorn).
 The actual ASGI app instance lives in run.py at the project root.
 """
 
-from quart import Quart, render_template
+from quart import Quart, g, render_template
 
 from app.config import Config
 from app.core.db.pool import close_pool, get_pool, init_pool
@@ -17,6 +17,7 @@ from app.core.security.csrf import apply_csrf_protection
 from app.core.security.headers import apply_security_headers
 from app.core.security.sessions import apply_session_loader, login_required
 from app.extensions import close_redis, get_redis, init_redis
+from app.features.auth.repository import get_user_by_id
 from app.features.auth.routes import auth_bp
 
 
@@ -62,8 +63,8 @@ def create_app() -> Quart:
     @app.route("/")
     @login_required
     async def dashboard():
-        # Renders app/templates/dashboard/dashboard.html via layouts/base.html.
-        return await render_template("dashboard/dashboard.html")
+        user = await get_user_by_id(g.user_id)
+        return await render_template("dashboard/dashboard.html", user=user)
 
     @app.route("/healthz")
     async def healthz():

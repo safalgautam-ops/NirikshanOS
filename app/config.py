@@ -25,3 +25,18 @@ class Config:
     DB_NAME = os.environ.get("DB_NAME", "nirikshan")
 
     REDIS_URL = os.environ.get("REDIS_URL", "redis://127.0.0.1:6379/0")
+
+    APP_URL = os.environ.get("APP_URL", "http://localhost:8000")
+
+    RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
+    RESEND_FROM_EMAIL = os.environ.get("RESEND_FROM_EMAIL", "NirikshanOS <noreply@example.com>")
+
+    GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "")
+    GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "")
+
+    GITHUB_CLIENT_ID = os.environ.get("GITHUB_CLIENT_ID", "")
+    GITHUB_CLIENT_SECRET = os.environ.get("GITHUB_CLIENT_SECRET", "")
+
+    WEBAUTHN_RP_ID = os.environ.get("WEBAUTHN_RP_ID", "localhost")
+    WEBAUTHN_RP_NAME = os.environ.get("WEBAUTHN_RP_NAME", "NirikshanOS")
+    WEBAUTHN_RP_ORIGIN = os.environ.get("WEBAUTHN_RP_ORIGIN", "http://localhost:8000")
