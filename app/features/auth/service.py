@@ -1,39 +1,301 @@
-"""Auth business logic: registration and credential login.
+"""Auth business logic.
 
-Kept separate from routes.py so the rules ("email already taken",
-"account disabled", ...) aren't tangled up with request/response/cookie
-handling.
+All rules ("email taken", "wrong password", "2FA required", ...) live here.
+Routes call these functions and react to the exceptions they raise.
 """
 
+from __future__ import annotations
+
 from app.core.utils.passwords import hash_password, verify_password
+from app.features.auth import passkey as pk_module
 from app.features.auth import repository
+from app.features.auth.otp import create_otp, verify_otp
+from app.features.auth.totp import (
+    consume_backup_code,
+    decode_backup_codes,
+    encode_backup_codes,
+    generate_backup_codes,
+    generate_secret,
+    qr_base64,
+    verify_code,
+)
 
 
 class AuthError(Exception):
-    """A user-facing auth failure - safe to show its message directly."""
+    """A user-visible auth failure — safe to display directly."""
 
 
-async def register(*, name: str, email: str, password: str) -> str:
+class EmailNotVerifiedError(AuthError):
+    """Raised when the user's email hasn't been confirmed via OTP yet."""
+
+    def __init__(self, email: str):
+        super().__init__("Please activate your account. Check your email for the code.")
+        self.email = email
+
+
+class TwoFactorRequiredError(Exception):
+    """Raised when credentials are correct but a TOTP code is still needed."""
+
+    def __init__(self, user_id: str):
+        self.user_id = user_id
+
+
+async def register(*, name: str, email: str, password: str) -> None:
+    """Create an inactive user and send an activation OTP. Does NOT log the user in."""
+    from app.core.email.client import send_activation_email
+
     if await repository.get_user_by_email(email):
         raise AuthError("An account with that email already exists.")
 
-    return await repository.create_user_with_password(
+    await repository.create_user_with_password(
         name=name, email=email, password_hash=hash_password(password)
     )
+    code = await create_otp(email, "activate")
+    await send_activation_email(to=email, name=name, code=code)
+
+
+async def activate_account(email: str, code: str) -> None:
+    """Verify the activation OTP and mark the account active."""
+    user = await repository.get_user_by_email(email)
+    if not user:
+        raise AuthError("Account not found.")
+    if user["emailVerified"]:
+        return  # already active — idempotent
+    if not await verify_otp(email, "activate", code):
+        raise AuthError("Invalid or expired code.")
+    await repository.set_email_verified(user["id"])
+
+
+async def resend_activation(email: str) -> None:
+    """Issue a fresh activation OTP (rate limiting should be added later)."""
+    from app.core.email.client import send_activation_email
+
+    user = await repository.get_user_by_email(email)
+    if not user or user["emailVerified"]:
+        return  # silent — don't reveal whether the email exists
+    code = await create_otp(email, "activate")
+    await send_activation_email(to=email, name=user["name"], code=code)
 
 
 async def authenticate(*, email: str, password: str) -> str:
+    """
+    Validate email+password credentials. Returns user_id on success.
+    Raises EmailNotVerifiedError, TwoFactorRequiredError, or AuthError.
+    """
     user = await repository.get_user_by_email(email)
     if not user:
-        # Same message as "wrong password" - don't reveal which emails exist.
         raise AuthError("Invalid email or password.")
 
-    # user is now a plain dict returned by db_get — access values by key.
+    if not user["emailVerified"]:
+        raise EmailNotVerifiedError(user["email"])
+
     if not user["isActive"]:
         raise AuthError("This account has been disabled.")
 
-    password_hash = await repository.get_credential_password_hash(user["id"])
-    if not password_hash or not verify_password(password_hash, password):
+    pw_hash = await repository.get_credential_password_hash(user["id"])
+    if not pw_hash or not verify_password(pw_hash, password):
         raise AuthError("Invalid email or password.")
 
+    if user["twoFactorEnabled"]:
+        raise TwoFactorRequiredError(user["id"])
+
     return user["id"]
+
+
+async def verify_2fa(user_id: str, code: str) -> None:
+    """Verify a TOTP code or backup code for a pending login."""
+    two_factor = await repository.get_two_factor(user_id)
+    if not two_factor:
+        raise AuthError("2FA is not configured for this account.")
+
+    if verify_code(two_factor["secret"], code):
+        return
+
+    # Try backup code
+    hashed = decode_backup_codes(two_factor["backupCodes"])
+    success, remaining = consume_backup_code(hashed, code)
+    if success:
+        await repository.update_two_factor_backup_codes(
+            user_id, encode_backup_codes(remaining)
+        )
+        return
+
+    raise AuthError("Invalid code. Try your authenticator app or a backup code.")
+
+
+# ── Password reset ────────────────────────────────────────────────────────────
+
+
+async def forgot_password(email: str) -> None:
+    """Send a password-reset OTP. Always succeeds silently to avoid email enumeration."""
+    from app.core.email.client import send_reset_email
+
+    user = await repository.get_user_by_email(email)
+    if not user:
+        return
+    code = await create_otp(email, "reset")
+    print(code)
+    await send_reset_email(to=email, code=code)
+
+
+async def reset_password(email: str, code: str, new_password: str) -> None:
+    """Verify OTP and update the password."""
+    user = await repository.get_user_by_email(email)
+    if not user:
+        raise AuthError("Account not found.")
+    if not await verify_otp(email, "reset", code):
+        raise AuthError("Invalid or expired code.")
+    await repository.update_credential_password(user["id"], hash_password(new_password))
+    if not user["emailVerified"]:
+        await repository.set_email_verified(user["id"])
+
+
+# ── OAuth ─────────────────────────────────────────────────────────────────────
+
+
+async def oauth_authenticate(provider_id: str, user_info: dict) -> str:
+    """
+    Find or create a user from an OAuth login. Returns user_id.
+    Auto-links the OAuth account if a user with the same email already exists.
+    If both no, brand-new person so create one.
+    """
+    # look up an OAuth account by provider and account ID (the account ID is Google's internal user ID for this person)
+    account = await repository.get_account_by_provider(provider_id, user_info["id"])
+    if account:
+        return account["userId"]
+
+    # Email already registered → link and return
+    if user_info.get("email"):
+        user = await repository.get_user_by_email(user_info["email"])
+        if user:
+            await repository.create_oauth_account(
+                user_id=user["id"],
+                provider_id=provider_id,
+                account_id=user_info["id"],
+                access_token=user_info.get("access_token"),
+                refresh_token=user_info.get("refresh_token"),
+            )
+            return user["id"]
+
+    # Brand-new user
+    if not user_info.get("email"):
+        raise AuthError(
+            f"No email address available from {provider_id}. "
+            "Please make your email public or use another sign-in method."
+        )
+    return await repository.create_user_with_oauth(
+        name=user_info["name"],
+        email=user_info["email"],
+        image=user_info.get("image"),
+        provider_id=provider_id,
+        account_id=user_info["id"],
+        access_token=user_info.get("access_token"),
+        refresh_token=user_info.get("refresh_token"),
+    )
+
+
+async def link_oauth_account(user_id: str, provider_id: str, user_info: dict) -> None:
+    """Link an OAuth account to an already-logged-in user."""
+    existing = await repository.get_account_by_provider(provider_id, user_info["id"])
+    if existing:
+        if existing["userId"] != user_id:
+            raise AuthError("This account is already connected to a different user.")
+        return  # already linked to the same user
+
+    accounts = await repository.get_accounts_by_user(user_id)
+    if any(a["providerId"] == provider_id for a in accounts):
+        raise AuthError(f"You already have a {provider_id} account connected.")
+
+    await repository.create_oauth_account(
+        user_id=user_id,
+        provider_id=provider_id,
+        account_id=user_info["id"],
+        access_token=user_info.get("access_token"),
+        refresh_token=user_info.get("refresh_token"),
+    )
+
+
+async def disconnect_provider(user_id: str, provider_id: str) -> None:
+    """Unlink an OAuth provider. Prevents lock-out by checking remaining login methods."""
+    accounts = await repository.get_accounts_by_user(user_id)
+    remaining = [a for a in accounts if a["providerId"] != provider_id]
+    passkeys = await repository.get_passkeys_by_user(user_id)
+
+    has_credential = any(a["providerId"] == "credential" for a in remaining)
+    has_oauth = any(a["providerId"] not in ("credential",) for a in remaining)
+    has_passkey = len(passkeys) > 0
+
+    if not (has_credential or has_oauth or has_passkey):
+        raise AuthError("Cannot disconnect — you need at least one way to log in.")
+
+    await repository.delete_account_by_provider(user_id, provider_id)
+
+
+# ── TOTP / 2FA setup ──────────────────────────────────────────────────────────
+
+
+async def begin_totp_setup(user_id: str) -> tuple[str, str]:
+    """Generate a new TOTP secret. Returns (secret, qr_base64). Not saved yet."""
+    user = await repository.get_user_by_id(user_id)
+    secret = generate_secret()
+    qr = qr_base64(secret, user["email"])
+    return secret, qr
+
+
+async def confirm_totp_setup(user_id: str, secret: str, code: str) -> list[str]:
+    """
+    Verify the first TOTP code, save the secret, enable 2FA.
+    Returns the plain backup codes (shown once, never stored in plain text).
+    """
+    if not verify_code(secret, code):
+        raise AuthError("Invalid code. Make sure your authenticator app is in sync.")
+
+    plain_codes, hashed_codes = generate_backup_codes()
+    await repository.create_two_factor(
+        user_id=user_id,
+        secret=secret,
+        backup_codes=encode_backup_codes(hashed_codes),
+    )
+    await repository.set_two_factor_enabled(user_id, True)
+    return plain_codes
+
+
+async def disable_totp(user_id: str) -> None:
+    await repository.delete_two_factor(user_id)
+    await repository.set_two_factor_enabled(user_id, False)
+
+
+# ── Passkeys ──────────────────────────────────────────────────────────────────
+
+
+async def begin_passkey_registration(user_id: str) -> dict:
+    user = await repository.get_user_by_id(user_id)
+    existing = await repository.get_passkeys_by_user(user_id)
+    return await pk_module.begin_registration(
+        user_id, user["email"], user["name"], existing
+    )
+
+
+async def complete_passkey_registration(
+    user_id: str, credential: dict, name: str | None
+) -> None:
+    data = await pk_module.complete_registration(user_id, credential)
+    await repository.create_passkey(user_id=user_id, name=name, **data)
+
+
+async def begin_passkey_authentication(challenge_key: str) -> dict:
+    return await pk_module.begin_authentication(challenge_key, [])
+
+
+async def complete_passkey_authentication(challenge_key: str, credential: dict) -> str:
+    """Returns user_id of the authenticated user."""
+    credential_id = credential.get("id", "")
+    stored = await repository.get_passkey_by_credential_id(credential_id)
+    if not stored:
+        raise AuthError("Passkey not recognised.")
+
+    new_counter = await pk_module.complete_authentication(
+        challenge_key, credential, stored
+    )
+    await repository.update_passkey_counter(credential_id, new_counter)
+    return stored["userId"]

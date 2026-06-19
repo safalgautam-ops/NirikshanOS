@@ -1,154 +1,246 @@
-"""
-DB access for the BetterAuth-style `user`/`account` tables.
+"""DB access for all auth-related tables.
 
-This file is a "repository" layer: a thin set of functions that wrap database
-operations so the rest of the app calls clear names like `get_user_by_email(...)`
-instead of writing query-builder chains everywhere. It keeps all SQL/table
-knowledge in one place.
-
-Background on the two tables:
-- `user`    -> one row per person (id, name, email, isActive, ...).
-- `account` -> how a user logs in. BetterAuth supports many login methods
-               ("providers"), so a single user can have several account rows.
-               A "credential" account is the email+password login method, and
-               its `password` column holds the hashed password.
+Thin functions that wrap the ORM query builder. Business rules live in
+service.py; this file only knows about columns and tables.
 """
 
-from __future__ import (
-    annotations,  # lets type hints be lazy/forward-referenced (no runtime cost)
-)
+from __future__ import annotations
 
-# The query builder (`db`) and the safe-raw-SQL wrapper (`raw_sql`) from the ORM layer.
 from app.core.db.orm import db, raw_sql
-
-# Generates a fresh unique id string for new rows (e.g. a UUID-like value).
 from app.core.utils.ids import new_id
 
 
 async def get_user_by_email(email: str):
-    """Find a single user by their email address (or None if no match)."""
-    # db.table("user")        -> start a query on the `user` table
-    # .where("email", email)  -> filter: WHERE email = <email>
-    # .first()                -> run it, return just the first row (or None)
-    return await db.table("user").where("email", email).first()
+    return (
+        await db.table("user").where("email", email).first()
+    )  # Returns a Row (dict-like object with attribute access)
 
 
 async def get_user_by_id(user_id: str):
-    """Find a single user by their id (or None if no match)."""
     return await db.table("user").where("id", user_id).first()
 
 
-async def create_user(*, name: str, email: str) -> str:
-    """
-    Create a new user row and return its id.
-    (The `*` forces callers to pass name/email by name, e.g. create_user(name=..., email=...),
-    which prevents accidentally swapping the two strings.)
-    """
-    user_id = (
-        new_id()
-    )  # we generate the id ourselves so we can return it without a second query
-    # .create({...}) builds and runs an INSERT with these column/value pairs.
-    await db.table("user").create({"id": user_id, "name": name, "email": email})
-    return user_id  # hand the new id back to the caller
-
-
-async def create_credential_account(*, user_id: str, password_hash: str) -> None:
-    """
-    Create the email+password ("credential") login record for an existing user.
-    NOTE: it stores password_hash, never the raw password — hashing happens before this is called.
-    """
-    await db.table(
-        "account"
-    ).create(
-        {
-            "id": new_id(),  # unique id for this account row
-            "accountId": user_id,  # BetterAuth's "account id" — here it mirrors the user id
-            "providerId": "credential",  # marks this as the email/password login method
-            "userId": user_id,  # which user this login belongs to
-            "password": password_hash,  # the HASHED password (safe to store)
-        }
+# called once after a successful OTP activation
+async def set_email_verified(user_id: str) -> None:
+    await (
+        db.table("user")
+        .where("id", user_id)
+        .patch(
+            {
+                "emailVerified": True,
+                "isActive": True,
+            }
+        )
     )
+
+
+async def set_two_factor_enabled(user_id: str, enabled: bool) -> None:
+    await db.table("user").where("id", user_id).patch({"twoFactorEnabled": enabled})
 
 
 async def create_user_with_password(
     *, name: str, email: str, password_hash: str
 ) -> str:
-    """
-    Create BOTH a user AND their credential account together, as one all-or-nothing unit.
-
-    Why a transaction here? These two inserts must succeed together. If we created the
-    user but the account insert failed, we'd be left with a user who can never log in.
-    The transaction guarantees: either both rows are saved, or neither is.
-    """
-    user_id = new_id()  # id for the new user row
-    account_id = new_id()  # id for the new account row
-
-    # `async with db.transaction():` opens a transaction. Everything inside is provisional.
-    # If the block finishes normally -> all changes are committed (saved) at once.
-    # If anything inside raises an error -> all changes are rolled back (undone).
+    """Create user row + credential account atomically. User starts inactive (needs OTP)."""
+    user_id = new_id()
     async with db.transaction():
-        await db.table("user").create({"id": user_id, "name": name, "email": email})
+        await db.table("user").create(
+            {
+                "id": user_id,
+                "name": name,
+                "email": email,
+                "emailVerified": False,
+                "isActive": False,
+            }
+        )
         await db.table("account").create(
             {
-                "id": account_id,
+                "id": new_id(),
                 "accountId": user_id,
                 "providerId": "credential",
                 "userId": user_id,
                 "password": password_hash,
             }
         )
-    # (Reaching here means both inserts succeeded and the transaction committed.)
+    return user_id
+
+
+# access tokens and refresh tokens by provided by Google and Github
+async def create_user_with_oauth(
+    *,
+    name: str,
+    email: str,
+    image: str | None,
+    provider_id: str,
+    account_id: str,
+    access_token: str | None,
+    refresh_token: str | None,
+) -> str:
+    user_id = new_id()
+    async with db.transaction():
+        await db.table("user").create(
+            {
+                "id": user_id,
+                "name": name,
+                "email": email,
+                "image": image,
+                "emailVerified": True,
+                "isActive": True,
+            }
+        )
+        await db.table("account").create(
+            {
+                "id": new_id(),
+                "accountId": account_id,
+                "providerId": provider_id,
+                "userId": user_id,
+                "accessToken": access_token,
+                "refreshToken": refresh_token,
+            }
+        )
     return user_id
 
 
 async def get_credential_account_by_user_id(user_id: str):
-    """
-    Fetch a user's email+password login record (or None).
-    A user can have multiple account rows (different login methods), so we filter on
-    BOTH the userId AND providerId="credential" to pick out the right one.
-    """
-    return (
-        await db.table("account")
-        .where("userId", user_id)  # WHERE userId = <user_id>
-        .where("providerId", "credential")  # AND providerId = 'credential'
-        .first()  # take the first match (or None)
+    return await (
+        db.table("account")
+        .where("userId", user_id)
+        .where("providerId", "credential")
+        .first()
     )
 
 
 async def get_credential_password_hash(user_id: str) -> str | None:
-    """
-    Return just the stored password HASH for a user (or None if they have no credential account).
-    Used during login to compare against the password the user typed.
-    """
     account = await get_credential_account_by_user_id(user_id)
-    # If an account row exists, pull out its "password" field; otherwise return None.
     return account["password"] if account else None
 
 
-async def get_valid_session_by_token(token: str):
-    """
-    Look up a login session by its token, but ONLY return it if the session is still
-    valid: not expired AND belonging to an active user. Also pulls some user fields
-    along with it in a single query (via a JOIN).
+async def update_credential_password(user_id: str, password_hash: str) -> None:
+    await (
+        db.table("account")
+        .where("userId", user_id)
+        .where("providerId", "credential")
+        .patch({"password": password_hash})
+    )
 
-    Returns the matching row (with userId, email, name, isActive) or None.
-    """
+
+async def get_account_by_provider(provider_id: str, account_id: str):
     return await (
-        # Start on the `session` table, giving it the short alias "s" to reference its columns.
-        db.table("session", alias="s")
-        # Select the columns we care about: a few from session (s) and a few from user (u).
-        .select("s.userId", "u.email", "u.name", "u.isActive")
-        # Bring in the `user` table (aliased "u"), matching session.userId to user.id.
-        # LEFT JOIN keeps the session row even if (somehow) no matching user exists.
-        .left_join("user", "s.userId", "u.id", alias="u")
-        # Match the specific session by its token: WHERE s.token = <token>
-        .where("s.token", token)
-        # Only keep sessions that haven't expired yet. This needs a SQL function
-        # (UTC_TIMESTAMP()), which the normal .where() can't express — so we use raw_sql.
-        # raw_sql(...) is the deliberate, safety-checked way to inject raw SQL.
-        .where_raw(raw_sql("s.expiresAt > UTC_TIMESTAMP()"))
-        # And only if the user is currently active: AND u.isActive = True
-        .where("u.isActive", True)
-        # Run it and return the first matching row (or None).
+        db.table("account")
+        .where("providerId", provider_id)
+        .where("accountId", account_id)
         .first()
     )
+
+
+async def get_accounts_by_user(user_id: str) -> list:
+    return await db.table("account").where("userId", user_id).all()
+
+
+async def create_oauth_account(
+    *,
+    user_id: str,
+    provider_id: str,
+    account_id: str,
+    access_token: str | None,
+    refresh_token: str | None,
+) -> None:
+    await db.table("account").create(
+        {
+            "id": new_id(),
+            "accountId": account_id,
+            "providerId": provider_id,
+            "userId": user_id,
+            "accessToken": access_token,
+            "refreshToken": refresh_token,
+        }
+    )
+
+
+async def delete_account_by_provider(user_id: str, provider_id: str) -> None:
+    await (
+        db.table("account")
+        .where("userId", user_id)
+        .where("providerId", provider_id)
+        .delete()
+    )
+
+
+async def get_passkeys_by_user(user_id: str) -> list:
+    return await db.table("passkey").where("userId", user_id).all()
+
+
+async def get_passkey_by_credential_id(credential_id: str):
+    return await db.table("passkey").where("credentialID", credential_id).first()
+
+
+async def create_passkey(
+    *,
+    user_id: str,
+    name: str | None,
+    credentialID: str,
+    publicKey: str,
+    counter: int,
+    backedUp: bool,
+    deviceType: str,
+    transports: str,
+    aaguid: str | None,
+) -> None:
+    await db.table("passkey").create(
+        {
+            "id": new_id(),
+            "name": name,
+            "userId": user_id,
+            "credentialID": credentialID,
+            "publicKey": publicKey,
+            "counter": counter,
+            "backedUp": backedUp,
+            "deviceType": deviceType,
+            "transports": transports,
+            "aaguid": aaguid,
+        }
+    )
+
+
+async def update_passkey_counter(credential_id: str, counter: int) -> None:
+    await (
+        db.table("passkey")
+        .where("credentialID", credential_id)
+        .patch({"counter": counter})
+    )
+
+
+async def delete_passkey(passkey_id: str, user_id: str) -> None:
+    # Require user_id to prevent cross-user deletion
+    await db.table("passkey").where("id", passkey_id).where("userId", user_id).delete()
+
+
+async def get_two_factor(user_id: str):
+    return await db.table("twoFactor").where("userId", user_id).first()
+
+
+async def create_two_factor(*, user_id: str, secret: str, backup_codes: str) -> None:
+    # Delete any existing record first (re-setup scenario)
+    await db.table("twoFactor").where("userId", user_id).delete()
+    await db.table("twoFactor").create(
+        {
+            "id": new_id(),
+            "secret": secret,
+            "backupCodes": backup_codes,
+            "userId": user_id,
+        }
+    )
+
+
+async def update_two_factor_backup_codes(user_id: str, backup_codes: str) -> None:
+    await (
+        db.table("twoFactor")
+        .where("userId", user_id)
+        .patch(
+            {"backupCodes": backup_codes}
+        )  # patch is the ORM's way of doing a partial update (change only specific column you name)
+    )
+
+
+async def delete_two_factor(user_id: str) -> None:
+    await db.table("twoFactor").where("userId", user_id).delete()
