@@ -1,0 +1,62 @@
+{% extends "layouts/base.html" %}
+{% from "components/ui/card.html" import card_open, card_close %}
+{% from "components/ui/field.html" import field_group_open, field_group_close, field_open, field_close, field_label %}
+{% from "components/ui/input.html" import input %}
+{% from "components/ui/button.html" import button %}
+{% from "macros/csrf.html" import csrf_field %}
+
+{% block title %}Activate account - NirikshanOS{% endblock %}
+
+{% block body %}
+<div class="flex min-h-screen items-center justify-center p-6">
+  <div class="flex w-full max-w-sm flex-col gap-6">
+    {{ card_open() }}
+      <div class="p-6 md:p-8">
+        <form method="post" action="{{ url_for('auth.activate') }}">
+          {{ csrf_field() }}
+          {{ field_group_open() }}
+            <div class="flex flex-col items-center gap-2 text-center">
+              <h1 class="text-2xl font-bold">Check your email</h1>
+              <p class="text-balance text-sm text-muted-foreground">
+                We sent a 6-digit code to <strong>{{ email }}</strong>. Enter it below to activate your account.
+              </p>
+            </div>
+
+            {% if resent %}
+            <div class="rounded-md border border-green-500/50 bg-green-500/10 px-3 py-2 text-sm text-green-700 dark:text-green-400">
+              A new code has been sent.
+            </div>
+            {% endif %}
+
+            {% if error %}
+            <div class="rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              {{ error }}
+            </div>
+            {% endif %}
+
+            <input type="hidden" name="email" value="{{ email }}" />
+
+            {{ field_open() }}
+              {{ field_label("Activation code", for_id="code") }}
+              {{ input("code", type="text", placeholder="123456", attrs='autocomplete="one-time-code" inputmode="numeric" maxlength="6"', required=True) }}
+            {{ field_close() }}
+
+            {{ field_open() }}
+              {{ button("Activate account", type="submit", extra_classes="w-full") }}
+            {{ field_close() }}
+          {{ field_group_close() }}
+        </form>
+
+        <form method="post" action="{{ url_for('auth.resend_activation_view') }}" class="mt-4">
+          {{ csrf_field() }}
+          <input type="hidden" name="email" value="{{ email }}" />
+          <p class="text-center text-sm text-muted-foreground">
+            Didn't receive a code?
+            <button type="submit" class="underline underline-offset-4 hover:text-foreground">Resend</button>
+          </p>
+        </form>
+      </div>
+    {{ card_close() }}
+  </div>
+</div>
+{% endblock %}
