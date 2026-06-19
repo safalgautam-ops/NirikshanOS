@@ -27,7 +27,7 @@
 
     <main class="flex-1 space-y-6 p-4 md:p-6">
         <div>
-            <h2 class="text-xl font-semibold">Welcome to NirikshanOS</h2>
+            <h2 class="text-xl font-semibold">Welcome, {{ user.name }}</h2>
             <p class="text-sm text-muted-foreground">
                 Foundation is up: Quart + uvicorn behind nginx, MySQL and Redis connected.
                 Database connectivity check: <a class="underline" href="/healthz">/healthz</a>.

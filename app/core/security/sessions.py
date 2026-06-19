@@ -12,11 +12,12 @@ This is safer than storing user info directly in the cookie, because a token rev
 on its own and can be revoked (deleted) server-side at any time.
 """
 
-import secrets  # cryptographically-strong random generator (for unguessable tokens)
-from datetime import datetime, timedelta, timezone  # for handling expiry times
-from functools import (
-    wraps,  # preserves a function's name/docs when wrapping it (used in the decorator)
-)
+import hashlib
+import hmac
+import secrets
+import time
+from datetime import datetime, timedelta, timezone
+from functools import wraps
 
 # Quart is an async web framework (like Flask, but async). These are its request/response tools:
 #   Quart    -> the app type
@@ -121,6 +122,34 @@ def apply_session_loader(app: Quart) -> None:
         # Look up the user id for that token, and stash it on `g` (the per-request scratchpad)
         # so any route handler this request can read g.user_id. If no token, it's None.
         g.user_id = await get_user_id_for_token(token) if token else None
+
+
+PENDING_2FA_COOKIE = "pending_2fa"
+_PENDING_2FA_TTL = 300  # 5 minutes
+
+
+def create_pending_2fa_token(user_id: str, secret_key: str) -> str:
+    ts = str(int(time.time()))
+    payload = f"{user_id}.{ts}"
+    sig = hmac.new(secret_key.encode(), payload.encode(), hashlib.sha256).hexdigest()
+    return f"{payload}.{sig}"
+
+
+def verify_pending_2fa_token(value: str, secret_key: str) -> str | None:
+    try:
+        parts = value.split(".", 2)
+        if len(parts) != 3:
+            return None
+        user_id, ts_str, sig = parts
+        payload = f"{user_id}.{ts_str}"
+        expected = hmac.new(secret_key.encode(), payload.encode(), hashlib.sha256).hexdigest()
+        if not hmac.compare_digest(sig, expected):
+            return None
+        if int(time.time()) - int(ts_str) > _PENDING_2FA_TTL:
+            return None
+        return user_id
+    except Exception:
+        return None
 
 
 def login_required(view):
