@@ -38,6 +38,9 @@ def create_app() -> Quart:
     # components/ui/*.html macros call cn()/html_attrs() directly as globals.
     app.jinja_env.globals["cn"] = cn
     app.jinja_env.globals["html_attrs"] = html_attrs
+    # Jinja doesn't expose Python's builtin set() by default - templates need
+    # it for `x in (value or set())` patterns against role_ids/etc.
+    app.jinja_env.globals["set"] = set
 
     # Registers the after_request hook that adds CSP/X-Frame-Options/etc.
     apply_security_headers(app)

@@ -1,6 +1,6 @@
 {% extends "layouts/base.html" %}
-{% from "components/ui/card.html" import card_open, card_close %}
-{% from "components/ui/field.html" import field_group_open, field_group_close, field_open, field_close, field_label %}
+{% from "components/ui/card.html" import card, card_panel %}
+{% from "components/ui/field.html" import field_group, field, field_label %}
 {% from "components/ui/input.html" import input %}
 {% from "components/ui/button.html" import button %}
 {% from "macros/csrf.html" import csrf_field %}
@@ -10,11 +10,11 @@
 {% block body %}
 <div class="flex min-h-screen items-center justify-center p-6">
   <div class="flex w-full max-w-sm flex-col gap-6">
-    {{ card_open() }}
-      <div class="p-6 md:p-8">
+    {% call card() %}
+      {% call card_panel(class="p-6 md:p-8") %}
         <form method="post" action="{{ url_for('auth.verify_2fa_view') }}">
           {{ csrf_field() }}
-          {{ field_group_open() }}
+          {% call field_group() %}
             <div class="flex flex-col items-center gap-2 text-center">
               <h1 class="text-2xl font-bold">Two-factor verification</h1>
               <p class="text-balance text-sm text-muted-foreground">
@@ -28,22 +28,22 @@
             </div>
             {% endif %}
 
-            {{ field_open() }}
+            {% call field() %}
               {{ field_label("Code", for_id="code") }}
-              {{ input(name="code", type="text", placeholder="000000", attrs='autocomplete="one-time-code" inputmode="numeric"', required=True) }}
-            {{ field_close() }}
+              {{ input(name="code", type="text", placeholder="000000", required=True, attrs={"id": "code", "autocomplete": "one-time-code", "inputmode": "numeric"}) }}
+            {% endcall %}
 
-            {{ field_open() }}
-              {{ button("Verify", type="submit", extra_classes="w-full") }}
-            {{ field_close() }}
+            {% call field() %}
+              {% call button(type="submit", class="w-full") %}Verify{% endcall %}
+            {% endcall %}
 
             <p class="text-center text-sm text-muted-foreground">
               <a class="underline underline-offset-4 hover:text-foreground" href="{{ url_for('auth.login') }}">Back to login</a>
             </p>
-          {{ field_group_close() }}
+          {% endcall %}
         </form>
-      </div>
-    {{ card_close() }}
+      {% endcall %}
+    {% endcall %}
   </div>
 </div>
 {% endblock %}

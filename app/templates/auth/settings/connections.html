@@ -1,6 +1,6 @@
 {% extends "layouts/base.html" %}
-{% from "components/ui/card.html" import card_open, card_close %}
-{% from "components/ui/button.html" import button %}
+{% from "components/ui/card.html" import card, card_panel %}
+{% from "components/ui/button.html" import button, button_link %}
 {% from "components/ui/separator.html" import separator %}
 {% from "macros/csrf.html" import csrf_field %}
 
@@ -21,8 +21,8 @@
   {% endif %}
 
   {# ── Social providers ─────────────────────────────────────────────────── #}
-  {{ card_open() }}
-  <div class="p-6 space-y-4">
+  {% call card() %}
+  {% call card_panel(class="space-y-4") %}
     <h2 class="text-lg font-semibold">Connected accounts</h2>
     <p class="text-sm text-muted-foreground">Link social accounts so you can log in with them.</p>
 
@@ -47,10 +47,10 @@
       {% if "google" in connected %}
       <form method="post" action="{{ url_for('auth.disconnect_provider_view', provider='google') }}">
         {{ csrf_field() }}
-        {{ button("Disconnect", variant="outline", size="sm", type="submit") }}
+        {% call button(variant="outline", size="sm", type="submit") %}Disconnect{% endcall %}
       </form>
       {% else %}
-      {{ button("Connect", tag="a", href=url_for('auth.connect_provider', provider='google'), variant="outline", size="sm") }}
+      {% call button_link(href=url_for('auth.connect_provider', provider='google'), variant="outline", size="sm") %}Connect{% endcall %}
       {% endif %}
     </div>
 
@@ -74,18 +74,18 @@
       {% if "github" in connected %}
       <form method="post" action="{{ url_for('auth.disconnect_provider_view', provider='github') }}">
         {{ csrf_field() }}
-        {{ button("Disconnect", variant="outline", size="sm", type="submit") }}
+        {% call button(variant="outline", size="sm", type="submit") %}Disconnect{% endcall %}
       </form>
       {% else %}
-      {{ button("Connect", tag="a", href=url_for('auth.connect_provider', provider='github'), variant="outline", size="sm") }}
+      {% call button_link(href=url_for('auth.connect_provider', provider='github'), variant="outline", size="sm") %}Connect{% endcall %}
       {% endif %}
     </div>
-  </div>
-  {{ card_close() }}
+  {% endcall %}
+  {% endcall %}
 
   {# ── Passkeys ─────────────────────────────────────────────────────────── #}
-  {{ card_open() }}
-  <div class="p-6 space-y-4">
+  {% call card() %}
+  {% call card_panel(class="space-y-4") %}
     <div class="flex items-center justify-between">
       <div>
         <h2 class="text-lg font-semibold">Passkeys</h2>
@@ -107,7 +107,7 @@
         </div>
         <form method="post" action="{{ url_for('auth.passkey_delete', passkey_id=pk.id) }}">
           {{ csrf_field() }}
-          {{ button("Remove", variant="ghost", size="sm", type="submit") }}
+          {% call button(variant="ghost", size="sm", type="submit") %}Remove{% endcall %}
         </form>
       </div>
       {% endfor %}
@@ -115,12 +115,12 @@
     {% else %}
     <p class="text-sm text-muted-foreground">No passkeys added yet.</p>
     {% endif %}
-  </div>
-  {{ card_close() }}
+  {% endcall %}
+  {% endcall %}
 
   {# ── Two-factor authentication ─────────────────────────────────────────── #}
-  {{ card_open() }}
-  <div class="p-6 space-y-4">
+  {% call card() %}
+  {% call card_panel(class="space-y-4") %}
     <div class="flex items-center justify-between">
       <div>
         <h2 class="text-lg font-semibold">Two-factor authentication</h2>
@@ -135,14 +135,14 @@
       {% if two_factor %}
       <form method="post" action="{{ url_for('auth.disable_2fa') }}">
         {{ csrf_field() }}
-        {{ button("Disable 2FA", variant="destructive", size="sm", type="submit") }}
+        {% call button(variant="destructive", size="sm", type="submit") %}Disable 2FA{% endcall %}
       </form>
       {% else %}
-      {{ button("Enable 2FA", tag="a", href=url_for('auth.setup_2fa'), size="sm") }}
+      {% call button_link(href=url_for('auth.setup_2fa'), size="sm") %}Enable 2FA{% endcall %}
       {% endif %}
     </div>
-  </div>
-  {{ card_close() }}
+  {% endcall %}
+  {% endcall %}
 </div>
 
 <script src="{{ url_for('static', filename='js/passkey.js') }}"></script>

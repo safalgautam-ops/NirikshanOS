@@ -1,16 +1,16 @@
 {% extends "layouts/base.html" %}
-{% from "components/ui/card.html" import card_open, card_close %}
-{% from "components/ui/field.html" import field_group_open, field_group_close, field_open, field_close %}
-{% from "components/ui/button.html" import button %}
+{% from "components/ui/card.html" import card, card_panel %}
+{% from "components/ui/field.html" import field_group, field %}
+{% from "components/ui/button.html" import button_link %}
 
 {% block title %}Backup codes - NirikshanOS{% endblock %}
 
 {% block body %}
 <div class="flex min-h-screen items-center justify-center p-6">
   <div class="flex w-full max-w-md flex-col gap-6">
-    {{ card_open() }}
-      <div class="p-6 md:p-8">
-        {{ field_group_open() }}
+    {% call card() %}
+      {% call card_panel(class="p-6 md:p-8") %}
+        {% call field_group() %}
           <div class="flex flex-col gap-1">
             <h1 class="text-2xl font-bold">Save your backup codes</h1>
             <p class="text-sm text-muted-foreground">
@@ -24,12 +24,12 @@
             {% endfor %}
           </div>
 
-          {{ field_open() }}
-            {{ button("I've saved these codes", tag="a", href=url_for('auth.settings_connections'), extra_classes="w-full") }}
-          {{ field_close() }}
-        {{ field_group_close() }}
-      </div>
-    {{ card_close() }}
+          {% call field() %}
+            {% call button_link(href=url_for('auth.settings_connections'), class="w-full") %}I've saved these codes{% endcall %}
+          {% endcall %}
+        {% endcall %}
+      {% endcall %}
+    {% endcall %}
   </div>
 </div>
 {% endblock %}

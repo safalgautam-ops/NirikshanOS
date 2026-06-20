@@ -134,7 +134,7 @@ async def get_account_by_provider(provider_id: str, account_id: str):
 
 
 async def get_accounts_by_user(user_id: str) -> list:
-    return await db.table("account").where("userId", user_id).all()
+    return await db.table("account").where("userId", user_id).all(allow_full_table=True)
 
 
 async def create_oauth_account(
@@ -167,7 +167,7 @@ async def delete_account_by_provider(user_id: str, provider_id: str) -> None:
 
 
 async def get_passkeys_by_user(user_id: str) -> list:
-    return await db.table("passkey").where("userId", user_id).all()
+    return await db.table("passkey").where("userId", user_id).all(allow_full_table=True)
 
 
 async def get_passkey_by_credential_id(credential_id: str):
