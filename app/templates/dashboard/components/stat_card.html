@@ -1,23 +1,11 @@
-{#
-  Stat card - single metric tile for dashboard grids.
-
-  Usage:
-    {% from "dashboard/components/stat_card.html" import stat_card %}
-    {{ stat_card("Open Cases", "12", change="+2 this week") }}
-
-  Params:
-    label  - small heading
-    value  - large number/text
-    change - optional secondary line (trend, context)
-#}
-{% from "components/ui/card.html" import card_open, card_close %}
-
-{% macro stat_card(label, value, change="") %}
-{{ card_open("p-6") }}
-    <p class="text-sm font-medium text-muted-foreground">{{ label }}</p>
-    <p class="mt-2 text-2xl font-semibold tracking-tight">{{ value }}</p>
-    {% if change %}
-    <p class="mt-1 text-xs text-muted-foreground">{{ change }}</p>
-    {% endif %}
-{{ card_close() }}
-{% endmacro %}
+{# Stat card - single metric tile for dashboard grids. Usage: {% from
+"dashboard/components/stat_card.html" import stat_card %} {{ stat_card("Open
+Cases", "12", change="+2 this week") }} Params: label - small heading value -
+large number/text change - optional secondary line (trend, context) #} {% from
+"components/ui/card.html" import card %} {% macro stat_card(label, value,
+change="") %} {% call card("p-6") %}
+<p class="text-sm font-medium text-muted-foreground">{{ label }}</p>
+<p class="mt-2 text-2xl font-semibold tracking-tight">{{ value }}</p>
+{% if change %}
+<p class="mt-1 text-xs text-muted-foreground">{{ change }}</p>
+{% endif %} {% endcall %} {% endmacro %}

@@ -4,22 +4,22 @@
 {% from "dashboard/components/sidebar.html" import sidebar %}
 {% from "dashboard/components/topbar.html" import topbar %}
 {% from "dashboard/components/stat_card.html" import stat_card %}
-{% from "components/ui/card.html" import card_open, card_close, card_header, card_title, card_description, card_content %}
+{% from "components/ui/card.html" import card, card_header, card_title, card_description, card_content %}
 {% from "components/ui/badge.html" import badge %}
 {% from "components/ui/button.html" import button %}
+{% from "components/ui/alert.html" import alert, alert_title, alert_description %}
 {% from "components/ui/dialog.html" import dialog %}
-{% from "components/ui/menu.html" import menu, menu_item, menu_separator %}
-{% from "components/ui/tabs.html" import tabs_open, tabs_close, tabs_list, tab_trigger, tab_panel %}
-{% from "components/ui/accordion.html" import accordion_open, accordion_close, accordion_item %}
-{% from "components/ui/tooltip.html" import tooltip %}
+{% from "components/ui/menu.html" import menu, menu_trigger, menu_popup, menu_item, menu_separator %}
+{% from "components/ui/tabs.html" import tabs, tabs_list, tabs_tab, tabs_panel %}
+{% from "components/ui/accordion.html" import accordion, accordion_item, accordion_trigger, accordion_panel %}
+{% from "components/ui/tooltip.html" import tooltip, tooltip_trigger, tooltip_popup %}
 {% from "components/ui/toggle.html" import toggle %}
 {% from "components/ui/switch.html" import switch %}
 {% from "components/ui/checkbox.html" import checkbox %}
-{% from "components/ui/progress.html" import progress %}
-{% from "components/ui/alert.html" import alert %}
+{% from "components/ui/progress.html" import progress, progress_label, progress_track, progress_indicator %}
 
 {% block body %}
-{{ sidebar(active="dashboard") }}
+{{ sidebar(active="dashboard", visible_keys=visible_keys) }}
 
 {# md:pl-60 leaves room for the fixed sidebar; sidebar is hidden below md #}
 <div class="flex flex-col md:pl-60">
@@ -43,12 +43,12 @@
         </div>
 
         {# Recent cases - empty state until the cases feature lands in Week 3 #}
-        {{ card_open() }}
-            {{ card_header() }}
+        {% call card() %}
+            {% call card_header() %}
                 {{ card_title("Recent Cases") }}
                 {{ card_description("Latest cases across the platform") }}
-            </div>
-            {{ card_content() }}
+            {% endcall %}
+            {% call card_content() %}
                 <div class="rounded-md border border-border">
                     <table class="w-full text-sm">
                         <thead>
@@ -67,75 +67,103 @@
                         </tbody>
                     </table>
                 </div>
-            </div>
-        {{ card_close() }}
+            {% endcall %}
+        {% endcall %}
 
         {# Component demo - exercises every interactive UI macro so behavior can be checked in the browser #}
-        {{ card_open() }}
-            {{ card_header() }}
+        {% call card() %}
+            {% call card_header() %}
                 {{ card_title("Component Demo") }}
                 {{ card_description("Interactive examples of the shared UI macros") }}
-            </div>
-            {{ card_content("space-y-6") }}
+            {% endcall %}
+            {% call card_content("space-y-6") %}
 
-                {{ alert("This card is for development only - safe to delete once feature pages exist.", title="Demo", variant="info") }}
+                {# alert uses caller blocks for title + description #}
+                {% call alert(variant="info") %}
+                    {% call alert_title() %}Demo{% endcall %}
+                    {% call alert_description() %}This card is for development only - safe to delete once feature pages exist.{% endcall %}
+                {% endcall %}
 
-                {# Dialog #}
+                {# Dialog - button first param is variant, not text; use call block for label #}
                 <div x-data="{ open: false }">
-                    <span @click="open = true">{{ button("Open dialog", variant="primary") }}</span>
+                    <span @click="open = true">{% call button() %}Open dialog{% endcall %}</span>
                     {% call dialog() %}
                         <h2 class="text-lg font-semibold">Delete case?</h2>
                         <p class="mt-2 text-sm text-muted-foreground">This action cannot be undone.</p>
                         <div class="mt-4 flex justify-end gap-2">
-                            <span @click="open = false">{{ button("Cancel", variant="outline") }}</span>
-                            {{ button("Delete", variant="destructive") }}
+                            <span @click="open = false">{% call button(variant="outline") %}Cancel{% endcall %}</span>
+                            {% call button(variant="destructive") %}Delete{% endcall %}
                         </div>
                     {% endcall %}
                 </div>
 
-                {# Dropdown menu #}
-                {% call menu(trigger=button("Actions menu", variant="outline")) %}
-                    {{ menu_item("Edit case", href="#") }}
-                    {{ menu_item("Export report", href="#") }}
-                    {{ menu_separator() }}
-                    {{ menu_item("Delete case", href="#", variant="destructive") }}
+                {# Dropdown menu - menu requires menu_trigger + menu_popup sub-macros #}
+                {% call menu() %}
+                    {% call menu_trigger() %}{% call button(variant="outline") %}Actions menu{% endcall %}{% endcall %}
+                    {% call menu_popup() %}
+                        {{ menu_item("Edit case", href="#") }}
+                        {{ menu_item("Export report", href="#") }}
+                        {{ menu_separator() }}
+                        {{ menu_item("Delete case", href="#", class="text-destructive") }}
+                    {% endcall %}
                 {% endcall %}
 
-                {# Tabs #}
-                {{ tabs_open("overview") }}
-                    {{ tabs_list() }}
-                        {{ tab_trigger("overview", "Overview") }}
-                        {{ tab_trigger("timeline", "Timeline") }}
-                    </div>
-                    {{ tab_panel("overview") }}
+                {# Tabs - macros are tabs/tabs_list/tabs_tab/tabs_panel, all caller-based #}
+                {% call tabs() %}
+                    {% call tabs_list() %}
+                        {{ tabs_tab("Overview", value="overview", active=true) }}
+                        {{ tabs_tab("Timeline", value="timeline") }}
+                    {% endcall %}
+                    {% call tabs_panel(value="overview", active=true) %}
                         <p class="text-sm text-muted-foreground">Overview panel content.</p>
-                    </div>
-                    {{ tab_panel("timeline") }}
+                    {% endcall %}
+                    {% call tabs_panel(value="timeline") %}
                         <p class="text-sm text-muted-foreground">Timeline panel content.</p>
-                    </div>
-                {{ tabs_close() }}
+                    {% endcall %}
+                {% endcall %}
 
-                {# Accordion #}
-                {{ accordion_open() }}
-                    {{ accordion_item(0, "What is NirikshanOS?") }}
-                        A browser-based DFIR case management platform.
-                    </div></div>
-                    {{ accordion_item(1, "How do I create a case?") }}
-                        Case creation lands in Week 3.
-                    </div></div>
-                {{ accordion_close() }}
+                {# Accordion - macros are accordion/accordion_item/accordion_trigger/accordion_panel #}
+                {% call accordion() %}
+                    {% call accordion_item(value="niriskhan") %}
+                        {{ accordion_trigger("What is NirikshanOS?") }}
+                        {% call accordion_panel() %}
+                            A browser-based DFIR case management platform.
+                        {% endcall %}
+                    {% endcall %}
+                    {% call accordion_item(value="cases") %}
+                        {{ accordion_trigger("How do I create a case?") }}
+                        {% call accordion_panel() %}
+                            Case creation lands in Week 3.
+                        {% endcall %}
+                    {% endcall %}
+                {% endcall %}
 
                 {# Tooltip, toggle, switch, checkbox, progress #}
                 <div class="flex flex-wrap items-center gap-4">
-                    {{ tooltip(trigger=button("Hover me", variant="secondary"), text="Tooltip content") }}
-                    {{ toggle("Pinned", pressed=False) }}
+                    {# tooltip uses tooltip_trigger + tooltip_popup sub-macros #}
+                    {% call tooltip() %}
+                        {% call tooltip_trigger() %}{% call button(variant="secondary") %}Hover me{% endcall %}{% endcall %}
+                        {{ tooltip_popup("Tooltip content") }}
+                    {% endcall %}
+                    {# toggle first param is variant, use call block for label #}
+                    {% call toggle(pressed=False) %}Pinned{% endcall %}
                     {{ switch("notify", checked=True) }}
-                    {{ checkbox("agree", label="I agree") }}
+                    {# checkbox has no label param; wrap in a <label> #}
+                    <label class="flex items-center gap-2 text-sm cursor-pointer">
+                        {{ checkbox("agree") }}
+                        I agree
+                    </label>
                 </div>
 
-                {{ progress(value=65, label="Evidence processing") }}
-            </div>
-        {{ card_close() }}
+                {# progress has no label param; use progress_label + progress_track + progress_indicator #}
+                {% call progress(value=65) %}
+                    {{ progress_label("Evidence processing") }}
+                    {% call progress_track() %}
+                        {{ progress_indicator(65) }}
+                    {% endcall %}
+                {% endcall %}
+            {% endcall %}
+        {% endcall %}
     </main>
 </div>
 {% endblock %}

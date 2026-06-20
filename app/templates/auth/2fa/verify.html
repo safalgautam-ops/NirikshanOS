@@ -30,7 +30,7 @@
 
             {{ field_open() }}
               {{ field_label("Code", for_id="code") }}
-              {{ input("code", type="text", placeholder="000000", attrs='autocomplete="one-time-code" inputmode="numeric"', required=True) }}
+              {{ input(name="code", type="text", placeholder="000000", attrs='autocomplete="one-time-code" inputmode="numeric"', required=True) }}
             {{ field_close() }}
 
             {{ field_open() }}

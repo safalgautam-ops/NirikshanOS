@@ -1,30 +1,72 @@
-{#
-  Breadcrumb - page location trail.
-
-  Usage:
-    {% from "components/ui/breadcrumb.html" import breadcrumb %}
-    {{ breadcrumb([("Dashboard", "/"), ("Cases", "/cases"), ("CASE-001", None)]) }}
-
-  Params:
-    items - list of (label, href) tuples; href=None renders the current page (no link)
-#}
-{% macro breadcrumb(items) %}
-<nav aria-label="breadcrumb">
-  <ol class="flex flex-wrap items-center gap-1.5 text-sm text-muted-foreground sm:gap-2.5">
-    {% for label, href in items %}
-    {% if not loop.first %}
-    <li aria-hidden="true" role="presentation" class="[&>svg]:size-4">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="size-4"><path d="M9 6l6 6-6 6"/></svg>
-    </li>
+{% macro breadcrumb(class="", attrs={}) -%}
+<nav class="{{ cn('', class) }}" data-slot="breadcrumb" aria-label="breadcrumb" {{ html_attrs(**attrs) }}>
+    {% if caller is defined %}
+        {{ caller() }}
     {% endif %}
-    <li class="inline-flex items-center gap-1.5">
-      {% if href %}
-      <a href="{{ href }}" class="transition-colors hover:text-foreground">{{ label }}</a>
-      {% else %}
-      <span aria-current="page" class="font-normal text-foreground">{{ label }}</span>
-      {% endif %}
-    </li>
-    {% endfor %}
-  </ol>
 </nav>
-{% endmacro %}
+{%- endmacro %}
+
+{% macro breadcrumb_list(class="", attrs={}) -%}
+<ol class="{{ cn('flex flex-wrap items-center gap-1.5 break-words text-muted-foreground text-sm sm:gap-2.5', class) }}" data-slot="breadcrumb-list" {{ html_attrs(**attrs) }}>
+    {% if caller is defined %}
+        {{ caller() }}
+    {% endif %}
+</ol>
+{%- endmacro %}
+
+{% macro breadcrumb_item(class="", attrs={}) -%}
+<li class="{{ cn('inline-flex items-center gap-1.5', class) }}" data-slot="breadcrumb-item" {{ html_attrs(**attrs) }}>
+    {% if caller is defined %}
+        {{ caller() }}
+    {% endif %}
+</li>
+{%- endmacro %}
+
+{% macro breadcrumb_link(text="", href="#", class="", attrs={}) -%}
+<a class="{{ cn('transition-colors hover:text-foreground', class) }}" data-slot="breadcrumb-link" href="{{ href }}" {{ html_attrs(**attrs) }}>
+    {% if caller is defined %}
+        {{ caller() }}
+    {% else %}
+        {{ text }}
+    {% endif %}
+</a>
+{%- endmacro %}
+
+{% macro breadcrumb_page(text="", class="", attrs={}) -%}
+<span class="{{ cn('font-normal text-foreground', class) }}" data-slot="breadcrumb-page" role="link" aria-disabled="true" aria-current="page" {{ html_attrs(**attrs) }}>
+    {% if caller is defined %}
+        {{ caller() }}
+    {% else %}
+        {{ text }}
+    {% endif %}
+</span>
+{%- endmacro %}
+
+{% macro breadcrumb_separator(text="/", class="", attrs={}) -%}
+<li class="{{ cn('[&>svg]:size-3.5', class) }}" data-slot="breadcrumb-separator" role="presentation" aria-hidden="true" {{ html_attrs(**attrs) }}>
+    {% if caller is defined %}
+        {{ caller() }}
+    {% else %}
+        {{ text }}
+    {% endif %}
+</li>
+{%- endmacro %}
+
+{% macro breadcrumb_ellipsis(class="", attrs={}) -%}
+<span class="{{ cn('flex size-9 items-center justify-center', class) }}" data-slot="breadcrumb-ellipsis" role="presentation" aria-hidden="true" {{ html_attrs(**attrs) }}>…</span>
+{%- endmacro %}
+
+{# Convenience wrapper for the common flat-trail case (this app's own addition,
+   not part of the reference - the primitives above are still what render). #}
+{% macro breadcrumb_trail(items) -%}
+{% call breadcrumb() %}
+  {% call breadcrumb_list() %}
+    {% for label, href in items %}
+    {% if not loop.first %}{{ breadcrumb_separator() }}{% endif %}
+    {% call breadcrumb_item() %}
+      {% if href %}{{ breadcrumb_link(text=label, href=href) }}{% else %}{{ breadcrumb_page(text=label) }}{% endif %}
+    {% endcall %}
+    {% endfor %}
+  {% endcall %}
+{% endcall %}
+{%- endmacro %}

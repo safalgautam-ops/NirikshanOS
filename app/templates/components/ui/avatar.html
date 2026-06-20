@@ -1,23 +1,21 @@
-{#
-  Avatar - circular image with initials fallback.
-
-  Usage:
-    {% from "components/ui/avatar.html" import avatar %}
-    {{ avatar(initials="JS") }}
-    {{ avatar(src="/static/img/user.png", initials="JS", size="lg") }}
-
-  Params:
-    src     - image URL (optional)
-    initials - 1-2 letter fallback shown when src is empty
-    size    - sm | md | lg (default: md)
-#}
-{% macro avatar(src="", initials="?", size="md") %}
-{% set sizes = {"sm": "h-7 w-7 text-xs", "md": "h-9 w-9 text-sm", "lg": "h-12 w-12 text-base"} %}
-<span class="relative flex shrink-0 overflow-hidden rounded-full bg-muted items-center justify-center font-medium text-muted-foreground {{ sizes[size] }}">
-  {% if src %}
-  <img src="{{ src }}" alt="{{ initials }}" class="aspect-square h-full w-full object-cover">
-  {% else %}
-  {{ initials }}
-  {% endif %}
+{% macro avatar(class="", attrs={}) -%}
+<span class="{{ cn('relative flex size-10 shrink-0 overflow-hidden rounded-full bg-muted', class) }}" data-slot="avatar" {{ html_attrs(**attrs) }}>
+    {% if caller is defined %}
+        {{ caller() }}
+    {% endif %}
 </span>
-{% endmacro %}
+{%- endmacro %}
+
+{% macro avatar_image(src="", alt="", class="", attrs={}) -%}
+<img class="{{ cn('aspect-square size-full object-cover', class) }}" data-slot="avatar-image" src="{{ src }}" alt="{{ alt }}" {{ html_attrs(**attrs) }}>
+{%- endmacro %}
+
+{% macro avatar_fallback(text="", class="", attrs={}) -%}
+<span class="{{ cn('flex size-full items-center justify-center rounded-full bg-muted text-muted-foreground text-sm font-medium', class) }}" data-slot="avatar-fallback" {{ html_attrs(**attrs) }}>
+    {% if caller is defined %}
+        {{ caller() }}
+    {% else %}
+        {{ text }}
+    {% endif %}
+</span>
+{%- endmacro %}

@@ -57,22 +57,22 @@
 
               {{ field_open() }}
                 {{ field_label("Name", for_id="name") }}
-                {{ input("name", type="text", placeholder="Jane Doe", required=True) }}
+                {{ input(name="name", type="text", placeholder="Jane Doe", required=True) }}
               {{ field_close() }}
 
               {{ field_open() }}
                 {{ field_label("Email", for_id="email") }}
-                {{ input("email", type="email", placeholder="m@example.com", required=True) }}
+                {{ input(name="email", type="email", placeholder="m@example.com", required=True) }}
               {{ field_close() }}
 
               {{ field_open() }}
                 {{ field_label("Password", for_id="password") }}
-                {{ input("password", type="password", required=True) }}
+                {{ input(name="password", type="password", required=True) }}
               {{ field_close() }}
 
               {{ field_open() }}
                 {{ field_label("Confirm password", for_id="confirm_password") }}
-                {{ input("confirm_password", type="password", required=True) }}
+                {{ input(name="confirm_password", type="password", required=True) }}
               {{ field_close() }}
 
               {{ field_open() }}

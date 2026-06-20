@@ -1,41 +1,18 @@
-{#
-  Button - shadcn-style button.
-
-  Usage:
-    {% from "components/ui/button.html" import button %}
-    {{ button("Save", variant="primary") }}
-    {{ button("Delete", variant="destructive", size="sm", type="submit") }}
-    {{ button("Open", tag="a", href="/cases", variant="outline") }}
-
-  Params:
-    label    - visible text
-    variant  - primary | secondary | outline | ghost | destructive | link  (default: primary)
-    size     - sm | md | lg | icon                                          (default: md)
-    tag      - "button" | "a"                                               (default: button)
-    type     - button type when tag="button"                                (default: button)
-    href     - link target when tag="a"
-    attrs    - raw extra attributes string, e.g. 'hx-get="/x" hx-target="#y"'
-    extra_classes - additional utility classes appended to the base set
-#}
-{% macro button(label, variant="primary", size="md", tag="button", type="button", href="#", attrs="", extra_classes="") %}
-{% set base = "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50" %}
-{% set variants = {
-  "primary": "bg-primary text-primary-foreground hover:bg-primary/90",
-  "secondary": "bg-secondary text-secondary-foreground hover:bg-secondary/80",
-  "outline": "border border-border bg-transparent hover:bg-accent hover:text-accent-foreground",
-  "ghost": "hover:bg-accent hover:text-accent-foreground",
-  "destructive": "bg-destructive text-destructive-foreground hover:bg-destructive/90",
-  "link": "text-primary underline-offset-4 hover:underline"
-} %}
-{% set sizes = {
-  "sm": "h-8 px-3 text-xs",
-  "md": "h-9 px-4",
-  "lg": "h-10 px-6",
-  "icon": "h-9 w-9 p-0"
-} %}
-{% if tag == "a" %}
-<a href="{{ href }}" class="{{ base }} {{ variants[variant] }} {{ sizes[size] }} {{ extra_classes }}" {{ attrs|safe }}>{{ label }}</a>
-{% else %}
-<button type="{{ type }}" class="{{ base }} {{ variants[variant] }} {{ sizes[size] }} {{ extra_classes }}" {{ attrs|safe }}>{{ label }}</button>
-{% endif %}
-{% endmacro %}
+{% macro button(variant="default", size="default", type="button", loading=false, disabled=false, class="", attrs={}) -%}
+  {% set base = "relative inline-flex shrink-0 cursor-pointer items-center justify-center gap-2 whitespace-nowrap rounded-lg border font-medium text-base outline-none transition-shadow before:pointer-events-none before:absolute before:inset-0 before:rounded-[calc(var(--radius-lg)-1px)] pointer-coarse:after:absolute pointer-coarse:after:size-full pointer-coarse:after:min-h-11 pointer-coarse:after:min-w-11 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-64 data-loading:select-none data-loading:text-transparent sm:text-sm [&_svg:not([class*='opacity-'])]:opacity-80 [&_svg:not([class*='size-'])]:size-4.5 sm:[&_svg:not([class*='size-'])]:size-4 [&_svg]:pointer-events-none [&_svg]:-mx-0.5 [&_svg]:shrink-0" %}
+  {% set variants = {
+    "default": "not-disabled:inset-shadow-[0_1px_--theme(--color-white/16%)] border-primary bg-primary text-primary-foreground shadow-primary/24 shadow-xs hover:bg-primary/90 data-pressed:bg-primary/90 *:data-[slot=button-loading-indicator]:text-primary-foreground [:active,[data-pressed]]:inset-shadow-[0_1px_--theme(--color-black/8%)] [:disabled,:active,[data-pressed]]:shadow-none",
+    "destructive": "not-disabled:inset-shadow-[0_1px_--theme(--color-white/16%)] border-destructive bg-destructive text-white shadow-destructive/24 shadow-xs hover:bg-destructive/90 data-pressed:bg-destructive/90 *:data-[slot=button-loading-indicator]:text-white [:active,[data-pressed]]:inset-shadow-[0_1px_--theme(--color-black/8%)] [:disabled,:active,[data-pressed]]:shadow-none",
+    "destructive-outline": "border-input bg-popover not-dark:bg-clip-padding text-destructive-soft shadow-xs/5 hover:border-destructive/32 hover:bg-destructive/4 data-pressed:border-destructive/32 data-pressed:bg-destructive/4",
+    "ghost": "border-transparent text-foreground hover:bg-accent data-pressed:bg-accent *:data-[slot=button-loading-indicator]:text-foreground",
+    "link": "border-transparent text-foreground underline-offset-4 hover:underline data-pressed:underline *:data-[slot=button-loading-indicator]:text-foreground",
+    "outline": "border-input bg-popover not-dark:bg-clip-padding text-foreground shadow-xs/5 hover:bg-accent/50 data-pressed:bg-accent/50 dark:bg-input/32 dark:data-pressed:bg-input/64 dark:hover:bg-input/64",
+    "secondary": "border-transparent bg-secondary text-secondary-foreground hover:bg-secondary/90 data-pressed:bg-secondary/90 *:data-[slot=button-loading-indicator]:text-secondary-foreground [:active,[data-pressed]]:bg-secondary/80"
+  } %}
+  {% set sizes = {
+    "default": "h-9 px-[calc(--spacing(3)-1px)] sm:h-8",
+    "icon": "size-9 sm:size-8", "icon-lg": "size-10 sm:size-9", "icon-sm": "size-8 sm:size-7", "icon-xl": "size-11 sm:size-10", "icon-xs": "size-7 rounded-md before:rounded-[calc(var(--radius-md)-1px)] sm:size-6",
+    "lg": "h-10 px-[calc(--spacing(3.5)-1px)] sm:h-9", "sm": "h-8 gap-1.5 px-[calc(--spacing(2.5)-1px)] sm:h-7", "xl": "h-11 px-[calc(--spacing(4)-1px)] text-lg sm:h-10 sm:text-base", "xs": "h-7 gap-1 rounded-md px-[calc(--spacing(2)-1px)] text-sm before:rounded-[calc(var(--radius-md)-1px)] sm:h-6 sm:text-xs"
+  } %}
+  <button class="{{ cn(base, variants.get(variant, variants['default']), sizes.get(size, sizes['default']), class) }}" data-slot="button" data-variant="{{ variant }}" data-size="{{ size }}" type="{{ type }}" {% if disabled or loading %}disabled{% endif %} {% if loading %}data-loading aria-disabled="true"{% endif %} {{ html_attrs(**attrs) }}>{% if caller is defined %}{{ caller() }}{% endif %}{% if loading %}<span class="pointer-events-none absolute inline-block size-4 animate-spin rounded-full border-2 border-current border-t-transparent" data-slot="button-loading-indicator" aria-hidden="true"></span>{% endif %}</button>
+{%- endmacro %}

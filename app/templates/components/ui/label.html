@@ -1,10 +1,1 @@
-{#
-  Label - form field label.
-
-  Usage:
-    {% from "components/ui/label.html" import label %}
-    {{ label("Email", for="email") }}
-#}
-{% macro label(text, for="", extra_classes="") %}
-<label {% if for %}for="{{ for }}"{% endif %} class="inline-flex items-center gap-2 font-medium text-sm text-foreground {{ extra_classes }}">{{ text }}</label>
-{% endmacro %}
+{% macro label(text="", for_id="", class="", attrs={}) -%}<label class="{{ cn('text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70', class) }}" data-slot="label" {% if for_id %}for="{{ for_id }}"{% endif %} {{ html_attrs(**attrs) }}>{% if caller is defined %}{{ caller() }}{% else %}{{ text }}{% endif %}</label>{%- endmacro %}

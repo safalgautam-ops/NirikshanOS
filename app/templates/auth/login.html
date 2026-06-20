@@ -75,7 +75,7 @@
 
               {{ field_open() }}
                 {{ field_label("Email", for_id="email") }}
-                {{ input("email", type="email", placeholder="m@example.com", required=True) }}
+                {{ input(name="email", type="email", placeholder="m@example.com", required=True) }}
               {{ field_close() }}
 
               {{ field_open() }}
@@ -83,7 +83,7 @@
                   {{ field_label("Password", for_id="password") }}
                   <a class="text-xs underline underline-offset-4 hover:text-foreground text-muted-foreground" href="{{ url_for('auth.forgot_password_view') }}">Forgot password?</a>
                 </div>
-                {{ input("password", type="password", required=True) }}
+                {{ input(name="password", type="password", required=True) }}
               {{ field_close() }}
 
               {{ field_open() }}

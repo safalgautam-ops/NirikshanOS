@@ -1,35 +1,12 @@
-{#
-  Dialog - modal overlay, Alpine-driven.
-
-  Usage:
-    {% from "components/ui/dialog.html" import dialog %}
-    {% from "components/ui/button.html" import button %}
-    <div x-data="{ open: false }">
-      <span @click="open = true">{{ button("Delete case", variant="destructive") }}</span>
-      {% call dialog() %}
-        <h2 class="text-lg font-semibold">Delete case?</h2>
-        <p class="mt-2 text-sm text-muted-foreground">This cannot be undone.</p>
-        <div class="mt-4 flex justify-end gap-2">
-          <span @click="open = false">{{ button("Cancel", variant="outline") }}</span>
-          {{ button("Delete", variant="destructive") }}
-        </div>
-      {% endcall %}
-    </div>
-
-  Expects an ancestor with `x-data="{ open: false }"` (or any boolean named
-  `open` in scope) to control visibility, and something that sets `open = true`.
-#}
-{% macro dialog() %}
-<template x-teleport="body">
-  <div x-show="open" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4">
-    {# backdrop #}
-    <div x-show="open" x-transition.opacity @click="open = false" class="fixed inset-0 bg-black/50"></div>
-    {# panel #}
-    <div x-show="open" x-transition x-trap.noscroll="open" @keydown.escape.window="open = false"
-         role="dialog" aria-modal="true"
-         class="relative z-10 w-full max-w-md rounded-xl border border-border bg-card p-6 text-card-foreground shadow-lg">
-      {{ caller() }}
-    </div>
-  </div>
-</template>
-{% endmacro %}
+{% include "components/ui/_runtime.html" %}
+{% macro dialog(open=false, class="", attrs={}) -%}<dialog class="{{ cn('m-auto max-w-lg rounded-xl border bg-background p-0 text-foreground shadow-lg backdrop:bg-black/50', class) }}" data-slot="dialog" data-state="{{ 'open' if open else 'closed' }}" {% if open %}open{% endif %} {{ html_attrs(**attrs) }}>{% if caller is defined %}{{ caller() }}{% endif %}</dialog>{%- endmacro %}
+{% macro dialog_trigger(text="", target="", class="", attrs={}) -%}<button type="button" class="{{ cn('', class) }}" data-slot="dialog-trigger" {% if target %}data-target="{{ target }}" aria-controls="{{ target.lstrip('#') }}"{% endif %} aria-expanded="false" {{ html_attrs(**attrs) }}>{% if caller is defined %}{{ caller() }}{% else %}{{ text }}{% endif %}</button>{%- endmacro %}
+{% macro dialog_close(text="", class="", attrs={}) -%}<button type="button" class="{{ cn('absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2', class) }}" data-slot="dialog-close" {{ html_attrs(**attrs) }}>{% if caller is defined %}{{ caller() }}{% else %}{{ text or '×' }}{% endif %}</button>{%- endmacro %}
+{% macro dialog_backdrop(class="", attrs={}) -%}<div class="{{ cn('fixed inset-0 z-50 bg-black/50', class) }}" data-slot="dialog-backdrop" {{ html_attrs(**attrs) }}></div>{%- endmacro %}
+{% macro dialog_viewport(class="", attrs={}) -%}<div class="{{ cn('fixed inset-0 z-50 grid place-items-center p-4', class) }}" data-slot="dialog-viewport" {{ html_attrs(**attrs) }}>{% if caller is defined %}{{ caller() }}{% endif %}</div>{%- endmacro %}
+{% macro dialog_popup(class="", attrs={}) -%}<div class="{{ cn('relative grid w-full max-w-lg gap-4 rounded-xl border bg-background p-6 shadow-lg', class) }}" data-slot="dialog-popup" {{ html_attrs(**attrs) }}>{% if caller is defined %}{{ caller() }}{% endif %}</div>{%- endmacro %}
+{% macro dialog_header(class="", attrs={}) -%}<div class="{{ cn('flex flex-col gap-2 text-center sm:text-left', class) }}" data-slot="dialog-header" {{ html_attrs(**attrs) }}>{% if caller is defined %}{{ caller() }}{% endif %}</div>{%- endmacro %}
+{% macro dialog_footer(class="", attrs={}) -%}<div class="{{ cn('flex flex-col-reverse gap-2 sm:flex-row sm:justify-end', class) }}" data-slot="dialog-footer" {{ html_attrs(**attrs) }}>{% if caller is defined %}{{ caller() }}{% endif %}</div>{%- endmacro %}
+{% macro dialog_title(text="", class="", attrs={}) -%}<h2 class="{{ cn('text-lg font-semibold leading-none tracking-tight', class) }}" data-slot="dialog-title" {{ html_attrs(**attrs) }}>{% if caller is defined %}{{ caller() }}{% else %}{{ text }}{% endif %}</h2>{%- endmacro %}
+{% macro dialog_description(text="", class="", attrs={}) -%}<p class="{{ cn('text-sm text-muted-foreground', class) }}" data-slot="dialog-description" {{ html_attrs(**attrs) }}>{% if caller is defined %}{{ caller() }}{% else %}{{ text }}{% endif %}</p>{%- endmacro %}
+{% macro dialog_panel(class="", attrs={}) -%}<div class="{{ cn('grid gap-4', class) }}" data-slot="dialog-panel" {{ html_attrs(**attrs) }}>{% if caller is defined %}{{ caller() }}{% endif %}</div>{%- endmacro %}

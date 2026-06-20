@@ -27,6 +27,14 @@ removes `.dark` if the user explicitly chose light. #}
             defer
             src="{{ url_for('static', filename='js/vendor/alpine-focus.min.js') }}"
         ></script>
+        <script
+            defer
+            src="{{ url_for('static', filename='js/vendor/alpine-anchor.min.js') }}"
+        ></script>
+        {# Registers Alpine.data() components that need real JS (DOM
+        measurement, multi-statement logic) - must load before alpine.min.js
+        so its alpine:init listener is attached before Alpine.start() fires. #}
+        <script defer src="{{ url_for('static', filename='js/components.js') }}"></script>
         {# @alpinejs/csp build: parses x-data/x-show/etc. itself instead of new
         Function()/eval(), so it runs under CSP with no 'unsafe-eval'. The
         regular alpinejs/dist build fails every directive silently here. There's
@@ -44,6 +52,9 @@ removes `.dark` if the user explicitly chose light. #}
             src="{{ url_for('static', filename='js/vendor/alpine.min.js') }}"
         ></script>
         <script src="{{ url_for('static', filename='js/vendor/htmx.min.js') }}"></script>
+        {# Event-delegation runtime for components/ui/*.html (data-slot driven,
+        no framework) - see app/static/js/ui-runtime.js for what it does. #}
+        <script defer src="{{ url_for('static', filename='js/ui-runtime.js') }}"></script>
     </head>
     <body class="min-h-screen bg-background text-foreground antialiased">
         {% block body %}{% endblock %}

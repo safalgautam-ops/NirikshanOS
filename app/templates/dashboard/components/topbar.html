@@ -7,8 +7,8 @@
 #}
 {% from "components/ui/input.html" import input %}
 {% from "components/ui/theme-toggle.html" import theme_toggle %}
-{% from "components/ui/avatar.html" import avatar %}
-{% from "components/ui/menu.html" import menu %}
+{% from "components/ui/avatar.html" import avatar, avatar_fallback %}
+{% from "components/ui/menu.html" import menu, menu_trigger, menu_popup %}
 {% from "macros/csrf.html" import csrf_field %}
 
 {% macro topbar(title) %}
@@ -16,14 +16,19 @@
     <h1 class="text-lg font-semibold">{{ title }}</h1>
     <div class="ml-auto flex items-center gap-3">
         <div class="hidden sm:block w-64">
-            {{ input("search", type="search", placeholder="Search...") }}
+            {{ input(name="search", type="search", placeholder="Search...") }}
         </div>
         {{ theme_toggle() }}
-        {% call menu(trigger=avatar(initials="AD"), align="end") %}
-          <form method="post" action="{{ url_for('auth.logout') }}">
-            {{ csrf_field() }}
-            <button type="submit" class="flex w-full cursor-pointer items-center rounded-sm px-2 py-1.5 text-left text-sm text-destructive transition-colors hover:bg-destructive/10">Log out</button>
-          </form>
+        {% call menu(class="relative inline-block") %}
+          {% call menu_trigger(target="#topbar-user-menu") %}
+            {% call avatar() %}{{ avatar_fallback(text="AD") }}{% endcall %}
+          {% endcall %}
+          {% call menu_popup(class="absolute right-0 top-full mt-1", attrs={"id": "topbar-user-menu"}) %}
+            <form method="post" action="{{ url_for('auth.logout') }}">
+              {{ csrf_field() }}
+              <button type="submit" class="flex w-full cursor-pointer items-center rounded-sm px-2 py-1.5 text-left text-sm text-destructive transition-colors hover:bg-destructive/10">Log out</button>
+            </form>
+          {% endcall %}
         {% endcall %}
     </div>
 </header>

@@ -1,17 +1,5 @@
-{#
-  Switch - on/off toggle, peer pattern (native checkbox + styled track/thumb).
-
-  Usage:
-    {% from "components/ui/switch.html" import switch %}
-    {{ switch("notifications", checked=True) }}
-#}
-{% macro switch(name, checked=False, value="on", attrs="", extra_classes="") %}
-<label class="relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center {{ extra_classes }}">
-  <input type="checkbox" id="{{ name }}" name="{{ name }}" value="{{ value }}" {% if checked %}checked{% endif %}
-         class="peer sr-only" {{ attrs|safe }}>
-  {# track #}
-  <span class="absolute inset-0 rounded-full bg-input transition-colors peer-checked:bg-primary peer-focus-visible:ring-2 peer-focus-visible:ring-ring peer-focus-visible:ring-offset-1 peer-focus-visible:ring-offset-background peer-disabled:opacity-50"></span>
-  {# thumb #}
-  <span class="pointer-events-none absolute left-px top-px size-4 rounded-full bg-background shadow-sm transition-transform peer-checked:translate-x-4"></span>
-</label>
-{% endmacro %}
+{# checked/data-state are only the SSR-time hint - the actual live visual
+   feedback on click comes from peer-checked: (CSS reacting to the real
+   checkbox state), not from re-rendering. Without that, clicking did
+   nothing visually even though the form value still changed underneath. #}
+{% macro switch(name="", checked=false, disabled=false, class="", attrs={}) -%}<label class="{{ cn('inline-flex h-[calc(var(--thumb-size)+2px)] w-[calc(var(--thumb-size)*2-2px)] shrink-0 cursor-pointer items-center rounded-full p-px outline-none transition-[background-color,box-shadow] duration-200 [--thumb-size:--spacing(5)] has-[:checked]:bg-primary not-has-[:checked]:bg-input focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-1 focus-within:ring-offset-background has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-64 sm:[--thumb-size:--spacing(4)]', class) }}" data-slot="switch" data-state="{{ 'checked' if checked else 'unchecked' }}" {{ html_attrs(**attrs) }}><input class="peer sr-only" type="checkbox" {% if name %}name="{{ name }}"{% endif %} {% if checked %}checked{% endif %} {% if disabled %}disabled{% endif %}><span class="pointer-events-none block aspect-square h-full origin-left rounded-full bg-background shadow-sm/5 transition-transform duration-150 peer-checked:translate-x-[calc(var(--thumb-size)-4px)]" data-slot="switch-thumb"></span></label>{%- endmacro %}

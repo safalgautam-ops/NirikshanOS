@@ -15,10 +15,16 @@ from app.config import Config
 from app.core.db.pool import close_pool, get_pool, init_pool
 from app.core.security.csrf import apply_csrf_protection
 from app.core.security.headers import apply_security_headers
+from app.core.security.permissions import get_visible_nav_keys
 from app.core.security.sessions import apply_session_loader, login_required
+from app.core.templating import cn, html_attrs
 from app.extensions import close_redis, get_redis, init_redis
 from app.features.auth.repository import get_user_by_id
 from app.features.auth.routes import auth_bp
+from app.features.organizations.routes import organizations_bp
+from app.features.rbac.routes import rbac_bp
+from app.features.staff.routes import staff_bp
+from app.features.users.routes import users_bp
 
 
 def create_app() -> Quart:
@@ -29,6 +35,10 @@ def create_app() -> Quart:
     # Quart reads every uppercase attribute from the class and loads into app.config
     app.config.from_object(Config)
 
+    # components/ui/*.html macros call cn()/html_attrs() directly as globals.
+    app.jinja_env.globals["cn"] = cn
+    app.jinja_env.globals["html_attrs"] = html_attrs
+
     # Registers the after_request hook that adds CSP/X-Frame-Options/etc.
     apply_security_headers(app)
     # Sets g.user_id from the session cookie on every request.
@@ -37,6 +47,10 @@ def create_app() -> Quart:
     apply_csrf_protection(app)
 
     app.register_blueprint(auth_bp)
+    app.register_blueprint(users_bp)
+    app.register_blueprint(organizations_bp)
+    app.register_blueprint(rbac_bp)
+    app.register_blueprint(staff_bp)
 
     @app.before_serving
     async def startup() -> None:
@@ -64,7 +78,10 @@ def create_app() -> Quart:
     @login_required
     async def dashboard():
         user = await get_user_by_id(g.user_id)
-        return await render_template("dashboard/dashboard.html", user=user)
+        visible_keys = await get_visible_nav_keys(g.user_id)
+        return await render_template(
+            "dashboard/dashboard.html", user=user, visible_keys=visible_keys
+        )
 
     @app.route("/healthz")
     async def healthz():

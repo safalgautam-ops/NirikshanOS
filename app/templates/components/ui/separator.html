@@ -1,15 +1,1 @@
-{#
-  Separator - thin divider line.
-
-  Usage:
-    {% from "components/ui/separator.html" import separator %}
-    {{ separator() }}
-    {{ separator(orientation="vertical") }}
-#}
-{% macro separator(orientation="horizontal", extra_classes="") %}
-{% if orientation == "vertical" %}
-<div role="separator" aria-orientation="vertical" class="w-px bg-border self-stretch {{ extra_classes }}"></div>
-{% else %}
-<div role="separator" aria-orientation="horizontal" class="h-px w-full bg-border {{ extra_classes }}"></div>
-{% endif %}
-{% endmacro %}
+{% macro separator(orientation="horizontal", decorative=true, class="", attrs={}) -%}<div class="{{ cn('shrink-0 bg-border', 'h-px w-full' if orientation == 'horizontal' else 'h-full w-px', class) }}" data-slot="separator" data-orientation="{{ orientation }}" {% if decorative %}role="none"{% else %}role="separator"{% endif %} {{ html_attrs(**attrs) }}></div>{%- endmacro %}

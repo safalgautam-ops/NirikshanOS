@@ -59,6 +59,9 @@ async def create_session(user_id: str, ip: str | None, user_agent: str | None) -
             "userId": user_id,  # which user this session belongs to
         }
     )
+    await db.table("user").where("id", user_id).patch(
+        {"lastLoginAt": datetime.now(timezone.utc)}
+    )
     return token  # caller will store this in the cookie
 
 

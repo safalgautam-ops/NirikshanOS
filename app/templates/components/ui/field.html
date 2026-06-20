@@ -1,52 +1,13 @@
-{#
-  Field - form layout primitives (Better Auth / shadcn "Field" pattern).
-
-  Usage:
-    {% from "components/ui/field.html" import field_group_open, field_group_close,
-        field_open, field_close, field_label, field_description, field_separator %}
-    {% from "components/ui/input.html" import input %}
-
-    {{ field_group_open() }}
-      {{ field_open() }}
-        {{ field_label("Email", for_id="email") }}
-        {{ input("email", type="email", required=True) }}
-      {{ field_close() }}
-      {{ field_separator("Or continue with") }}
-    {{ field_group_close() }}
-
-  Open/close pairs (not single macros taking a body string) so any markup
-  - including other macros - can go inside, same convention as card.html.
-#}
-
-{% macro field_group_open(extra_classes="") %}
-<div class="flex flex-col gap-6 {{ extra_classes }}">
-{% endmacro %}
-
-{% macro field_group_close() %}
-</div>
-{% endmacro %}
-
-{% macro field_open(extra_classes="") %}
-<div class="flex flex-col gap-2 {{ extra_classes }}">
-{% endmacro %}
-
-{% macro field_close() %}
-</div>
-{% endmacro %}
-
-{% macro field_label(text, for_id="", extra_classes="") %}
-<label {% if for_id %}for="{{ for_id }}"{% endif %} class="text-sm font-medium leading-none {{ extra_classes }}">{{ text }}</label>
-{% endmacro %}
-
-{% macro field_description(text, extra_classes="") %}
-<p class="text-sm text-muted-foreground {{ extra_classes }}">{{ text }}</p>
-{% endmacro %}
-
-{# Horizontal divider with centered text, e.g. "Or continue with" #}
-{% macro field_separator(text="", extra_classes="") %}
-<div class="relative flex items-center gap-2 {{ extra_classes }}">
-  <div class="h-px flex-1 bg-border"></div>
-  {% if text %}<span class="text-xs text-muted-foreground">{{ text }}</span>{% endif %}
-  <div class="h-px flex-1 bg-border"></div>
-</div>
-{% endmacro %}
+{% macro field_set(class="", attrs={}) -%}<fieldset class="{{ cn('flex flex-col gap-4 has-[>[data-slot=checkbox-group]]:gap-3 has-[>[data-slot=radio-group]]:gap-3', class) }}" data-slot="field-set" {{ html_attrs(**attrs) }}>{% if caller is defined %}{{ caller() }}{% endif %}</fieldset>{%- endmacro %}
+{% macro field_legend(text="", variant="legend", class="", attrs={}) -%}<legend class="{{ cn('mb-1.5 font-medium data-[variant=label]:text-sm data-[variant=legend]:text-base', class) }}" data-slot="field-legend" data-variant="{{ variant }}" {{ html_attrs(**attrs) }}>{% if caller is defined %}{{ caller() }}{% else %}{{ text }}{% endif %}</legend>{%- endmacro %}
+{% macro field_group(class="", attrs={}) -%}<div class="{{ cn('group/field-group @container/field-group flex w-full flex-col gap-5 data-[slot=checkbox-group]:gap-3 *:data-[slot=field-group]:gap-4', class) }}" data-slot="field-group" {{ html_attrs(**attrs) }}>{% if caller is defined %}{{ caller() }}{% endif %}</div>{%- endmacro %}
+{% macro field(orientation="vertical", invalid=false, disabled=false, class="", attrs={}) -%}
+  {% set orientation_class = 'flex-col *:w-full [&>.sr-only]:w-auto' if orientation == 'vertical' else ('flex-row items-center has-[>[data-slot=field-content]]:items-start *:data-[slot=field-label]:flex-auto' if orientation == 'horizontal' else 'flex-col *:w-full @md/field-group:flex-row @md/field-group:items-center @md/field-group:*:w-auto') %}
+  <div role="group" class="{{ cn('group/field flex w-full gap-2 data-[invalid=true]:text-destructive', orientation_class, class) }}" data-slot="field" data-orientation="{{ orientation }}" data-invalid="{{ 'true' if invalid else 'false' }}" {% if disabled %}data-disabled="true"{% endif %} {{ html_attrs(**attrs) }}>{% if caller is defined %}{{ caller() }}{% endif %}</div>
+{%- endmacro %}
+{% macro field_content(class="", attrs={}) -%}<div class="{{ cn('group/field-content flex flex-1 flex-col gap-0.5 leading-snug', class) }}" data-slot="field-content" {{ html_attrs(**attrs) }}>{% if caller is defined %}{{ caller() }}{% endif %}</div>{%- endmacro %}
+{% macro field_label(text="", for_id="", class="", attrs={}) -%}<label class="{{ cn('group/field-label peer/field-label flex w-fit gap-2 leading-snug group-data-[disabled=true]/field:opacity-50 has-data-checked:border-primary/30 has-data-checked:bg-primary/5 has-[>[data-slot=field]]:rounded-lg has-[>[data-slot=field]]:border *:data-[slot=field]:p-2.5 has-[>[data-slot=field]]:w-full has-[>[data-slot=field]]:flex-col', class) }}" data-slot="field-label" {% if for_id %}for="{{ for_id }}"{% endif %} {{ html_attrs(**attrs) }}>{% if caller is defined %}{{ caller() }}{% else %}{{ text }}{% endif %}</label>{%- endmacro %}
+{% macro field_title(text="", class="", attrs={}) -%}<div class="{{ cn('flex w-fit items-center gap-2 text-sm font-medium group-data-[disabled=true]/field:opacity-50', class) }}" data-slot="field-label" {{ html_attrs(**attrs) }}>{% if caller is defined %}{{ caller() }}{% else %}{{ text }}{% endif %}</div>{%- endmacro %}
+{% macro field_description(text="", class="", attrs={}) -%}<p class="{{ cn('text-left text-sm leading-normal font-normal text-muted-foreground group-has-data-horizontal/field:text-balance [[data-variant=legend]+&]:-mt-1.5 last:mt-0 nth-last-2:-mt-1 [&>a]:underline [&>a]:underline-offset-4 [&>a:hover]:text-primary', class) }}" data-slot="field-description" {{ html_attrs(**attrs) }}>{% if caller is defined %}{{ caller() }}{% else %}{{ text }}{% endif %}</p>{%- endmacro %}
+{% macro field_separator(text="", class="", attrs={}) -%}<div class="{{ cn('relative -my-2 h-5 text-sm group-data-[variant=outline]/field-group:-mb-2', class) }}" data-slot="field-separator" data-content="{{ 'true' if text else 'false' }}" {{ html_attrs(**attrs) }}><div class="absolute inset-0 top-1/2 h-px bg-border"></div>{% if caller is defined %}<span class="relative mx-auto block w-fit bg-background px-2 text-muted-foreground" data-slot="field-separator-content">{{ caller() }}</span>{% elif text %}<span class="relative mx-auto block w-fit bg-background px-2 text-muted-foreground" data-slot="field-separator-content">{{ text }}</span>{% endif %}</div>{%- endmacro %}
+{% macro field_error(text="", errors=[], class="", attrs={}) -%}{% if text or errors or caller is defined %}<div role="alert" class="{{ cn('text-sm font-normal text-destructive', class) }}" data-slot="field-error" {{ html_attrs(**attrs) }}>{% if caller is defined %}{{ caller() }}{% elif errors %}<ul class="ml-4 flex list-disc flex-col gap-1">{% for error in errors %}<li>{{ error.message if error.message is defined else error }}</li>{% endfor %}</ul>{% else %}{{ text }}{% endif %}</div>{% endif %}{%- endmacro %}

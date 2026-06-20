@@ -1,18 +1,1 @@
-{#
-  Textarea - multi-line text input.
-
-  Usage:
-    {% from "components/ui/textarea.html" import textarea %}
-    {{ textarea("notes", placeholder="Add a note...", rows=4) }}
-#}
-{% macro textarea(name, value="", placeholder="", rows=4, required=False, attrs="", extra_classes="") %}
-<textarea
-  id="{{ name }}"
-  name="{{ name }}"
-  rows="{{ rows }}"
-  placeholder="{{ placeholder }}"
-  {% if required %}required{% endif %}
-  class="flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 {{ extra_classes }}"
-  {{ attrs|safe }}
->{{ value }}</textarea>
-{% endmacro %}
+{% macro textarea(name="", value="", placeholder="", rows=4, unstyled=false, class="", attrs={}) -%}<textarea class="{{ cn('min-h-24 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm shadow-xs outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50', 'border-0 shadow-none' if unstyled else '', class) }}" data-slot="textarea" rows="{{ rows }}" {% if name %}name="{{ name }}"{% endif %} placeholder="{{ placeholder }}" {{ html_attrs(**attrs) }}>{{ value }}</textarea>{%- endmacro %}

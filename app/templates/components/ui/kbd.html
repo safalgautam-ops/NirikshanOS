@@ -1,14 +1,2 @@
-{#
-  Kbd - keyboard shortcut hint.
-
-  Usage:
-    {% from "components/ui/kbd.html" import kbd, kbd_group %}
-    {{ kbd_group([kbd("Ctrl"), kbd("K")]) }}
-#}
-{% macro kbd(text, extra_classes="") %}
-<kbd class="pointer-events-none inline-flex h-5 min-w-5 select-none items-center justify-center gap-1 rounded-[4px] bg-muted px-1 font-medium text-muted-foreground text-xs {{ extra_classes }}">{{ text }}</kbd>
-{% endmacro %}
-
-{% macro kbd_group(items) %}
-<kbd class="inline-flex items-center gap-1">{% for item in items %}{{ item }}{% endfor %}</kbd>
-{% endmacro %}
+{% macro kbd(text="", class="", attrs={}) -%}<kbd class="{{ cn('pointer-events-none inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground opacity-100', class) }}" data-slot="kbd" {{ html_attrs(**attrs) }}>{% if caller is defined %}{{ caller() }}{% else %}{{ text }}{% endif %}</kbd>{%- endmacro %}
+{% macro kbd_group(class="", attrs={}) -%}<span class="{{ cn('inline-flex items-center gap-1', class) }}" data-slot="kbd-group" {{ html_attrs(**attrs) }}>{% if caller is defined %}{{ caller() }}{% endif %}</span>{%- endmacro %}
