@@ -1,0 +1,6 @@
+{# Every component macro file below {% include %}s this path. The actual
+   runtime is app/static/js/ui-runtime.js, loaded once in layouts/base.html -
+   real same-origin script files have no inline-attribute restriction, so the
+   logic lives there instead of being re-emitted as inline <script> per
+   include (which CSP's script-src 'self' would block anyway). This file is
+   intentionally empty. #}
