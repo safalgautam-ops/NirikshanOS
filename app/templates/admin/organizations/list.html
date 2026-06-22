@@ -1,0 +1,409 @@
+{% extends "layouts/base.html" %} {% block title %}Organizations - NirikshanOS{%
+endblock %} {% import "components/ui/frame.html" as frame %} {% import
+"components/ui/table.html" as table %} {% import
+"components/ui/input-group.html" as ig %} {% import "components/ui/select.html"
+as sel %} {% import "components/ui/badge.html" as badge %} {% import
+"components/ui/button.html" as button %} {% import "components/ui/field.html" as
+field %} {% import "components/ui/input.html" as input %} {% from
+"components/ui/select.html" import select_simple %} {% from
+"dashboard/components/sidebar.html" import sidebar %} {% from
+"dashboard/components/topbar.html" import topbar %} {% from
+"components/ui/breadcrumb.html" import breadcrumb_trail %} {% from
+"components/ui/table-pagination.html" import table_pagination %} {% from
+"macros/csrf.html" import csrf_field %} {% block body %} {{
+sidebar(active="admin_organizations", visible_keys=visible_keys) }}
+
+<div class="flex flex-col md:pl-60">
+    {{ topbar("Organizations") }}
+    <main class="flex h-[calc(100dvh-56px)]">
+        {% if selected_org is defined and selected_org is not none %} {#
+        <div
+            class="flex min-h-[calc(100dvh-var(--header-height,3.5rem)-3rem)] overflow-hidden rounded-xl border bg-background"
+        >
+            {# Left sidebar: org list #}
+            <div
+                class="flex w-64 shrink-0 flex-col border-r bg-sidebar text-sidebar-foreground max-md:hidden"
+            >
+                <div
+                    class="flex h-12 shrink-0 items-center justify-between border-b p-3"
+                >
+                    <a
+                        href="{{ url_for('organizations.list_view') }}"
+                        aria-label="Back to organizations"
+                        class="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
+                    >
+                        <svg
+                            class="size-4"
+                            xmlns="http://www.w3.org/2000/svg"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            aria-hidden="true"
+                        >
+                            <path d="m12 19-7-7 7-7" />
+                            <path d="M19 12H5" />
+                        </svg>
+                    </a>
+                    <a
+                        href="{{ url_for('organizations.list_view') }}?org=new"
+                        aria-label="Create organization"
+                        class="inline-flex size-7 items-center justify-center rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+                    >
+                        <svg
+                            class="size-4"
+                            xmlns="http://www.w3.org/2000/svg"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            aria-hidden="true"
+                        >
+                            <path d="M5 12h14" />
+                            <path d="M12 5v14" />
+                        </svg>
+                    </a>
+                </div>
+                <div class="min-h-0 flex-1 overflow-y-auto p-2">
+                    <p
+                        class="px-2 py-1 text-xs font-medium text-muted-foreground select-none"
+                    >
+                        Organizations
+                    </p>
+                    <ul class="m-0 flex flex-col gap-0.5 p-0 list-none">
+                        {% if is_new %}
+                        <li>
+                            <span
+                                class="flex w-full items-center gap-2 rounded-lg bg-sidebar-accent px-2 py-1.5 text-sm font-medium text-sidebar-accent-foreground"
+                            >
+                                <svg
+                                    class="size-4 shrink-0"
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="2"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                    aria-hidden="true"
+                                >
+                                    <path
+                                        d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z"
+                                    />
+                                </svg>
+                                New organization
+                            </span>
+                        </li>
+                        {% endif %} {% for org in all_orgs %}
+                        <li>
+                            <a
+                                href="{{ url_for('organizations.list_view') }}?org={{ org.id }}"
+                                class="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-sm transition-colors {{ 'bg-sidebar-accent font-medium text-sidebar-accent-foreground' if selected_org.id == org.id else 'hover:bg-sidebar-accent hover:text-sidebar-accent-foreground' }}"
+                            >
+                                <span
+                                    class="size-2 shrink-0 rounded-full {{ 'bg-emerald-500' if org.status == 'active' else ('bg-destructive' if org.status == 'suspended' else 'bg-muted-foreground') }}"
+                                ></span>
+                                <span class="truncate">{{ org.name }}</span>
+                            </a>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            </div>
+
+            {# Right: editor #}
+            <div class="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+                {# Header #}
+                <div
+                    class="flex h-12 shrink-0 items-center justify-between border-b p-3"
+                >
+                    <div class="min-w-0">
+                        <div class="truncate text-sm font-semibold">
+                            {{ "New Organization" if is_new else
+                            selected_org.name }}
+                        </div>
+                        {% if not is_new %}
+                        <div class="truncate text-xs text-muted-foreground">
+                            {{ selected_org.member_count }} member{{ "" if
+                            selected_org.member_count == 1 else "s" }}
+                        </div>
+                        {% endif %}
+                    </div>
+                    {% call button.button(type="submit", size="icon-xs",
+                    attrs={"form": "org-form", "aria-label": "Save"}) %}
+                    <svg
+                        class="size-4"
+                        xmlns="http://www.w3.org/2000/svg"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        aria-hidden="true"
+                    >
+                        <path
+                            d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"
+                        />
+                        <path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7" />
+                        <path d="M7 3v4a1 1 0 0 0 1 1h7" />
+                    </svg>
+                    {% endcall %}
+                </div>
+
+                {# Error #} {% if error %}
+                <div class="border-b px-4 py-3">
+                    <div
+                        class="flex items-center gap-2 rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+                    >
+                        <svg
+                            class="size-4 shrink-0"
+                            xmlns="http://www.w3.org/2000/svg"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                        >
+                            <circle cx="12" cy="12" r="10" />
+                            <line x1="12" y1="8" x2="12" y2="12" />
+                            <line x1="12" y1="16" x2="12.01" y2="16" />
+                        </svg>
+                        {{ error }}
+                    </div>
+                </div>
+                {% endif %} {# Form #}
+                <div class="min-h-0 flex-1 overflow-y-auto">
+                    <form
+                        id="org-form"
+                        method="post"
+                        action="{{ url_for('organizations.create_view') if is_new else url_for('organizations.update_view', org_id=selected_org.id) }}"
+                        class="grid gap-6 p-4"
+                    >
+                        {{ csrf_field() }} {% if selected_org.id %}<input
+                            type="hidden"
+                            name="org_id"
+                            value="{{ selected_org.id }}"
+                        />{% endif %}
+
+                        <div class="grid gap-4 md:grid-cols-2">
+                            {% call field.field(class="md:col-span-2") %} {{
+                            field.field_label("Name", for_id="org-name") }} {{
+                            input.input(name="name", value=selected_org.name or
+                            "", placeholder="Acme Corp", required=true,
+                            attrs={"id": "org-name"}) }} {% endcall %} {% call
+                            field.field(class="md:col-span-2") %} {{
+                            field.field_label("Description", for_id="org-desc")
+                            }} {{ input.input(name="description",
+                            value=selected_org.description or "",
+                            placeholder="What does this org do?", attrs={"id":
+                            "org-desc"}) }} {% endcall %} {% call field.field()
+                            %} {{ field.field_label("Status") }} {% set
+                            status_opts = [("active", "Active"), ("inactive",
+                            "Inactive"), ("suspended", "Suspended")] %} {{
+                            select_simple("status", status_opts,
+                            value=selected_org.status or "active",
+                            key="org-status-" ~ (selected_org.id or "new")) }}
+                            {% endcall %} {% if not is_new %} {% call
+                            field.field() %} {{ field.field_label("Slug") }} {{
+                            input.input(value=selected_org.slug or "",
+                            attrs={"readonly": "readonly", "tabindex": "-1"}) }}
+                            {% endcall %} {% endif %}
+                        </div>
+
+                        {% if is_new %}
+                        <div>
+                            {% call button.button(type="submit", class="w-full
+                            sm:w-auto") %}Create organization{% endcall %}
+                        </div>
+                        {% endif %}
+                    </form>
+
+                    {% if not is_new %}
+                    <div class="border-t px-4 py-4">
+                        <form
+                            method="post"
+                            action="{{ url_for('organizations.delete_view', org_id=selected_org.id) }}"
+                        >
+                            {{ csrf_field() }} {% call
+                            button.button(variant="destructive-outline",
+                            type="submit") %}Delete organization{% endcall %}
+                        </form>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        {% else %} {# ══════════════════ LIST VIEW ══════════════════ #}
+        <div class="flex flex-col gap-4 p-2 w-full">
+            {{ breadcrumb_trail([("Dashboard", "/"), ("Organizations", None)])
+            }} {% if error %}
+            <div
+                class="flex items-center gap-2 rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+            >
+                <svg
+                    class="size-4 shrink-0"
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                >
+                    <circle cx="12" cy="12" r="10" />
+                    <line x1="12" y1="8" x2="12" y2="12" />
+                    <line x1="12" y1="16" x2="12.01" y2="16" />
+                </svg>
+                {{ error }}
+            </div>
+            {% endif %} {# Toolbar #}
+            <form
+                method="get"
+                action="{{ url_for('organizations.list_view') }}"
+                class="grid gap-3 lg:grid-cols-[minmax(18rem,26rem)_minmax(1rem,1fr)_13rem_auto]"
+            >
+                {% call ig.input_group() %} {{ ig.input_group_input( name="q",
+                placeholder="Search organizations…", value=search,
+                attrs={"type": "search", "aria-label": "Search organizations"} )
+                }} {% call ig.input_group_addon() %}
+                <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    aria-hidden="true"
+                >
+                    <circle cx="11" cy="11" r="8" />
+                    <path d="m21 21-4.3-4.3" />
+                </svg>
+                {% endcall %} {% endcall %}
+
+                <div aria-hidden class="hidden lg:block"></div>
+
+                {% set status_options = [ {"value": "", "label": "All status"},
+                {"value": "active", "label": "Active"}, {"value": "inactive",
+                "label": "Inactive"}, {"value": "suspended", "label":
+                "Suspended"} ] %} {% set status_val = status or "" %} {% set
+                status_match = status_options | selectattr("value", "equalto",
+                status_val) | list %} {% call sel.select(name="status",
+                value=status_val) %} {% call
+                sel.select_trigger(target="orgs-status-popup") %} {{
+                sel.select_value(status_match[0].label if status_match else "All
+                status") }}
+                <svg
+                    class="size-4 shrink-0 opacity-50"
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    aria-hidden="true"
+                >
+                    <path d="m6 9 6 6 6-6" />
+                </svg>
+                {% endcall %} {% call sel.select_popup(attrs={"id":
+                "orgs-status-popup"}) %} {% for opt in status_options %} {% call
+                sel.select_item(value=opt.value, selected=(opt.value ==
+                status_val)) %}{{ opt.label }}{% endcall %} {% endfor %} {%
+                endcall %} {% endcall %}
+
+                <a
+                    href="{{ url_for('organizations.list_view') }}?org=new"
+                    aria-label="Create organization"
+                    class="inline-flex size-9 items-center justify-center rounded-lg border-primary bg-primary text-primary-foreground hover:bg-primary/90 transition-colors sm:size-8"
+                >
+                    <svg
+                        class="size-4"
+                        xmlns="http://www.w3.org/2000/svg"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        aria-hidden="true"
+                    >
+                        <path d="M5 12h14" />
+                        <path d="M12 5v14" />
+                    </svg>
+                </a>
+            </form>
+
+            {# Table #} {% call frame.frame() %} {% call
+            table.table(variant="card") %} {% call table.table_header() %} {%
+            call table.table_row() %} {{ table.table_head("Organizations — " ~
+            page.total) }} {{ table.table_head("Status", class="w-28") }} {{
+            table.table_head("Members", class="w-28 text-right") }} {{
+            table.table_head("Created", class="w-36") }} {{ table.table_head("",
+            class="w-12") }} {% endcall %} {% endcall %} {% call
+            table.table_body() %} {% if not page.items %} {% call
+            table.table_row() %} {% call table.table_cell(class="h-28
+            text-center text-muted-foreground", attrs={"colspan": "5"}) %}No
+            organizations found.{% endcall %} {% endcall %} {% else %} {% for
+            org in page.items %} {% call table.table_row(class="group
+            cursor-pointer") %} {% call table.table_cell() %}
+            <div class="min-w-0">
+                <div class="truncate font-medium">{{ org.name }}</div>
+                {% if org.slug %}
+                <div class="truncate text-xs text-muted-foreground">
+                    {{ org.slug }}
+                </div>
+                {% endif %}
+            </div>
+            {% endcall %} {% call table.table_cell() %} {% if org.status ==
+            "active" %} {{ badge.badge("Active", variant="outline") }} {% elif
+            org.status == "suspended" %} {{ badge.badge("Suspended",
+            variant="destructive") }} {% else %} {{ badge.badge("Inactive",
+            variant="secondary") }} {% endif %} {% endcall %} {{
+            table.table_cell(org.member_count|string, class="text-right text-sm
+            tabular-nums") }} {% call table.table_cell(class="text-sm
+            text-muted-foreground") %} {% if org.created_at is defined and
+            org.created_at %}{{ org.created_at.strftime("%b %d, %Y") }}{% endif
+            %} {% endcall %} {% call table.table_cell() %}
+            <a
+                href="{{ url_for('organizations.list_view') }}?org={{ org.id }}"
+                aria-label="Edit {{ org.name }}"
+                class="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground opacity-0 group-hover:opacity-100 hover:bg-accent hover:text-accent-foreground transition-all sm:size-6"
+            >
+                <svg
+                    class="size-4"
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    aria-hidden="true"
+                >
+                    <path
+                        d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"
+                    />
+                </svg>
+            </a>
+            {% endcall %} {% endcall %} {% endfor %} {% endif %} {% endcall %}
+            {% endcall %} {% endcall %} {% set pg_params = [] %} {% if search
+            %}{% set _ = pg_params.append("q=" ~ search|urlencode) %}{% endif %}
+            {% if status %}{% set _ = pg_params.append("status=" ~
+            status|urlencode) %}{% endif %} {{
+            table_pagination(current_page=page.page, total_pages=page.pages,
+            total_items=page.total, page_size=page.per_page,
+            base_url=url_for('organizations.list_view') ~ ("?" ~
+            pg_params|join("&") if pg_params else "")) }}
+        </div>
+        {% endif %}
+    </main>
+</div>
+{% endblock %}

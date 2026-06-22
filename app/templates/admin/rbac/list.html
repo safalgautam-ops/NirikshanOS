@@ -1,0 +1,343 @@
+{% extends "layouts/base.html" %} {% block title %}Staff Roles - NirikshanOS{%
+endblock %} {% import "components/ui/frame.html" as frame %} {% import
+"components/ui/table.html" as table %} {% import
+"components/ui/input-group.html" as ig %} {% import "components/ui/badge.html"
+as badge %} {% import "components/ui/button.html" as button %} {% import
+"components/ui/menu.html" as menu %} {% import "components/ui/dialog.html" as
+dialog %} {% from "dashboard/components/sidebar.html" import sidebar %} {% from
+"dashboard/components/topbar.html" import topbar %} {% from
+"components/ui/breadcrumb.html" import breadcrumb_trail %} {% from
+"components/ui/table-pagination.html" import table_pagination %} {% from
+"macros/csrf.html" import csrf_field %} {% macro lock_icon() %}<svg
+    class="size-3.5 shrink-0 text-muted-foreground"
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    stroke-width="2"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    aria-hidden="true"
+>
+    <rect width="18" height="11" x="3" y="11" rx="2" ry="2" />
+    <path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg
+>{% endmacro %} {% set cancel_classes = "relative inline-flex h-9 shrink-0
+cursor-pointer items-center justify-center gap-2 whitespace-nowrap rounded-lg
+border border-input bg-popover px-[calc(--spacing(3)-1px)] text-sm
+text-foreground shadow-xs/5 outline-none transition-shadow hover:bg-accent/50
+focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1
+focus-visible:ring-offset-background disabled:pointer-events-none
+disabled:opacity-64 sm:h-8" %} {% block body %} {{ sidebar(active="admin_roles",
+visible_keys=visible_keys) }}
+
+<div class="flex flex-col md:pl-60">
+    {{ topbar("Staff Roles") }}
+    <main class="flex-1 p-4 md:p-6">
+        {{ breadcrumb_trail([("Dashboard", "/"), ("Staff Roles", None)]) }}
+
+        <div class="grid gap-4 p-3">
+            {# Toolbar #}
+            <div
+                class="grid gap-3 lg:grid-cols-[minmax(18rem,26rem)_minmax(1rem,1fr)_auto] md:items-center"
+            >
+                <form method="get" action="{{ url_for('rbac.list_view') }}">
+                    {% call ig.input_group() %} {{ ig.input_group_input(
+                    name="q", placeholder="Search roles…", value=search,
+                    attrs={"type": "search", "aria-label": "Search roles"} ) }}
+                    {% call ig.input_group_addon() %}
+                    <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        aria-hidden="true"
+                    >
+                        <circle cx="11" cy="11" r="8" />
+                        <path d="m21 21-4.3-4.3" />
+                    </svg>
+                    {% endcall %} {% endcall %}
+                </form>
+
+                <div aria-hidden class="hidden lg:block"></div>
+
+                <form method="post" action="{{ url_for('rbac.create_view') }}">
+                    {{ csrf_field() }} {% call button.button(size="icon",
+                    type="submit", attrs={"aria-label": "Create role"}) %}
+                    <svg
+                        class="size-4"
+                        xmlns="http://www.w3.org/2000/svg"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        aria-hidden="true"
+                    >
+                        <path d="M5 12h14" />
+                        <path d="M12 5v14" />
+                    </svg>
+                    {% endcall %}
+                </form>
+            </div>
+
+            {# Error #} {% if error %}
+            <div
+                class="flex items-center gap-2 rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+            >
+                <svg
+                    class="size-4 shrink-0"
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                >
+                    <circle cx="12" cy="12" r="10" />
+                    <line x1="12" y1="8" x2="12" y2="12" />
+                    <line x1="12" y1="16" x2="12.01" y2="16" />
+                </svg>
+                {{ error }}
+            </div>
+            {% endif %} {# Table #} {% call frame.frame() %} {% call
+            table.table(variant="card") %} {% call table.table_header() %} {%
+            call table.table_row() %} {{ table.table_head("", class="w-9") }} {{
+            table.table_head("Staff Roles — " ~ page.total) }} {{
+            table.table_head("Members", class="w-32") }} {{
+            table.table_head("Position", class="w-28 text-right") }} {{
+            table.table_head("Actions", class="w-36 text-right") }} {% endcall
+            %} {% endcall %} {% call table.table_body() %} {% if not page.items
+            %} {% call table.table_row() %} {% call table.table_cell(class="h-28
+            text-center text-muted-foreground", attrs={"colspan": "5"}) %}No
+            roles found.{% endcall %} {% endcall %} {% else %} {% for role in
+            page.items %} {% call table.table_row() %} {# Drag handle #} {% call
+            table.table_cell() %}
+            <svg
+                class="size-4 text-muted-foreground {{ '' if not role.is_system else 'opacity-35' }}"
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+            >
+                <circle cx="9" cy="12" r="1" />
+                <circle cx="9" cy="5" r="1" />
+                <circle cx="9" cy="19" r="1" />
+                <circle cx="15" cy="12" r="1" />
+                <circle cx="15" cy="5" r="1" />
+                <circle cx="15" cy="19" r="1" />
+            </svg>
+            {% endcall %} {# Name #} {% call table.table_cell() %}
+            <div class="flex min-w-0 items-center gap-3">
+                <span
+                    class="size-3 shrink-0 rounded-full"
+                    style="background-color: {{ role.color }}"
+                ></span>
+                <a
+                    href="{{ url_for('rbac.edit_view', role_id=role.id) }}"
+                    class="truncate font-medium hover:underline"
+                    >{{ role.name }}</a
+                >
+                {% if role.is_system %}{{ lock_icon() }}{% endif %} {% if not
+                role.is_assignable %}
+                <span class="text-xs text-muted-foreground">(blocked)</span>
+                {% endif %}
+            </div>
+            {% endcall %} {# Members #} {% call table.table_cell() %}
+            <div class="flex items-center gap-2">
+                <span class="tabular-nums">{{ role.member_count }}</span>
+                <svg
+                    class="size-4 text-muted-foreground"
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    aria-hidden="true"
+                >
+                    <path d="M18 21a8 8 0 0 0-16 0" />
+                    <circle cx="10" cy="8" r="5" />
+                    <path d="M22 20c0-3.37-2-6.5-4-8a5 5 0 0 0-.45-8.3" />
+                </svg>
+            </div>
+            {% endcall %} {# Position #} {% call
+            table.table_cell(class="text-right tabular-nums") %}{{ role.priority
+            }}{% endcall %} {# Actions #} {% call table.table_cell() %}
+            <div class="flex justify-end">
+                {# Three-dot trigger — data-cs-menu uses fixed positioning,
+                escaping overflow clipping #}
+                <button
+                    type="button"
+                    data-cs-menu="role-menu-{{ role.id }}"
+                    class="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors sm:size-6"
+                    aria-label="More actions for {{ role.name }}"
+                >
+                    <svg
+                        class="pointer-events-none size-4"
+                        xmlns="http://www.w3.org/2000/svg"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        aria-hidden="true"
+                    >
+                        <circle cx="12" cy="12" r="1" />
+                        <circle cx="5" cy="12" r="1" />
+                        <circle cx="19" cy="12" r="1" />
+                    </svg>
+                </button>
+                {# Fixed-position popup — position: fixed escapes overflow:auto
+                clipping #}
+                <div
+                    id="role-menu-{{ role.id }}"
+                    class="hidden fixed z-[100] w-56 rounded-lg border bg-popover p-1 shadow-lg text-sm text-popover-foreground"
+                >
+                    <div
+                        class="px-2 py-1 text-xs font-semibold text-muted-foreground"
+                    >
+                        Role actions
+                    </div>
+                    <a
+                        href="{{ url_for('rbac.edit_view', role_id=role.id) }}"
+                        class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 hover:bg-accent hover:text-accent-foreground"
+                    >
+                        <svg
+                            class="size-4"
+                            xmlns="http://www.w3.org/2000/svg"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            aria-hidden="true"
+                        >
+                            <path
+                                d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"
+                            />
+                        </svg>
+                        Edit role
+                    </a>
+                    <form
+                        method="post"
+                        action="{{ url_for('rbac.duplicate_view', role_id=role.id) }}"
+                    >
+                        {{ csrf_field() }}
+                        <button
+                            type="submit"
+                            class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left hover:bg-accent hover:text-accent-foreground"
+                        >
+                            <svg
+                                class="size-4"
+                                xmlns="http://www.w3.org/2000/svg"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                aria-hidden="true"
+                            >
+                                <rect
+                                    width="14"
+                                    height="14"
+                                    x="8"
+                                    y="8"
+                                    rx="2"
+                                    ry="2"
+                                />
+                                <path
+                                    d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"
+                                />
+                            </svg>
+                            Duplicate role
+                        </button>
+                    </form>
+                    <div class="my-1 h-px bg-border"></div>
+                    {% if not role.is_system %}
+                    <button
+                        type="button"
+                        class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-destructive hover:bg-destructive/10"
+                        data-slot="dialog-trigger"
+                        data-target="#delete-role-{{ role.id }}"
+                        aria-controls="delete-role-{{ role.id }}"
+                    >
+                        <svg
+                            class="size-4"
+                            xmlns="http://www.w3.org/2000/svg"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            aria-hidden="true"
+                        >
+                            <path d="M3 6h18" />
+                            <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
+                            <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
+                        </svg>
+                        Delete role
+                    </button>
+                    {% else %}
+                    <div
+                        class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-muted-foreground opacity-50"
+                    >
+                        <svg
+                            class="size-4"
+                            xmlns="http://www.w3.org/2000/svg"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            aria-hidden="true"
+                        >
+                            <path d="M3 6h18" />
+                            <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
+                            <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
+                        </svg>
+                        Delete role
+                    </div>
+                    {% endif %}
+                </div>
+                {# Delete confirmation dialog #} {% if not role.is_system %} {%
+                call dialog.dialog(attrs={"id": "delete-role-" ~ role.id}) %} {%
+                call dialog.dialog_header() %} {{ dialog.dialog_title("Delete
+                role?") }} {{ dialog.dialog_description('"' ~ role.name ~ '"
+                will be removed from all ' ~ role.member_count ~ ' member(s)
+                holding it.') }} {% endcall %}
+                <form
+                    method="post"
+                    action="{{ url_for('rbac.delete_view', role_id=role.id) }}"
+                >
+                    {{ csrf_field() }} {% call dialog.dialog_footer() %} {% call
+                    dialog.dialog_close(class=cancel_classes) %}Cancel{% endcall
+                    %} {% call button.button(variant="destructive",
+                    type="submit") %}Delete{% endcall %} {% endcall %}
+                </form>
+                {% endcall %} {% endif %}
+            </div>
+            {% endcall %} {% endcall %}{# table_row #} {% endfor %} {% endif %}
+            {% endcall %} {% endcall %} {% endcall %}
+
+            {% set pg_params = [] %}
+            {% if search %}{% set _ = pg_params.append("q=" ~ search|urlencode) %}{% endif %}
+            {{ table_pagination(current_page=page.page, total_pages=page.pages, total_items=page.total, page_size=page.per_page, base_url=url_for('rbac.list_view') ~ ("?" ~ pg_params|join("&") if pg_params else "")) }}
+        </div>
+    </main>
+</div>
+{% endblock %}
