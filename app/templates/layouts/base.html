@@ -7,10 +7,19 @@ removes `.dark` if the user explicitly chose light. #}
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <title>{% block title %}NirikshanOS{% endblock %}</title>
 
+        {% if debug %}
+        {# Dev only: live-compiles input.css in the browser, no build step -
+        see app/core/security/headers.py for the matching CSP allowance.
+        Flip QUART_DEBUG=false (or omit it) before shipping to production,
+        which uses the static built tailwind.css below instead. #}
+        <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+        <style type="text/tailwindcss">{{ read_input_css_for_browser_runtime() }}</style>
+        {% else %}
         <link
             rel="stylesheet"
             href="{{ url_for('static', filename='css/tailwind.css') }}"
         />
+        {% endif %}
 
         {# Inline <script> blocks are blocked by CSP script-src 'self' (no
         'unsafe-inline'), so this lives in its own same-origin file. Not

@@ -42,3 +42,10 @@ async def send_activation_email(*, to: str, name: str, code: str) -> None:
 async def send_reset_email(*, to: str, code: str) -> None:
     html = await render_template("email/reset_password.html", code=code)
     await send_email(to=to, subject="Reset your NirikshanOS password", html=html)
+
+
+async def send_staff_credentials_email(*, to: str, name: str, password: str) -> None:
+    html = await render_template(
+        "email/staff_credentials.html", name=name, email=to, password=password
+    )
+    await send_email(to=to, subject="Your NirikshanOS account", html=html)

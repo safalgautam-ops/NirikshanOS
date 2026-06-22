@@ -6,7 +6,10 @@ caller-supplied dict of extra attributes) - the component templates call
 them directly, so they have to be registered as globals, not imported.
 """
 
+from pathlib import Path
+
 from markupsafe import Markup, escape
+from quart import current_app
 
 
 def cn(*classes: object) -> str:
@@ -31,3 +34,29 @@ def html_attrs(**attrs: object) -> Markup:
         else:
             parts.append(f'{name}="{escape(value)}"')
     return Markup(" ".join(parts))
+
+
+def read_static_text(relative_path: str) -> Markup:
+    """Read a file from app/static/ as raw text. Reads from disk on every
+    call rather than caching, so dev edits show up without a restart.
+
+    Markup() marks the content "safe" so Jinja's autoescaping doesn't mangle
+    CSS's `&`/`<`/`>` characters - but that also means string ops done AFTER
+    this (e.g. a `| replace(...)` filter in a template) run through
+    Markup's HTML-aware .replace(), which escapes its search string first and
+    so silently fails to match plain text like `"`. Do any text surgery
+    BEFORE wrapping, as read_input_css_for_browser_runtime() does below.
+    """
+    path = Path(current_app.static_folder) / relative_path
+    return Markup(path.read_text())
+
+
+def read_input_css_for_browser_runtime() -> Markup:
+    """input.css for the dev-only @tailwindcss/browser CDN runtime (see
+    layouts/base.html). That runtime already includes Tailwind's engine, so
+    the bootstrap `@import "tailwindcss";` line at the top - meaningful only
+    to the CLI/PostCSS build - has to come out first, as plain text, before
+    the result gets wrapped in Markup for safe template interpolation."""
+    path = Path(current_app.static_folder) / "css/input.css"
+    text = path.read_text().replace('@import "tailwindcss";', "")
+    return Markup(text)

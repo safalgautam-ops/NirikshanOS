@@ -9,15 +9,16 @@ uvicorn).
 The actual ASGI app instance lives in run.py at the project root.
 """
 
-from quart import Quart, g, render_template
+from quart import Quart, g, redirect, render_template, request, url_for
 
 from app.config import Config
 from app.core.db.pool import close_pool, get_pool, init_pool
 from app.core.security.csrf import apply_csrf_protection
 from app.core.security.headers import apply_security_headers
+from app.core.security.permission_registry import sync_to_db as sync_permissions_to_db
 from app.core.security.permissions import get_visible_nav_keys
 from app.core.security.sessions import apply_session_loader, login_required
-from app.core.templating import cn, html_attrs
+from app.core.templating import cn, html_attrs, read_input_css_for_browser_runtime
 from app.extensions import close_redis, get_redis, init_redis
 from app.features.auth.repository import get_user_by_id
 from app.features.auth.routes import auth_bp
@@ -41,6 +42,11 @@ def create_app() -> Quart:
     # Jinja doesn't expose Python's builtin set() by default - templates need
     # it for `x in (value or set())` patterns against role_ids/etc.
     app.jinja_env.globals["set"] = set
+    # layouts/base.html uses these to pick the dev-only @tailwindcss/browser
+    # runtime (live, no build step) vs. the static built tailwind.css used in
+    # production - flip QUART_DEBUG=true/false in .env to switch.
+    app.jinja_env.globals["debug"] = app.config["DEBUG"]
+    app.jinja_env.globals["read_input_css_for_browser_runtime"] = read_input_css_for_browser_runtime
 
     # Registers the after_request hook that adds CSP/X-Frame-Options/etc.
     apply_security_headers(app)
@@ -48,6 +54,18 @@ def create_app() -> Quart:
     apply_session_loader(app)
     # Double-submit cookie CSRF check on every POST/PUT/PATCH/DELETE.
     apply_csrf_protection(app)
+
+    # Accounts created with an auto-generated temp password (e.g. admin-created
+    # staff, see app/features/staff/service.py) carry must_change_password=True.
+    # Until they set their own password, every route except the change-password
+    # page itself (and logout) bounces back there - load_session() already set
+    # g.must_change_password for this request.
+    _PASSWORD_GATE_EXEMPT = {"auth.change_password_view", "auth.logout", "static", None}
+
+    @app.before_request
+    async def require_password_change() -> None:
+        if g.must_change_password and request.endpoint not in _PASSWORD_GATE_EXEMPT:
+            return redirect(url_for("auth.change_password_view"))
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(users_bp)
@@ -68,6 +86,12 @@ def create_app() -> Quart:
         )
         # Opens the shared Redis client (sessions/rate-limit/pub-sub later).
         await init_redis(app.config["REDIS_URL"])  # create once at start
+
+        # Every feature's permissions.py module ran register_permissions() at
+        # import time (above, via each routes.py import) - upsert them into the
+        # DB and grant them to System Admin, so a new permission never needs a
+        # hand-written migration.
+        await sync_permissions_to_db()
 
     @app.after_serving
     async def shutdown() -> None:

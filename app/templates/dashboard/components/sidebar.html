@@ -5,10 +5,7 @@ of the current nav item, used to highlight it visible_keys - list of nav keys
 this user's roles allow, or None for "no restriction" (see
 app/core/security/permissions.py NAV_KEYS - both lists must stay in sync) #} {%
 macro sidebar(active="dashboard", visible_keys=None) %} {% set groups = [
-("Platform", [ ("dashboard", "Dashboard", "/"), ("cases", "Cases", "/cases"),
-("evidence", "Evidence", "/evidence"), ("analysis", "Analysis", "/analysis"),
-("notes", "Notes", "/notes"), ("reports", "Reports", "/reports"), ("audit",
-"Audit Log", "/audit") ]), ("Administration", [ ("admin_users", "Users",
+("Platform", [ ("dashboard", "Dashboard", "/") ]), ("Administration", [ ("admin_users", "Users",
 "/admin/users"), ("admin_organizations", "Organizations",
 "/admin/organizations"), ("admin_roles", "Roles", "/admin/roles"),
 ("admin_staff", "Staff", "/admin/staff") ]) ] %}

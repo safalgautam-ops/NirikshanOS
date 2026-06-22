@@ -126,6 +126,11 @@ def apply_session_loader(app: Quart) -> None:
         # so any route handler this request can read g.user_id. If no token, it's None.
         g.user_id = await get_user_id_for_token(token) if token else None
 
+        g.must_change_password = False
+        if g.user_id is not None:
+            user = await db.table("user").where("id", g.user_id).select("must_change_password").first()
+            g.must_change_password = bool(user and user["must_change_password"])
+
 
 PENDING_2FA_COOKIE = "pending_2fa"
 _PENDING_2FA_TTL = 300  # 5 minutes

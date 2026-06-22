@@ -150,6 +150,15 @@ async def reset_password(email: str, code: str, new_password: str) -> None:
         await repository.set_email_verified(user["id"])
 
 
+async def change_own_password(user_id: str, new_password: str) -> None:
+    """Set a new password for an already-authenticated user (the forced
+    first-login change for accounts created with an auto-generated
+    password — being logged in already proves possession of the old one,
+    so no code/old-password is required here)."""
+    await repository.update_credential_password(user_id, hash_password(new_password))
+    await repository.clear_must_change_password(user_id)
+
+
 # ── OAuth ─────────────────────────────────────────────────────────────────────
 
 

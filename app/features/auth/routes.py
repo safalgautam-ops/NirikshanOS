@@ -50,6 +50,7 @@ from app.features.auth.service import (
     begin_passkey_authentication,
     begin_passkey_registration,
     begin_totp_setup,
+    change_own_password,
     complete_passkey_authentication,
     complete_passkey_registration,
     confirm_totp_setup,
@@ -228,6 +229,27 @@ async def reset_password_view():
                 return redirect(url_for("auth.login") + "?reset=1")
     # if there was an error, render the reset password template with the error message
     return await render_template("auth/reset_password.html", email=email, error=error)
+
+
+@auth_bp.route("/change-password", methods=["GET", "POST"])
+@login_required
+async def change_password_view():
+    """Forced first-login password change for accounts created with an
+    auto-generated temp password (see app/__init__.py's require_password_change
+    gate). Already authenticated, so no code/old-password is needed."""
+    error = None
+    if request.method == "POST":
+        form = await request.form
+        new_pw = form.get("password", "")
+        confirm = form.get("confirm_password", "")
+        if len(new_pw) < 8:
+            error = "Password must be at least 8 characters."
+        elif new_pw != confirm:
+            error = "Passwords do not match."
+        else:
+            await change_own_password(g.user_id, new_pw)
+            return redirect(url_for("dashboard"))
+    return await render_template("auth/change_password.html", error=error)
 
 
 # ── Google OAuth ──────────────────────────────────────────────────────────────

@@ -39,9 +39,21 @@ async def set_two_factor_enabled(user_id: str, enabled: bool) -> None:
 
 
 async def create_user_with_password(
-    *, name: str, email: str, password_hash: str
+    *,
+    name: str,
+    email: str,
+    password_hash: str,
+    is_active: bool = False,
+    email_verified: bool = False,
+    must_change_password: bool = False,
 ) -> str:
-    """Create user row + credential account atomically. User starts inactive (needs OTP)."""
+    """Create user row + credential account atomically.
+
+    Defaults match self-registration (inactive, needs an activation OTP).
+    Admin-created accounts (e.g. staff) pass is_active=True/email_verified=True
+    since an admin is already vouching for them, plus must_change_password=True
+    when the password was auto-generated rather than chosen by the user.
+    """
     user_id = new_id()
     async with db.transaction():
         await db.table("user").create(
@@ -49,8 +61,9 @@ async def create_user_with_password(
                 "id": user_id,
                 "name": name,
                 "email": email,
-                "emailVerified": False,
-                "isActive": False,
+                "emailVerified": email_verified,
+                "isActive": is_active,
+                "must_change_password": must_change_password,
             }
         )
         await db.table("account").create(
@@ -122,6 +135,10 @@ async def update_credential_password(user_id: str, password_hash: str) -> None:
         .where("providerId", "credential")
         .patch({"password": password_hash})
     )
+
+
+async def clear_must_change_password(user_id: str) -> None:
+    await db.table("user").where("id", user_id).patch({"must_change_password": False})
 
 
 async def get_account_by_provider(provider_id: str, account_id: str):
