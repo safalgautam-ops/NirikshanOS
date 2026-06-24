@@ -7,24 +7,32 @@ removes `.dark` if the user explicitly chose light. #}
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <title>{% block title %}NirikshanOS{% endblock %}</title>
 
-        {% if debug %}
-        {# Dev only: live-compiles input.css in the browser, no build step -
-        see app/core/security/headers.py for the matching CSP allowance.
-        Flip QUART_DEBUG=false (or omit it) before shipping to production,
-        which uses the static built tailwind.css below instead. #}
+        {% if debug %} {# Dev only: live-compiles input.css in the browser, no
+        build step - see app/core/security/headers.py for the matching CSP
+        allowance. Flip QUART_DEBUG=false (or omit it) before shipping to
+        production, which uses the static built tailwind.css below instead. #}
+        <link
+            rel="icon"
+            href="/static/img/favlogo.ico"
+            type="image/x-icon"
+            h-24
+        />
         <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
-        <style type="text/tailwindcss">{{ read_input_css_for_browser_runtime() }}</style>
+        <style type="text/tailwindcss">
+            {{ read_input_css_for_browser_runtime() }}
+        </style>
         {% else %}
         <link
             rel="stylesheet"
             href="{{ url_for('static', filename='css/tailwind.css') }}"
         />
-        {% endif %}
-
-        {# Inline <script> blocks are blocked by CSP script-src 'self' (no
-        'unsafe-inline'), so this lives in its own same-origin file. Not
-        deferred: runs immediately, before paint, to avoid a theme flash. #}
-        <script src="{{ url_for('static', filename='js/theme.js') }}"></script>
+        {% endif %} {# Inline
+        <script>
+            blocks are blocked by CSP script-src 'self' (no
+                   'unsafe-inline'), so this lives in its own same-origin file. Not
+                   deferred: runs immediately, before paint, to avoid a theme flash. #}
+                   <script src="{{ url_for('static', filename='js/theme.js') }}">
+        </script>
 
         {# Vendored locally so CSP can stay `default-src 'self'`. Plugins must
         load before Alpine core - defer preserves this script-tag order. #}
@@ -41,9 +49,12 @@ removes `.dark` if the user explicitly chose light. #}
             src="{{ url_for('static', filename='js/vendor/alpine-anchor.min.js') }}"
         ></script>
         {# Registers Alpine.data() components that need real JS (DOM
-        measurement, multi-statement logic) - must load before alpine.min.js
-        so its alpine:init listener is attached before Alpine.start() fires. #}
-        <script defer src="{{ url_for('static', filename='js/components.js') }}"></script>
+        measurement, multi-statement logic) - must load before alpine.min.js so
+        its alpine:init listener is attached before Alpine.start() fires. #}
+        <script
+            defer
+            src="{{ url_for('static', filename='js/components.js') }}"
+        ></script>
         {# @alpinejs/csp build: parses x-data/x-show/etc. itself instead of new
         Function()/eval(), so it runs under CSP with no 'unsafe-eval'. The
         regular alpinejs/dist build fails every directive silently here. There's
@@ -63,7 +74,10 @@ removes `.dark` if the user explicitly chose light. #}
         <script src="{{ url_for('static', filename='js/vendor/htmx.min.js') }}"></script>
         {# Event-delegation runtime for components/ui/*.html (data-slot driven,
         no framework) - see app/static/js/ui-runtime.js for what it does. #}
-        <script defer src="{{ url_for('static', filename='js/ui-runtime.js') }}"></script>
+        <script
+            defer
+            src="{{ url_for('static', filename='js/ui-runtime.js') }}"
+        ></script>
     </head>
     <body class="min-h-screen bg-background text-foreground antialiased">
         {% block body %}{% endblock %}

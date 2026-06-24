@@ -29,6 +29,9 @@ from functools import wraps
 from quart import Quart, Response, g, redirect, request, url_for
 
 from app.core.db.orm import db, raw_sql  # the query builder + safe raw-SQL wrapper
+from app.core.security.organization_gate import needs_organization_onboarding
+from app.core.security.org_permissions import get_org_visible_nav_keys
+from app.core.security.permissions import get_user_permission_names
 from app.core.utils.ids import new_id  # generates unique ids for new rows
 
 SESSION_COOKIE = "session_token"  # the name of the cookie we store the token in
@@ -127,9 +130,24 @@ def apply_session_loader(app: Quart) -> None:
         g.user_id = await get_user_id_for_token(token) if token else None
 
         g.must_change_password = False
+        g.org_locked = False
+        g.org_nav_keys = []
+        g.is_platform_staff = False
         if g.user_id is not None:
             user = await db.table("user").where("id", g.user_id).select("must_change_password").first()
             g.must_change_password = bool(user and user["must_change_password"])
+            # Holds any system permission - platform staff. Drives the
+            # sidebar: staff never see organization onboarding UI at all (see
+            # sidebar.html and onboarding/routes.py's blueprint guard), since
+            # they manage every org from /admin/organizations instead of
+            # being a tenant member themselves.
+            g.is_platform_staff = bool(await get_user_permission_names(g.user_id))
+            # Drives the sidebar's lock icons - templates read g.org_locked
+            # directly (Quart injects g into every template context).
+            g.org_locked = await needs_organization_onboarding(g.user_id)
+            # Drives the sidebar's "Your Organization" group - same g-injection
+            # pattern as g.org_locked above, read directly by sidebar.html.
+            g.org_nav_keys = await get_org_visible_nav_keys(g.user_id)
 
 
 PENDING_2FA_COOKIE = "pending_2fa"
@@ -175,8 +193,13 @@ def login_required(view):
     async def wrapped(*args, **kwargs):
         # g.user_id was set earlier by load_session(). None means "not logged in".
         if g.user_id is None:
-            # Send the visitor to the login route instead of running the protected view.
-            return redirect(url_for("auth.login"))
+            # Send the visitor to login, but remember where they were headed
+            # (e.g. an invite link's GET /onboarding/join?code=...) so login()
+            # can send them back there instead of always landing on dashboard.
+            destination = request.path
+            if request.query_string:
+                destination += "?" + request.query_string.decode()
+            return redirect(url_for("auth.login", next=destination))
         # Logged in -> run the actual route handler and return its result.
         return await view(*args, **kwargs)
 

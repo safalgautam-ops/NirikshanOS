@@ -26,6 +26,11 @@ class Config:
 
     REDIS_URL = os.environ.get("REDIS_URL", "redis://127.0.0.1:6379/0")
 
+    # Caps any single request body (e.g. the org-onboarding logo/document
+    # uploads in app/core/storage.py) - Quart reads this straight off
+    # app.config, no extra wiring needed.
+    MAX_CONTENT_LENGTH = 10 * 1024 * 1024  # 10 MB
+
     APP_URL = os.environ.get("APP_URL", "http://localhost:8000")
 
     RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")

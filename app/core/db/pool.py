@@ -143,7 +143,13 @@ async def fetch_all(query: str, params: Sequence[Any] = ()) -> list[dict[str, An
         async with pool.acquire() as conn:
             async with conn.cursor(DictCursor) as cur:
                 await cur.execute(query, params)
-                return list(await cur.fetchall())
+                rows = list(await cur.fetchall())
+                # autocommit is off, so MySQL opened an implicit transaction for
+                # this SELECT (REPEATABLE READ snapshot). End it before the
+                # connection goes back to the pool, or the next borrower reuses
+                # this same stale snapshot and misses commits made elsewhere.
+                await conn.commit()
+                return rows
 
     # if anything inside the try raised an error, catch it as exc
     except Exception as exc:
@@ -165,7 +171,11 @@ async def fetch_one(query: str, params: Sequence[Any] = ()) -> dict[str, Any] | 
         async with pool.acquire() as conn:
             async with conn.cursor(DictCursor) as cur:
                 await cur.execute(query, params)
-                return await cur.fetchone()
+                row = await cur.fetchone()
+                # see the matching comment in fetch_all - don't leave this
+                # connection's implicit read transaction open in the pool.
+                await conn.commit()
+                return row
 
     except Exception as exc:
         raise clean_db_error(exc) from exc

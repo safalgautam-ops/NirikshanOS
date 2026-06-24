@@ -1,0 +1,99 @@
+{% extends "layouts/base.html" %}
+{% import "components/ui/frame.html" as frame %}
+{% import "components/ui/table.html" as table %}
+{% import "components/ui/button.html" as button %}
+{% import "components/ui/dialog.html" as dialog %}
+{% from "dashboard/components/sidebar.html" import sidebar %}
+{% from "dashboard/components/topbar.html" import topbar %}
+{% from "components/ui/breadcrumb.html" import breadcrumb_trail %}
+{% from "macros/csrf.html" import csrf_field %}
+
+{% block title %}Organization Staff - NirikshanOS{% endblock %}
+
+{% set cancel_classes = "relative inline-flex h-9 shrink-0 cursor-pointer items-center justify-center gap-2 whitespace-nowrap rounded-lg border border-input bg-popover px-[calc(--spacing(3)-1px)] text-sm text-foreground shadow-xs/5 outline-none transition-shadow hover:bg-accent/50 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-64 sm:h-8" %}
+
+{% block body %}
+{{ sidebar(active="org_staff", visible_keys=visible_keys) }}
+
+<div class="flex flex-col md:pl-60">
+    {{ topbar("Organization Staff") }}
+    <main class="flex-1 p-4 md:p-6">
+        {{ breadcrumb_trail([("Dashboard", "/"), ("Organization Staff", None)]) }}
+
+        <div class="grid gap-4 p-3">
+            {% if error %}
+            <div class="flex items-center gap-2 rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">{{ error }}</div>
+            {% endif %}
+
+            <p class="text-sm text-muted-foreground">
+                Manage who belongs to this organization. Role assignment happens from
+                <a href="{{ url_for('onboarding.org_roles_list_view') }}" class="underline underline-offset-4 hover:text-foreground">Roles</a> &rarr; a role's Members tab.
+            </p>
+
+            {% call frame.frame() %}
+            {% call table.table(variant="card") %}
+                {% call table.table_header() %}
+                    {% call table.table_row() %}
+                        {{ table.table_head("Members — " ~ members|length) }}
+                        {{ table.table_head("Role", class="w-40") }}
+                        {{ table.table_head("Email") }}
+                        {{ table.table_head("Joined", class="w-36") }}
+                        {{ table.table_head("", class="w-12") }}
+                    {% endcall %}
+                {% endcall %}
+                {% call table.table_body() %}
+                    {% if not members %}
+                    {% call table.table_row() %}
+                        {% call table.table_cell(class="h-28 text-center text-muted-foreground", attrs={"colspan": "5"}) %}No members yet.{% endcall %}
+                    {% endcall %}
+                    {% else %}
+                    {% for member in members %}
+                    {% call table.table_row(class="group") %}
+                        {% call table.table_cell() %}<div class="min-w-0"><div class="truncate font-medium">{{ member.name }}</div></div>{% endcall %}
+                        {% call table.table_cell(class="text-sm text-muted-foreground") %}
+                        {% if member.id == owner_id %}
+                        <span class="inline-flex items-center gap-1.5 font-medium text-foreground">
+                            <svg class="size-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 18h18M3 14l4-7 5 4 5-4 4 7"/></svg>
+                            Owner
+                        </span>
+                        {% elif member.role_name %}
+                        <span class="inline-flex items-center gap-1.5">
+                            <span class="size-2 rounded-full" style="background-color: {{ member.role_color }}"></span>
+                            {{ member.role_name }}
+                        </span>
+                        {% else %}<span>—</span>{% endif %}
+                        {% endcall %}
+                        {% call table.table_cell() %}<span class="truncate text-sm">{{ member.email }}</span>{% endcall %}
+                        {% call table.table_cell(class="text-sm text-muted-foreground") %}{% if member.joined_at %}{{ member.joined_at.strftime("%b %d, %Y") }}{% endif %}{% endcall %}
+                        {% call table.table_cell() %}
+                        {% if member.id != owner_id %}
+                        <div class="flex justify-end">
+                            <button type="button" class="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground opacity-0 group-hover:opacity-100 hover:bg-destructive/10 hover:text-destructive transition-all sm:size-6" data-slot="dialog-trigger" data-target="#remove-member-{{ member.id }}" aria-controls="remove-member-{{ member.id }}" aria-label="Remove {{ member.name }}">
+                                <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                            </button>
+                        </div>
+                        {% call dialog.dialog(attrs={"id": "remove-member-" ~ member.id}) %}
+                            {% call dialog.dialog_header() %}
+                                {{ dialog.dialog_title("Remove from organization?") }}
+                                {{ dialog.dialog_description('"' ~ member.name ~ '" will lose access to this organization immediately.') }}
+                            {% endcall %}
+                            <form method="post" action="{{ url_for('onboarding.staff_remove_view', user_id=member.id) }}">
+                                {{ csrf_field() }}
+                                {% call dialog.dialog_footer() %}
+                                    {% call dialog.dialog_close(class=cancel_classes) %}Cancel{% endcall %}
+                                    {% call button.button(variant="destructive", type="submit") %}Remove{% endcall %}
+                                {% endcall %}
+                            </form>
+                        {% endcall %}
+                        {% endif %}
+                        {% endcall %}
+                    {% endcall %}
+                    {% endfor %}
+                    {% endif %}
+                {% endcall %}
+            {% endcall %}
+            {% endcall %}
+        </div>
+    </main>
+</div>
+{% endblock %}

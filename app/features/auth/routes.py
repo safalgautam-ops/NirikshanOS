@@ -79,9 +79,18 @@ def _ua() -> str | None:
     return request.headers.get("User-Agent")
 
 
-async def _full_login(user_id: str):
+def _safe_next(value: str | None) -> str | None:
+    """Only accept internal paths (e.g. '/onboarding/join?code=ABC') as a
+    post-login redirect target - rejects '//evil.com' and absolute URLs so
+    this can't be used as an open redirect."""
+    if value and value.startswith("/") and not value.startswith("//"):
+        return value
+    return None
+
+
+async def _full_login(user_id: str, next_url: str | None = None):
     token = await create_session(user_id, _ip(), _ua())
-    resp = await make_response(redirect(url_for("dashboard")))
+    resp = await make_response(redirect(_safe_next(next_url) or url_for("dashboard")))
     set_session_cookie(resp, token)
     return resp
 
@@ -94,14 +103,17 @@ async def login():
     error = None
     activated = request.args.get("activated")
     reset_done = request.args.get("reset")
+    next_url = _safe_next(request.args.get("next"))
     if request.method == "POST":
         form = await request.form
         email = form.get("email", "").strip().lower()
         password = form.get("password", "")
+        next_url = _safe_next(form.get("next")) or next_url
         try:
             user_id = await authenticate(email=email, password=password)
         except EmailNotVerifiedError as exc:
-            return redirect(url_for("auth.activate") + f"?email={exc.email}")
+            next_qs = f"&next={next_url}" if next_url else ""
+            return redirect(url_for("auth.activate") + f"?email={exc.email}{next_qs}")
         except TwoFactorRequiredError as exc:
             pending = create_pending_2fa_token(
                 exc.user_id, current_app.config["SECRET_KEY"]
@@ -114,9 +126,13 @@ async def login():
         except AuthError as exc:
             error = str(exc)
         else:
-            return await _full_login(user_id)
+            return await _full_login(user_id, next_url)
     return await render_template(
-        "auth/login.html", error=error, activated=activated, reset_done=reset_done
+        "auth/login.html",
+        error=error,
+        activated=activated,
+        reset_done=reset_done,
+        next_url=next_url,
     )
 
 
@@ -136,12 +152,14 @@ async def logout():
 @auth_bp.route("/register", methods=["GET", "POST"])
 async def register_view():
     error = None
+    next_url = _safe_next(request.args.get("next"))
     if request.method == "POST":
         form = await request.form
         name = form.get("name", "").strip()
         email = form.get("email", "").strip().lower()
         password = form.get("password", "")
         confirm = form.get("confirm_password", "")
+        next_url = _safe_next(form.get("next")) or next_url
 
         if not name or not email:
             error = "Name and email are required."
@@ -155,8 +173,9 @@ async def register_view():
             except AuthError as exc:
                 error = str(exc)
             else:
-                return redirect(url_for("auth.activate") + f"?email={email}")
-    return await render_template("auth/register.html", error=error)
+                next_qs = f"&next={next_url}" if next_url else ""
+                return redirect(url_for("auth.activate") + f"?email={email}{next_qs}")
+    return await render_template("auth/register.html", error=error, next_url=next_url)
 
 
 @auth_bp.route("/activate", methods=["GET", "POST"])
@@ -164,18 +183,21 @@ async def activate():
     email = request.args.get("email", "")
     resent = request.args.get("resent")
     error = None
+    next_url = _safe_next(request.args.get("next"))
     if request.method == "POST":
         form = await request.form
         email = form.get("email", "").strip().lower()
         code = form.get("code", "").strip()
+        next_url = _safe_next(form.get("next")) or next_url
         try:
             await activate_account(email, code)
         except AuthError as exc:
             error = str(exc)
         else:
-            return redirect(url_for("auth.login") + "?activated=1")
+            next_qs = f"&next={next_url}" if next_url else ""
+            return redirect(url_for("auth.login") + f"?activated=1{next_qs}")
     return await render_template(
-        "auth/activate.html", email=email, error=error, resent=resent
+        "auth/activate.html", email=email, error=error, resent=resent, next_url=next_url
     )
 
 

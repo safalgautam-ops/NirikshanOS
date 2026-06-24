@@ -12,11 +12,12 @@ from quart import abort, g, redirect, url_for
 from app.core.db.orm import db
 from app.core.security.permission_registry import Permission
 
-# hardcoded list of every dashboard navigation item that can be toggled-per role, paired with its display label
+# Platform-admin pages only - Dashboard and Organization are NOT here, they're
+# baseline navigation every logged-in user always gets (see sidebar.html's
+# Platform group), not something a system role can be configured to hide.
 # single source of truth: both the sidebar template(sidebar.html) and the RBAC "Sidebar" tab both render from this list
 # same data doesn't guarantee same behaviour
 NAV_KEYS: list[tuple[str, str]] = [
-    ("dashboard", "Dashboard"),
     ("admin_users", "Users"),
     ("admin_organizations", "Organizations"),
     ("admin_roles", "Roles"),
@@ -44,7 +45,7 @@ async def get_user_roles(user_id: str) -> list:
 
 async def get_visible_nav_keys(user_id: str) -> list[str] | None:
     """
-     Which sidebar nav keys this user may see, or None for "no restriction".
+     Which Administration nav keys this user may see, or None for "no restriction".
 
     The critical distinction the code is built around is None vs. empty list:
 
@@ -55,26 +56,14 @@ async def get_visible_nav_keys(user_id: str) -> list[str] | None:
      If ANY of the user's roles is unrestricted, the user is unrestricted —
      restrictions only narrow things down when every held role has one.
 
-     In Python, if not keys is a shortcut for "is this thing empty or absent?" The problem is
-     that it treats several different values as the same thing — they're all "falsy":
-
-     if not None:   # True  — None is falsy
-     if not []:     # True  — empty list is falsy
-     if not 0:      # True  — zero is falsy
-
-     So None and [] both make if not keys fire. Python can't tell them apart with that check.
-
-     If the author had written if not keys instead of if keys is None, then an empty list []
-     would also trigger that branch — because [] is falsy too. So a role meant to grant nothing would
-     accidentally be read as granting everything. That's a serious bug: someone you locked out of every page
-     would suddenly see all of them.
-     Using is None checks for exactly None and nothing else. An empty list is not None,
-     so it skips that branch and instead falls through to the normal code, which adds its keys (none of them)
-     to the allowed set — correctly granting access to nothing.
+     Holding zero system roles at all (every org admin/member is in this boat -
+     org-scope roles are a completely separate table, see org_permissions.py)
+     must resolve to [] here, not None - otherwise everyone without a system
+     role would see the entire Administration group and 403 on every click.
+     That naturally falls out of the loop below: zero roles means it never
+     runs, so `allowed` stays the empty set it started as.
     """
     roles = await get_user_roles(user_id)
-    if not roles:
-        return None
 
     allowed: set[str] = set()
     for role in roles:

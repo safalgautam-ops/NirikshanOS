@@ -15,6 +15,8 @@ from app.config import Config
 from app.core.db.pool import close_pool, get_pool, init_pool
 from app.core.security.csrf import apply_csrf_protection
 from app.core.security.headers import apply_security_headers
+from app.core.security.organization_gate import needs_organization_onboarding
+from app.core.security.org_permission_registry import sync_to_db as sync_org_permissions_to_db
 from app.core.security.permission_registry import sync_to_db as sync_permissions_to_db
 from app.core.security.permissions import get_visible_nav_keys
 from app.core.security.sessions import apply_session_loader, login_required
@@ -22,6 +24,7 @@ from app.core.templating import cn, html_attrs, read_input_css_for_browser_runti
 from app.extensions import close_redis, get_redis, init_redis
 from app.features.auth.repository import get_user_by_id
 from app.features.auth.routes import auth_bp
+from app.features.onboarding.routes import onboarding_bp
 from app.features.organizations.routes import organizations_bp
 from app.features.rbac.routes import rbac_bp
 from app.features.staff.routes import staff_bp
@@ -67,8 +70,48 @@ def create_app() -> Quart:
         if g.must_change_password and request.endpoint not in _PASSWORD_GATE_EXEMPT:
             return redirect(url_for("auth.change_password_view"))
 
+    # Self-registered users (no role permissions, no organization yet) see
+    # the normal dashboard, but every route except Dashboard/Organization is
+    # locked (sidebar shows a lock icon - see sidebar.html) until they create
+    # or join an organization. A direct hit on a locked URL bounces back to
+    # the dashboard rather than a dedicated onboarding page - there isn't one
+    # anymore, the Organization nav item *is* the onboarding page now.
+    _ORG_GATE_EXEMPT = {
+        "dashboard",
+        "onboarding.index",
+        "onboarding.create_view",
+        "onboarding.join_view",
+        "onboarding.regenerate_invite_view",
+        "onboarding.download_document_view",
+        # Document management while pending/rejected (fix/add what was
+        # submitted before a platform admin reviews it) and deleting the
+        # organization itself (e.g. to start over after a rejection) both
+        # need to work in every non-active state, not just once approved.
+        "onboarding.upload_document_view",
+        "onboarding.delete_document_view",
+        "onboarding.delete_organization_view",
+        # Leaving (or, for the owner, transferring ownership first) needs to
+        # work in every non-active state too - a member shouldn't be stuck
+        # in a pending/rejected org with no way out.
+        "onboarding.leave_view",
+        "onboarding.transfer_ownership_view",
+        "auth.logout",
+        "static",
+        None,
+    }
+
+    @app.before_request
+    async def require_organization() -> None:
+        if g.user_id is None or g.must_change_password:
+            return
+        if request.endpoint in _ORG_GATE_EXEMPT:
+            return
+        if await needs_organization_onboarding(g.user_id):
+            return redirect(url_for("dashboard"))
+
     app.register_blueprint(auth_bp)
     app.register_blueprint(users_bp)
+    app.register_blueprint(onboarding_bp)
     app.register_blueprint(organizations_bp)
     app.register_blueprint(rbac_bp)
     app.register_blueprint(staff_bp)
@@ -92,6 +135,10 @@ def create_app() -> Quart:
         # DB and grant them to System Admin, so a new permission never needs a
         # hand-written migration.
         await sync_permissions_to_db()
+        # Same idea, for the org-scoped permission catalog (organization_permissions) -
+        # see org_permission_registry.sync_to_db()'s docstring for why this one does
+        # NOT auto-grant anything (there's no single global "Org Admin" to grant to).
+        await sync_org_permissions_to_db()
 
     @app.after_serving
     async def shutdown() -> None:

@@ -4,10 +4,7 @@ __pycache__/
 .venv/
 venv/
 
-storage/evidence/*
-!storage/evidence/.gitkeep
-storage/outputs/*
-!storage/outputs/.gitkeep
+storage/*
 
 .pytest_cache/
 

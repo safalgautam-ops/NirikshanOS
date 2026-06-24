@@ -1,0 +1,139 @@
+{% extends "layouts/base.html" %}
+{% from "components/ui/badge.html" import badge %}
+{% from "components/ui/button.html" import button %}
+{% from "components/ui/frame.html" import frame, frame_panel %}
+{% from "dashboard/components/sidebar.html" import sidebar %}
+{% from "dashboard/components/topbar.html" import topbar %}
+{% from "components/ui/breadcrumb.html" import breadcrumb_trail %}
+{% import "components/ui/dialog.html" as dialog %}
+{% from "macros/csrf.html" import csrf_field %}
+
+{% set cancel_classes = "relative inline-flex h-9 shrink-0 cursor-pointer items-center justify-center gap-2 whitespace-nowrap rounded-lg border border-input bg-popover px-[calc(--spacing(3)-1px)] text-sm text-foreground shadow-xs/5 outline-none transition-shadow hover:bg-accent/50 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-64 sm:h-8" %}
+
+{% block title %}Organization - NirikshanOS{% endblock %}
+
+{% block body %}
+{{ sidebar(active="my_organization", visible_keys=visible_keys) }}
+
+<div class="flex flex-col md:pl-60">
+    {{ topbar("Organization") }}
+    <main class="flex-1 p-4 md:p-6">
+        {{ breadcrumb_trail([("Dashboard", "/"), ("Organization", None)]) }}
+
+        {% if error %}
+        <div class="mb-4 rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">{{ error }}</div>
+        {% endif %}
+
+        <div class="grid max-w-2xl gap-4 p-2">
+            {% call frame() %}
+                {% call frame_panel() %}
+                    <div class="space-y-4">
+                        <div class="flex items-center gap-3">
+                            {% if org.logo_path %}
+                            <img src="{{ url_for('static', filename=org.logo_path) }}" alt="" class="h-12 w-12 rounded-md border object-cover" />
+                            {% endif %}
+                            <div class="flex-1">
+                                <p class="text-sm text-muted-foreground">Organization</p>
+                                <p class="text-lg font-semibold">{{ org.name }}</p>
+                            </div>
+                            {% if org.verification_status == "rejected" %}
+                            {{ badge("Rejected", variant="error") }}
+                            {% else %}
+                            {{ badge("Pending review", variant="warning") }}
+                            {% endif %}
+                        </div>
+
+                        {% if org.verification_status == "rejected" %}
+                        <div class="rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                            <p class="font-medium">This organization was not approved.</p>
+                            {% if org.rejection_reason %}<p class="mt-1">{{ org.rejection_reason }}</p>{% endif %}
+                            <p class="mt-1 text-xs text-destructive/80">Contact an administrator for next steps.</p>
+                        </div>
+                        {% else %}
+                        <div class="rounded-md border border-warning/40 bg-warning/8 px-3 py-2 text-sm text-warning-soft">
+                            An administrator is reviewing your organization's registration details and documents.
+                            You'll get full access to NirikshanOS as soon as it's approved.
+                        </div>
+                        {% endif %}
+
+                        <div class="grid gap-4 sm:grid-cols-2">
+                            <div>
+                                <p class="text-sm text-muted-foreground">Type</p>
+                                <p class="text-sm font-medium">{{ org_type_label or "—" }}</p>
+                            </div>
+                            <div>
+                                <p class="text-sm text-muted-foreground">Employees</p>
+                                <p class="text-sm font-medium">{{ org.employee_count or "—" }}</p>
+                            </div>
+                            <div>
+                                <p class="text-sm text-muted-foreground">Registration number</p>
+                                <p class="text-sm font-medium">{{ org.registration_number or "—" }}</p>
+                            </div>
+                            <div>
+                                <p class="text-sm text-muted-foreground">Owner</p>
+                                <p class="text-sm font-medium">{{ org.owner_name or "—" }}</p>
+                            </div>
+                        </div>
+
+                        {% if can_manage_org %}
+                        <div>
+                            <p class="mb-1.5 text-sm text-muted-foreground">Government documents</p>
+                            {% if documents %}
+                            <ul class="space-y-1">
+                                {% for doc in documents %}
+                                <li class="flex items-center justify-between gap-2">
+                                    <a href="{{ url_for('onboarding.download_document_view', doc_id=doc.id) }}" class="text-sm text-primary underline underline-offset-4 hover:no-underline">{{ doc.original_filename }}</a>
+                                    <form method="post" action="{{ url_for('onboarding.delete_document_view', doc_id=doc.id) }}">
+                                        {{ csrf_field() }}
+                                        {% call button(type="submit", variant="ghost", size="icon-xs", class="text-muted-foreground hover:bg-destructive/10 hover:text-destructive", attrs={"aria-label": "Remove " ~ doc.original_filename}) %}
+                                        <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                                        {% endcall %}
+                                    </form>
+                                </li>
+                                {% endfor %}
+                            </ul>
+                            {% else %}
+                            <p class="text-sm text-muted-foreground">No documents on file.</p>
+                            {% endif %}
+                            <form method="post" action="{{ url_for('onboarding.upload_document_view') }}" enctype="multipart/form-data" class="mt-2 flex items-center gap-2">
+                                {{ csrf_field() }}
+                                <input type="file" name="documents" multiple accept=".pdf,.png,.jpg,.jpeg" class="text-sm text-muted-foreground file:mr-2 file:rounded-md file:border file:border-input file:bg-popover file:px-2 file:py-1 file:text-sm file:font-medium" />
+                                {% call button(type="submit", variant="outline", size="sm") %}Upload{% endcall %}
+                            </form>
+                            <p class="mt-1 text-xs text-muted-foreground">You can add or remove documents until this organization is verified.</p>
+                        </div>
+                        {% endif %}
+                    </div>
+                {% endcall %}
+            {% endcall %}
+
+            {% if not is_owner %}
+            {% call frame() %}
+                {% call frame_panel() %}
+                    <div class="space-y-3">
+                        <p class="text-sm font-medium">Membership</p>
+                        <p class="text-sm text-muted-foreground">Leaving removes your access to "{{ org.name }}" immediately.</p>
+                        <button type="button" class="inline-flex h-9 items-center justify-center rounded-lg border border-destructive/40 px-3 text-sm font-medium text-destructive hover:bg-destructive/10" data-slot="dialog-trigger" data-target="#leave-org" aria-controls="leave-org">
+                            Leave organization
+                        </button>
+                    </div>
+                {% endcall %}
+            {% endcall %}
+            {% call dialog.dialog(attrs={"id": "leave-org"}) %}
+                {% call dialog.dialog_header() %}
+                    {{ dialog.dialog_title('Leave "' ~ org.name ~ '"?') }}
+                    {{ dialog.dialog_description("You'll lose access immediately. Someone else can invite you back later with the org's code or link.") }}
+                {% endcall %}
+                <form method="post" action="{{ url_for('onboarding.leave_view') }}">
+                    {{ csrf_field() }}
+                    {% call dialog.dialog_footer() %}
+                        {% call dialog.dialog_close(class=cancel_classes) %}Cancel{% endcall %}
+                        {% call button(variant="destructive", type="submit") %}Leave organization{% endcall %}
+                    {% endcall %}
+                </form>
+            {% endcall %}
+            {% endif %}
+        </div>
+    </main>
+</div>
+{% endblock %}

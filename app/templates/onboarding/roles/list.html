@@ -1,0 +1,109 @@
+{% extends "layouts/base.html" %}
+{% import "components/ui/frame.html" as frame %}
+{% import "components/ui/table.html" as table %}
+{% import "components/ui/badge.html" as badge %}
+{% import "components/ui/button.html" as button %}
+{% import "components/ui/dialog.html" as dialog %}
+{% from "dashboard/components/sidebar.html" import sidebar %}
+{% from "dashboard/components/topbar.html" import topbar %}
+{% from "components/ui/breadcrumb.html" import breadcrumb_trail %}
+{% from "macros/csrf.html" import csrf_field %}
+
+{% set cancel_classes = "relative inline-flex h-9 shrink-0 cursor-pointer items-center justify-center gap-2 whitespace-nowrap rounded-lg border border-input bg-popover px-[calc(--spacing(3)-1px)] text-sm text-foreground shadow-xs/5 outline-none transition-shadow hover:bg-accent/50 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-64 sm:h-8" %}
+
+{% block title %}Organization Roles - NirikshanOS{% endblock %}
+
+{% macro lock_icon() %}<svg class="size-3.5 shrink-0 text-muted-foreground" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>{% endmacro %}
+
+{% block body %}
+{{ sidebar(active="org_role", visible_keys=visible_keys) }}
+
+<div class="flex flex-col md:pl-60">
+    {{ topbar("Organization Roles") }}
+    <main class="flex-1 p-4 md:p-6">
+        {{ breadcrumb_trail([("Dashboard", "/"), ("Organization Roles", None)]) }}
+
+        <div class="grid gap-4 p-3">
+            <div class="flex items-center justify-end">
+                <form method="post" action="{{ url_for('onboarding.org_roles_create_view') }}">
+                    {{ csrf_field() }}
+                    {% call button.button(size="icon", type="submit", attrs={"aria-label": "Create role"}) %}
+                    <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+                    {% endcall %}
+                </form>
+            </div>
+
+            {% if error %}
+            <div class="flex items-center gap-2 rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">{{ error }}</div>
+            {% endif %}
+
+            {% call frame.frame() %}
+            {% call table.table(variant="card") %}
+                {% call table.table_header() %}
+                    {% call table.table_row() %}
+                        {{ table.table_head("Roles — " ~ roles|length) }}
+                        {{ table.table_head("Members", class="w-32") }}
+                        {{ table.table_head("Position", class="w-28 text-right") }}
+                        {{ table.table_head("", class="w-12") }}
+                    {% endcall %}
+                {% endcall %}
+                {% call table.table_body() %}
+                    {% if not roles %}
+                    {% call table.table_row() %}
+                        {% call table.table_cell(class="h-28 text-center text-muted-foreground", attrs={"colspan": "4"}) %}No roles found.{% endcall %}
+                    {% endcall %}
+                    {% else %}
+                    {% for role in roles %}
+                    {# Discord-style: no role is structurally protected - the
+                    role system can't restrict the owner, and is_system only
+                    blocks deletion for everyone else. #}
+                    {% set can_delete = not role.is_system or is_owner %}
+                    {% call table.table_row() %}
+                        {% call table.table_cell() %}
+                        <div class="flex min-w-0 items-center gap-3">
+                            <span class="size-3 shrink-0 rounded-full" style="background-color: {{ role.color }}"></span>
+                            <a href="{{ url_for('onboarding.org_roles_edit_view', role_id=role.id) }}" class="truncate font-medium hover:underline">{{ role.name }}</a>
+                            {% if role.is_system %}{{ lock_icon() }}{% endif %}
+                            {% if role.is_default %}{{ badge.badge("Default", variant="outline", size="sm") }}{% endif %}
+                        </div>
+                        {% endcall %}
+                        {% call table.table_cell() %}<span class="tabular-nums">{{ role.member_count }}</span>{% endcall %}
+                        {% call table.table_cell(class="text-right tabular-nums") %}{{ role.priority }}{% endcall %}
+                        {% call table.table_cell() %}
+                        <div class="flex items-center justify-end gap-1">
+                            <form method="post" action="{{ url_for('onboarding.org_roles_duplicate_view', role_id=role.id) }}">
+                                {{ csrf_field() }}
+                                {% call button.button(type="submit", variant="ghost", size="icon-xs", class="text-muted-foreground", attrs={"aria-label": "Duplicate " ~ role.name}) %}
+                                <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+                                {% endcall %}
+                            </form>
+                            {% if can_delete %}
+                            <button type="button" class="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-destructive/10 hover:text-destructive sm:size-6" data-slot="dialog-trigger" data-target="#delete-role-{{ role.id }}" aria-controls="delete-role-{{ role.id }}" aria-label="Delete {{ role.name }}">
+                                <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+                            </button>
+                            {% call dialog.dialog(attrs={"id": "delete-role-" ~ role.id}) %}
+                                {% call dialog.dialog_header() %}
+                                    {{ dialog.dialog_title("Delete role?") }}
+                                    {{ dialog.dialog_description('"' ~ role.name ~ '" will be removed from all ' ~ role.member_count ~ ' member(s) holding it.') }}
+                                {% endcall %}
+                                <form method="post" action="{{ url_for('onboarding.org_roles_delete_view', role_id=role.id) }}">
+                                    {{ csrf_field() }}
+                                    {% call dialog.dialog_footer() %}
+                                        {% call dialog.dialog_close(class=cancel_classes) %}Cancel{% endcall %}
+                                        {% call button.button(variant="destructive", type="submit") %}Delete{% endcall %}
+                                    {% endcall %}
+                                </form>
+                            {% endcall %}
+                            {% endif %}
+                        </div>
+                        {% endcall %}
+                    {% endcall %}
+                    {% endfor %}
+                    {% endif %}
+                {% endcall %}
+            {% endcall %}
+            {% endcall %}
+        </div>
+    </main>
+</div>
+{% endblock %}

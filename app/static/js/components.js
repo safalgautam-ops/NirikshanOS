@@ -34,4 +34,42 @@ document.addEventListener("alpine:init", () => {
         "transform:translateX(" + active.offsetLeft + "px)";
     },
   }));
+
+  // Drives the 3-step organization-registration wizard (onboarding/index.html).
+  // Steps are plain sibling <div data-wizard-step="N"> blocks inside one big
+  // <form> - this only toggles which one is visible and gates "Next" on the
+  // current step's [data-required] fields actually having a value. The real
+  // validation authority is server-side (app/features/onboarding/service.py);
+  // this is just UX so a half-filled step can't silently advance.
+  Alpine.data("orgWizard", () => ({
+    step: 1,
+    totalSteps: 3,
+    error: "",
+
+    next() {
+      if (this.validateStep(this.step)) {
+        this.error = "";
+        this.step = Math.min(this.step + 1, this.totalSteps);
+      }
+    },
+
+    back() {
+      this.error = "";
+      this.step = Math.max(this.step - 1, 1);
+    },
+
+    validateStep(n) {
+      const container = this.$root.querySelector('[data-wizard-step="' + n + '"]');
+      if (!container) return true;
+      const fields = container.querySelectorAll("[data-required]");
+      for (const field of fields) {
+        if (!field.value || !field.value.trim()) {
+          this.error = "Fill in every required field before continuing.";
+          field.focus();
+          return false;
+        }
+      }
+      return true;
+    },
+  }));
 });

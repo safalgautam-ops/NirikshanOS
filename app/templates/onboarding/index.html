@@ -1,0 +1,190 @@
+{% extends "layouts/base.html" %}
+{% from "components/ui/card.html" import card, card_panel %}
+{% from "components/ui/field.html" import field_group, field, field_label %}
+{% from "components/ui/input.html" import input %}
+{% from "components/ui/textarea.html" import textarea %}
+{% from "components/ui/button.html" import button %}
+{% from "components/ui/tabs.html" import tabs, tabs_list, tabs_tab, tabs_panel %}
+{% from "macros/csrf.html" import csrf_field %}
+
+{% block title %}Set up your organization - NirikshanOS{% endblock %}
+
+{% block body %}
+{% set join_active = code or (error and "code" in error|lower) %}
+<div class="flex min-h-screen items-center justify-center p-6">
+  <div class="flex w-full max-w-2xl flex-col gap-6">
+    <div class="flex flex-col items-center gap-2 text-center">
+      <h1 class="text-2xl font-bold">Set up your workspace</h1>
+      <p class="text-balance text-sm text-muted-foreground">
+        Register your organization, or join one you've been invited to.
+      </p>
+    </div>
+
+    {% if error %}
+    <div class="rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+      {{ error }}
+    </div>
+    {% endif %}
+
+    {% call card() %}
+      {% call card_panel(class="p-6 md:p-8") %}
+        {% call tabs() %}
+          {% call tabs_list(class="w-full") %}
+            {% call tabs_tab(value="create", active=not join_active, class="flex-1") %}Register organization{% endcall %}
+            {% call tabs_tab(value="join", active=join_active, class="flex-1") %}Join with a code{% endcall %}
+          {% endcall %}
+
+          {% call tabs_panel(value="create", active=not join_active, class="mt-6") %}
+            <form
+              x-data="orgWizard()"
+              method="post"
+              enctype="multipart/form-data"
+              action="{{ url_for('onboarding.create_view') }}"
+            >
+              {{ csrf_field() }}
+
+              <div class="mb-6 grid grid-cols-3 gap-2">
+                {% for n in [1, 2, 3] %}
+                <div class="h-1.5 overflow-hidden rounded-full bg-muted">
+                  <div class="h-full bg-primary" x-show="step >= {{ n }}" x-cloak></div>
+                </div>
+                {% endfor %}
+              </div>
+
+              <p x-show="error" x-cloak x-text="error" class="mb-4 rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive"></p>
+
+              {# ── Step 1: organization details ──────────────────────────── #}
+              <div data-wizard-step="1" x-show="step === 1">
+                <p class="mb-4 text-sm font-medium text-muted-foreground">Step 1 of 3 &middot; Organization details</p>
+                {% call field_group() %}
+                  {% call field() %}
+                    {{ field_label("Organization name", for_id="org-name") }}
+                    {{ input(name="name", placeholder="Acme Forensics", required=True, attrs={"id": "org-name", "data-required": "true"}) }}
+                  {% endcall %}
+                  {% call field() %}
+                    {{ field_label("Logo (optional)", for_id="org-logo") }}
+                    {{ input(type="file", name="logo", attrs={"id": "org-logo", "accept": "image/png,image/jpeg,image/webp,image/svg+xml"}) }}
+                  {% endcall %}
+                  {% call field() %}
+                    {{ field_label("Description (optional)", for_id="org-description") }}
+                    {{ textarea(name="description", placeholder="What does this organization do?", attrs={"id": "org-description"}) }}
+                  {% endcall %}
+                  <div class="grid gap-4 sm:grid-cols-2">
+                    {% call field() %}
+                      {{ field_label("Organization type", for_id="org-type") }}
+                      <select id="org-type" name="org_type" required data-required="true"
+                        class="flex h-9 w-full items-center rounded-lg border border-input bg-background px-3 text-sm shadow-xs/5 outline-none transition-shadow focus-visible:ring-2 focus-visible:ring-ring dark:bg-input/32">
+                        <option value="" disabled selected>Select a type</option>
+                        {% for value, label in org_types %}
+                        <option value="{{ value }}">{{ label }}</option>
+                        {% endfor %}
+                      </select>
+                    {% endcall %}
+                    {% call field() %}
+                      {{ field_label("Number of employees", for_id="employee-count") }}
+                      <select id="employee-count" name="employee_count" required data-required="true"
+                        class="flex h-9 w-full items-center rounded-lg border border-input bg-background px-3 text-sm shadow-xs/5 outline-none transition-shadow focus-visible:ring-2 focus-visible:ring-ring dark:bg-input/32">
+                        <option value="" disabled selected>Select a range</option>
+                        {% for value in employee_count_ranges %}
+                        <option value="{{ value }}">{{ value }}</option>
+                        {% endfor %}
+                      </select>
+                    {% endcall %}
+                  </div>
+                  {% call field() %}
+                    {{ field_label("Address", for_id="org-address") }}
+                    {{ input(name="address", placeholder="Street, building, area", required=True, attrs={"id": "org-address", "data-required": "true"}) }}
+                  {% endcall %}
+                  {% call field() %}
+                    {% call button(type="button", class="w-full", attrs={"@click": "next()"}) %}Next: Location{% endcall %}
+                  {% endcall %}
+                {% endcall %}
+              </div>
+
+              {# ── Step 2: location ───────────────────────────────────────── #}
+              <div data-wizard-step="2" x-show="step === 2" x-cloak>
+                <p class="mb-4 text-sm font-medium text-muted-foreground">Step 2 of 3 &middot; Location</p>
+                {% call field_group() %}
+                  {% call field() %}
+                    {{ field_label("Country", for_id="org-country") }}
+                    <select id="org-country" name="country" required data-required="true"
+                      class="flex h-9 w-full items-center rounded-lg border border-input bg-background px-3 text-sm shadow-xs/5 outline-none transition-shadow focus-visible:ring-2 focus-visible:ring-ring dark:bg-input/32">
+                      <option value="" disabled selected>Select a country</option>
+                      {% for c in countries %}
+                      <option value="{{ c }}">{{ c }}</option>
+                      {% endfor %}
+                    </select>
+                  {% endcall %}
+                  <div class="grid gap-4 sm:grid-cols-2">
+                    {% call field() %}
+                      {{ field_label("State / Province (optional)", for_id="org-state") }}
+                      {{ input(name="state", placeholder="State or province", attrs={"id": "org-state"}) }}
+                    {% endcall %}
+                    {% call field() %}
+                      {{ field_label("City (optional)", for_id="org-city") }}
+                      {{ input(name="city", placeholder="City", attrs={"id": "org-city"}) }}
+                    {% endcall %}
+                  </div>
+                  {% call field() %}
+                    {{ field_label("Postal code (optional)", for_id="org-postal") }}
+                    {{ input(name="postal_code", placeholder="Postal / ZIP code", attrs={"id": "org-postal"}) }}
+                  {% endcall %}
+                  <div class="flex gap-2">
+                    {% call button(type="button", variant="outline", class="flex-1", attrs={"@click": "back()"}) %}Back{% endcall %}
+                    {% call button(type="button", class="flex-1", attrs={"@click": "next()"}) %}Next: Documents{% endcall %}
+                  </div>
+                {% endcall %}
+              </div>
+
+              {# ── Step 3: government documents ───────────────────────────── #}
+              <div data-wizard-step="3" x-show="step === 3" x-cloak>
+                <p class="mb-4 text-sm font-medium text-muted-foreground">Step 3 of 3 &middot; Government documents</p>
+                {% call field_group() %}
+                  <div class="grid gap-4 sm:grid-cols-2">
+                    {% call field() %}
+                      {{ field_label("Registration number", for_id="org-reg-num") }}
+                      {{ input(name="registration_number", placeholder="Government registration number", required=True, attrs={"id": "org-reg-num", "data-required": "true"}) }}
+                    {% endcall %}
+                    {% call field() %}
+                      {{ field_label("PAN / Tax ID (optional)", for_id="org-pan") }}
+                      {{ input(name="pan_number", placeholder="PAN or tax identification number", attrs={"id": "org-pan"}) }}
+                    {% endcall %}
+                  </div>
+                  {% call field() %}
+                    {{ field_label("Owner / authorized signatory name", for_id="org-owner") }}
+                    {{ input(name="owner_name", placeholder="Full legal name", required=True, attrs={"id": "org-owner", "data-required": "true"}) }}
+                  {% endcall %}
+                  {% call field() %}
+                    {{ field_label("Official government documents", for_id="org-documents") }}
+                    {{ input(type="file", name="documents", required=True, attrs={"id": "org-documents", "multiple": "true", "accept": "application/pdf,image/png,image/jpeg", "data-required": "true"}) }}
+                    <p class="text-xs text-muted-foreground">Registration certificate, PAN card, or owner ID. PDF, PNG, or JPG.</p>
+                  {% endcall %}
+                  <div class="flex gap-2">
+                    {% call button(type="button", variant="outline", class="flex-1", attrs={"@click": "back()"}) %}Back{% endcall %}
+                    {% call button(type="submit", class="flex-1") %}Submit for registration{% endcall %}
+                  </div>
+                {% endcall %}
+              </div>
+            </form>
+          {% endcall %}
+
+          {% call tabs_panel(value="join", active=join_active, class="mt-6") %}
+            <form method="post" action="{{ url_for('onboarding.join_view') }}">
+              {{ csrf_field() }}
+              {% call field_group() %}
+                {% call field() %}
+                  {{ field_label("Invite code", for_id="invite-code") }}
+                  {{ input(name="code", value=code, placeholder="ABCD123XYZ", required=True, attrs={"id": "invite-code", "autocomplete": "off"}) }}
+                {% endcall %}
+                {% call field() %}
+                  {% call button(type="submit", variant="secondary", class="w-full") %}Join organization{% endcall %}
+                {% endcall %}
+              {% endcall %}
+            </form>
+          {% endcall %}
+        {% endcall %}
+      {% endcall %}
+    {% endcall %}
+  </div>
+</div>
+{% endblock %}
