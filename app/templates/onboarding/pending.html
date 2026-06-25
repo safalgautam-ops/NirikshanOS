@@ -6,6 +6,7 @@
 {% from "dashboard/components/topbar.html" import topbar %}
 {% from "components/ui/breadcrumb.html" import breadcrumb_trail %}
 {% import "components/ui/dialog.html" as dialog %}
+{% from "components/ui/toast.html" import flash %}
 {% from "macros/csrf.html" import csrf_field %}
 
 {% set cancel_classes = "relative inline-flex h-9 shrink-0 cursor-pointer items-center justify-center gap-2 whitespace-nowrap rounded-lg border border-input bg-popover px-[calc(--spacing(3)-1px)] text-sm text-foreground shadow-xs/5 outline-none transition-shadow hover:bg-accent/50 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-64 sm:h-8" %}
@@ -20,9 +21,7 @@
     <main class="flex-1 p-4 md:p-6">
         {{ breadcrumb_trail([("Dashboard", "/"), ("Organization", None)]) }}
 
-        {% if error %}
-        <div class="mb-4 rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">{{ error }}</div>
-        {% endif %}
+        {{ flash("error", error) }}
 
         <div class="grid max-w-2xl gap-4 p-2">
             {% call frame() %}
@@ -97,7 +96,7 @@
                             {% endif %}
                             <form method="post" action="{{ url_for('onboarding.upload_document_view') }}" enctype="multipart/form-data" class="mt-2 flex items-center gap-2">
                                 {{ csrf_field() }}
-                                <input type="file" name="documents" multiple accept=".pdf,.png,.jpg,.jpeg" class="text-sm text-muted-foreground file:mr-2 file:rounded-md file:border file:border-input file:bg-popover file:px-2 file:py-1 file:text-sm file:font-medium" />
+                                <input type="file" name="documents" multiple accept=".pdf,.png,.jpg,.jpeg" data-max-size-bytes="26214400" data-max-size-label="25MB" class="text-sm text-muted-foreground file:mr-2 file:rounded-md file:border file:border-input file:bg-popover file:px-2 file:py-1 file:text-sm file:font-medium" />
                                 {% call button(type="submit", variant="outline", size="sm") %}Upload{% endcall %}
                             </form>
                             <p class="mt-1 text-xs text-muted-foreground">You can add or remove documents until this organization is verified.</p>

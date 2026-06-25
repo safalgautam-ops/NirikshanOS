@@ -75,6 +75,18 @@ async def get_visible_nav_keys(user_id: str) -> list[str] | None:
     return list(allowed)
 
 
+async def user_has_any_role(user_id: str) -> bool:
+    """Whether this user holds at least one system role - the same
+    definition of "staff" already used by the admin Staff page (see
+    staff/repository.py's list_staff docstring). Deliberately not based on
+    whether any of those roles currently grant a permission: a role with
+    zero permissions assigned (e.g. freshly created, or every permission it
+    held got pruned by the registry) still means this is a platform-staff
+    account, not a regular tenant user - they just can't do much yet."""
+    row = await db.table("user_roles").where("user_id", user_id).first()
+    return row is not None
+
+
 async def get_user_permission_names(user_id: str) -> set[str]:
     """Every permission ('resource.action') granted via any role this user holds."""
     rows = await (

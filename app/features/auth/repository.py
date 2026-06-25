@@ -38,6 +38,14 @@ async def set_two_factor_enabled(user_id: str, enabled: bool) -> None:
     await db.table("user").where("id", user_id).patch({"twoFactorEnabled": enabled})
 
 
+async def update_user_name(user_id: str, name: str) -> None:
+    await db.table("user").where("id", user_id).patch({"name": name})
+
+
+async def update_user_image(user_id: str, image_path: str) -> None:
+    await db.table("user").where("id", user_id).patch({"image": image_path})
+
+
 async def create_user_with_password(
     *,
     name: str,

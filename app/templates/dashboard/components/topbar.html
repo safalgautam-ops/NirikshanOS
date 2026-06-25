@@ -7,8 +7,8 @@
 #}
 {% from "components/ui/input.html" import input %}
 {% from "components/ui/theme-toggle.html" import theme_toggle %}
-{% from "components/ui/avatar.html" import avatar, avatar_fallback %}
-{% from "components/ui/menu.html" import menu, menu_trigger, menu_popup %}
+{% from "components/ui/avatar.html" import avatar, avatar_image, avatar_fallback %}
+{% from "components/ui/menu.html" import menu, menu_trigger, menu_popup, menu_item, menu_separator %}
 {% from "macros/csrf.html" import csrf_field %}
 
 {% macro topbar(title) %}
@@ -21,9 +21,21 @@
         {{ theme_toggle() }}
         {% call menu(class="relative inline-block") %}
           {% call menu_trigger(target="#topbar-user-menu") %}
-            {% call avatar() %}{{ avatar_fallback(text="AD") }}{% endcall %}
+            {% call avatar() %}
+              {% if g.current_user_image %}
+              {{ avatar_image(src=url_for('static', filename=g.current_user_image), alt=g.current_user_name or "") }}
+              {% else %}
+              {{ avatar_fallback(text=(g.current_user_name or "?")[:2]|upper) }}
+              {% endif %}
+            {% endcall %}
           {% endcall %}
-          {% call menu_popup(class="absolute right-0 top-full mt-1", attrs={"id": "topbar-user-menu"}) %}
+          {% call menu_popup(class="absolute right-0 top-full mt-1 w-44", attrs={"id": "topbar-user-menu"}) %}
+            {% if g.current_user_name %}
+            <div class="truncate px-2 py-1.5 text-sm font-medium">{{ g.current_user_name }}</div>
+            {{ menu_separator() }}
+            {% endif %}
+            {% call menu_item(href=url_for('auth.settings_connections')) %}Settings{% endcall %}
+            {{ menu_separator() }}
             <form method="post" action="{{ url_for('auth.logout') }}">
               {{ csrf_field() }}
               <button type="submit" class="flex w-full cursor-pointer items-center rounded-sm px-2 py-1.5 text-left text-sm text-destructive transition-colors hover:bg-destructive/10">Log out</button>

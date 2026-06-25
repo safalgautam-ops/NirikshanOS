@@ -12,6 +12,7 @@
 {% from "dashboard/components/sidebar.html" import sidebar %}
 {% from "dashboard/components/topbar.html" import topbar %}
 {% from "components/ui/breadcrumb.html" import breadcrumb_trail %}
+{% from "components/ui/toast.html" import flash %}
 {% from "macros/csrf.html" import csrf_field %}
 
 {% block body %}
@@ -80,15 +81,7 @@
           {% endcall %}
         </div>
 
-        {# Error #}
-        {% if error %}
-          <div class="border-b px-4 py-3">
-            <div class="flex items-center gap-2 rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-              <svg class="size-4 shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-              {{ error }}
-            </div>
-          </div>
-        {% endif %}
+        {{ flash("error", error) }}
 
         {# Form #}
         <div class="min-h-0 flex-1 overflow-y-auto">
@@ -151,12 +144,7 @@
     <div class="grid gap-4 p-2">
       {{ breadcrumb_trail([("Dashboard", "/"), ("Staff", None)]) }}
 
-      {% if error %}
-        <div class="flex items-center gap-2 rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-          <svg class="size-4 shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-          {{ error }}
-        </div>
-      {% endif %}
+      {{ flash("error", error) }}
 
       {# Toolbar #}
       <div class="grid gap-3 lg:grid-cols-[minmax(18rem,26rem)_minmax(1rem,1fr)_auto] md:items-center">

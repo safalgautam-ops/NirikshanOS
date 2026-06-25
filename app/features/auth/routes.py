@@ -21,6 +21,7 @@ from quart import (
     url_for,
 )
 
+from app.core.security.permissions import get_visible_nav_keys
 from app.core.security.sessions import (
     PENDING_2FA_COOKIE,
     SESSION_COOKIE,
@@ -51,6 +52,7 @@ from app.features.auth.service import (
     begin_passkey_registration,
     begin_totp_setup,
     change_own_password,
+    change_password,
     complete_passkey_authentication,
     complete_passkey_registration,
     confirm_totp_setup,
@@ -62,6 +64,7 @@ from app.features.auth.service import (
     register,
     resend_activation,
     reset_password,
+    update_profile,
     verify_2fa,
 )
 
@@ -302,7 +305,7 @@ async def google_callback():
             await link_oauth_account(state_data["user_id"], "google", user_info)
         except AuthError:
             pass
-        return redirect(url_for("auth.settings_connections"))
+        return redirect(url_for("auth.settings_connections", tab="connections"))
 
     try:
         user_id = await oauth_authenticate("google", user_info)
@@ -339,7 +342,7 @@ async def github_callback():
             await link_oauth_account(state_data["user_id"], "github", user_info)
         except AuthError:
             pass
-        return redirect(url_for("auth.settings_connections"))
+        return redirect(url_for("auth.settings_connections", tab="connections"))
 
     try:
         user_id = await oauth_authenticate("github", user_info)
@@ -383,7 +386,7 @@ async def verify_2fa_view():
 async def setup_2fa():
     user = await repository.get_user_by_id(g.user_id)
     if user and user["twoFactorEnabled"]:
-        return redirect(url_for("auth.settings_connections"))
+        return redirect(url_for("auth.settings_connections", tab="security"))
 
     error = None
     if request.method == "POST":
@@ -413,7 +416,7 @@ async def setup_2fa():
 @login_required
 async def disable_2fa():
     await disable_totp(g.user_id)
-    return redirect(url_for("auth.settings_connections"))
+    return redirect(url_for("auth.settings_connections", tab="security"))
 
 
 # ── Passkey registration (settings) ──────────────────────────────────────────
@@ -442,7 +445,7 @@ async def passkey_register_complete():
 @login_required
 async def passkey_delete(passkey_id: str):
     await repository.delete_passkey(passkey_id, g.user_id)
-    return redirect(url_for("auth.settings_connections"))
+    return redirect(url_for("auth.settings_connections", tab="security"))
 
 
 # ── Passkey authentication (login) ────────────────────────────────────────────
@@ -471,17 +474,25 @@ async def passkey_auth_complete():
     return resp
 
 
-# ── Account connections (settings) ───────────────────────────────────────────
+# ── Account settings (profile / security / connections) ─────────────────────
 
 
-@auth_bp.route("/settings/connections")
+@auth_bp.route("/settings")
 @login_required
 async def settings_connections():
+    """One settings page for every user (regular members and system admins
+    alike) - Profile / Security / Connections tabs. Endpoint name kept as
+    settings_connections (its original, connections-only scope) since every
+    redirect elsewhere in this file already references that name via
+    url_for() - renaming it would mean touching every one of those call
+    sites for no behavioral benefit."""
     user = await repository.get_user_by_id(g.user_id)
     accounts = await repository.get_accounts_by_user(g.user_id)
     passkeys = await repository.get_passkeys_by_user(g.user_id)
     two_factor = await repository.get_two_factor(g.user_id)
     connected = {a["providerId"] for a in accounts}
+    has_password = any(a["providerId"] == "credential" for a in accounts)
+    visible_keys = await get_visible_nav_keys(g.user_id)
     return await render_template(
         "auth/settings/connections.html",
         user=user,
@@ -489,9 +500,40 @@ async def settings_connections():
         passkeys=passkeys,
         two_factor=two_factor,
         connected=connected,
+        has_password=has_password,
+        visible_keys=visible_keys,
+        active_tab=request.args.get("tab", "profile"),
         error=request.args.get("error"),
         success=request.args.get("success"),
     )
+
+
+@auth_bp.route("/settings/profile", methods=["POST"])
+@login_required
+async def update_profile_view():
+    form = await request.form
+    files = await request.files
+    try:
+        await update_profile(g.user_id, name=form.get("name", ""), avatar=files.get("avatar"))
+    except AuthError as exc:
+        return redirect(url_for("auth.settings_connections", tab="profile", error=str(exc)))
+    return redirect(url_for("auth.settings_connections", tab="profile", success=1))
+
+
+@auth_bp.route("/settings/password", methods=["POST"])
+@login_required
+async def change_password_settings_view():
+    form = await request.form
+    current_pw = form.get("current_password", "")
+    new_pw = form.get("new_password", "")
+    confirm = form.get("confirm_password", "")
+    if new_pw != confirm:
+        return redirect(url_for("auth.settings_connections", tab="security", error="New passwords do not match."))
+    try:
+        await change_password(g.user_id, current_password=current_pw, new_password=new_pw)
+    except AuthError as exc:
+        return redirect(url_for("auth.settings_connections", tab="security", error=str(exc)))
+    return redirect(url_for("auth.settings_connections", tab="security", success=1))
 
 
 @auth_bp.route("/settings/connect/<provider>")
@@ -511,5 +553,5 @@ async def disconnect_provider_view(provider: str):
     try:
         await disconnect_provider(g.user_id, provider)
     except AuthError as exc:
-        return redirect(url_for("auth.settings_connections") + f"?error={str(exc)}")
-    return redirect(url_for("auth.settings_connections") + "?success=1")
+        return redirect(url_for("auth.settings_connections", tab="connections", error=str(exc)))
+    return redirect(url_for("auth.settings_connections", tab="connections", success=1))

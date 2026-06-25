@@ -31,13 +31,17 @@ async def get_users_page(*, search: str, role_id: str, status: str, page: int):
     return result
 
 
-async def toggle_user_active(user_id: str, is_active: bool) -> None:
+async def toggle_user_active(user_id: str, is_active: bool, *, requested_by: str) -> None:
+    if user_id == requested_by:
+        raise UserError("You can't deactivate your own account.")
     await repository.set_user_active(user_id, is_active)
 
 
 async def update_user_roles(
     user_id: str, role_ids: list[str], assigned_by: str
 ) -> None:
+    if user_id == assigned_by:
+        raise UserError("You can't change your own role assignments.")
     await repository.replace_user_roles(user_id, role_ids, assigned_by)
 
 

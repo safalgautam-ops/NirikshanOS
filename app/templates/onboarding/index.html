@@ -5,6 +5,7 @@
 {% from "components/ui/textarea.html" import textarea %}
 {% from "components/ui/button.html" import button %}
 {% from "components/ui/tabs.html" import tabs, tabs_list, tabs_tab, tabs_panel %}
+{% from "components/ui/toast.html" import flash %}
 {% from "macros/csrf.html" import csrf_field %}
 
 {% block title %}Set up your organization - NirikshanOS{% endblock %}
@@ -20,11 +21,7 @@
       </p>
     </div>
 
-    {% if error %}
-    <div class="rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-      {{ error }}
-    </div>
-    {% endif %}
+    {{ flash("error", error) }}
 
     {% call card() %}
       {% call card_panel(class="p-6 md:p-8") %}
@@ -63,7 +60,7 @@
                   {% endcall %}
                   {% call field() %}
                     {{ field_label("Logo (optional)", for_id="org-logo") }}
-                    {{ input(type="file", name="logo", attrs={"id": "org-logo", "accept": "image/png,image/jpeg,image/webp,image/svg+xml"}) }}
+                    {{ input(type="file", name="logo", attrs={"id": "org-logo", "accept": "image/png,image/jpeg,image/webp,image/svg+xml", "data-max-size-bytes": "10485760", "data-max-size-label": "10MB"}) }}
                   {% endcall %}
                   {% call field() %}
                     {{ field_label("Description (optional)", for_id="org-description") }}
@@ -156,7 +153,7 @@
                   {% endcall %}
                   {% call field() %}
                     {{ field_label("Official government documents", for_id="org-documents") }}
-                    {{ input(type="file", name="documents", required=True, attrs={"id": "org-documents", "multiple": "true", "accept": "application/pdf,image/png,image/jpeg", "data-required": "true"}) }}
+                    {{ input(type="file", name="documents", required=True, attrs={"id": "org-documents", "multiple": "true", "accept": "application/pdf,image/png,image/jpeg", "data-required": "true", "data-max-size-bytes": "26214400", "data-max-size-label": "25MB"}) }}
                     <p class="text-xs text-muted-foreground">Registration certificate, PAN card, or owner ID. PDF, PNG, or JPG.</p>
                   {% endcall %}
                   <div class="flex gap-2">

@@ -57,7 +57,10 @@ async def update_status(user_id: str):
 async def update_roles(user_id: str):
     form = await request.form
     role_ids = form.getlist("role_ids")
-    await update_user_roles(user_id, role_ids, assigned_by=g.user_id)
+    try:
+        await update_user_roles(user_id, role_ids, assigned_by=g.user_id)
+    except UserError as exc:
+        return redirect(url_for("users.list_view", error=str(exc)))
     return redirect(url_for("users.list_view"))
 
 
@@ -68,7 +71,10 @@ async def update_view(user_id: str):
     if "status" in form:
         status = form.get("status")
         is_active = status == "active"
-        await toggle_user_active(user_id, is_active)
+        try:
+            await toggle_user_active(user_id, is_active, requested_by=g.user_id)
+        except UserError as exc:
+            return redirect(url_for("users.list_view", error=str(exc)))
     return redirect(url_for("users.list_view"))
 
 

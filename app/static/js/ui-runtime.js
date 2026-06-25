@@ -112,6 +112,23 @@
         panel.dataset.state = selected ? "active" : "inactive";
       });
       moveTabIndicator(tab);
+
+      // Opt-in hook for pages with one floating save button shared across
+      // several tab-scoped forms (e.g. onboarding/roles/edit.html) instead
+      // of a separate submit button per tab. A tab with no data-save-form
+      // attribute at all leaves the button untouched - most tabs elsewhere
+      // in the app have no such button to manage.
+      if (tab.dataset.saveForm !== undefined) {
+        const saveButton = document.querySelector("[data-global-save-button]");
+        if (saveButton) {
+          if (tab.dataset.saveForm) {
+            saveButton.setAttribute("form", tab.dataset.saveForm);
+            saveButton.hidden = false;
+          } else {
+            saveButton.hidden = true;
+          }
+        }
+      }
     }
 
     root.addEventListener("click", (event) => {

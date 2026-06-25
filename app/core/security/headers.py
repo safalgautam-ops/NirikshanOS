@@ -11,9 +11,12 @@ BASE_SECURITY_HEADERS = {
 # CSP is a security policy that prevents loading resources from other origins.
 # default-src 'self' means only resources from the same origin are allowed by
 # default; style-src allows 'unsafe-inline' for inline style="" attributes
-# (e.g. dynamic progress bar widths). Production keeps script-src at the
-# strict default-src 'self' - no third-party script origins, ever.
-PRODUCTION_CSP = "default-src 'self'; style-src 'self' 'unsafe-inline'"
+# (e.g. dynamic progress bar widths). img-src adds data: on top of 'self' -
+# without it, default-src's 'self' silently blocks data: URIs, which is how
+# the TOTP setup page embeds its QR code (no origin to fetch it from, it's
+# generated server-side and inlined directly). Production keeps script-src at
+# the strict default-src 'self' - no third-party script origins, ever.
+PRODUCTION_CSP = "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:"
 
 # Dev-only: layouts/base.html loads @tailwindcss/browser from jsdelivr when
 # debug=True (live-compiles input.css in the browser - see templating.py's
@@ -25,7 +28,7 @@ PRODUCTION_CSP = "default-src 'self'; style-src 'self' 'unsafe-inline'"
 # This meaningfully weakens CSP's main XSS protection, which is exactly why
 # it's gated to QUART_DEBUG and never applied in production.
 DEV_CSP = (
-    "default-src 'self'; style-src 'self' 'unsafe-inline'; "
+    "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; "
     "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://cdn.jsdelivr.net"
 )
 

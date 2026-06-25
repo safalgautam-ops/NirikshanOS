@@ -70,14 +70,14 @@ def create_app() -> Quart:
         if g.must_change_password and request.endpoint not in _PASSWORD_GATE_EXEMPT:
             return redirect(url_for("auth.change_password_view"))
 
-    # Self-registered users (no role permissions, no organization yet) see
-    # the normal dashboard, but every route except Dashboard/Organization is
-    # locked (sidebar shows a lock icon - see sidebar.html) until they create
-    # or join an organization. A direct hit on a locked URL bounces back to
-    # the dashboard rather than a dedicated onboarding page - there isn't one
-    # anymore, the Organization nav item *is* the onboarding page now.
+    # Self-registered users (no role permissions, no organization yet) get
+    # routed straight to the create-or-join page on login/register, not the
+    # dashboard - Dashboard itself is locked along with everything else
+    # until they create or join an organization (sidebar shows a lock icon -
+    # see sidebar.html). A direct hit on any locked URL, including "/",
+    # bounces to onboarding rather than a dashboard there's nothing to do on
+    # yet.
     _ORG_GATE_EXEMPT = {
-        "dashboard",
         "onboarding.index",
         "onboarding.create_view",
         "onboarding.join_view",
@@ -95,6 +95,22 @@ def create_app() -> Quart:
         # in a pending/rejected org with no way out.
         "onboarding.leave_view",
         "onboarding.transfer_ownership_view",
+        # Account settings (profile, password, 2FA, passkeys, connected
+        # providers) are personal to the user, not tied to organization
+        # membership - every account needs access to these regardless of
+        # onboarding state, the same way logout always works.
+        "auth.settings_connections",
+        "auth.update_profile_view",
+        "auth.change_password_settings_view",
+        "auth.setup_2fa",
+        "auth.disable_2fa",
+        "auth.passkey_register_begin",
+        "auth.passkey_register_complete",
+        "auth.passkey_delete",
+        "auth.connect_provider",
+        "auth.disconnect_provider_view",
+        "auth.google_callback",
+        "auth.github_callback",
         "auth.logout",
         "static",
         None,
@@ -107,7 +123,7 @@ def create_app() -> Quart:
         if request.endpoint in _ORG_GATE_EXEMPT:
             return
         if await needs_organization_onboarding(g.user_id):
-            return redirect(url_for("dashboard"))
+            return redirect(url_for("onboarding.index"))
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(users_bp)

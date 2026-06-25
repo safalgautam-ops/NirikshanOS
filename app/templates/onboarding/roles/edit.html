@@ -9,6 +9,7 @@
 {% import "components/ui/field.html" as field %}
 {% from "components/ui/command.html" import command_input %}
 {% from "dashboard/components/sidebar.html" import sidebar %}
+{% from "components/ui/toast.html" import flash %}
 {% from "macros/csrf.html" import csrf_field %}
 
 {% block title %}{{ role.name }} - Organization Roles - NirikshanOS{% endblock %}
@@ -28,17 +29,16 @@
             {% call button.button(variant="outline", size="icon", type="submit", attrs={"aria-label": "Create new role"}) %}+{% endcall %}
         </form>
         <h1 class="text-lg font-semibold">Role settings</h1>
+        {% set save_form_id = {"display": "role-display-form", "permissions": "role-permissions-form", "sidebar": "role-sidebar-form"}.get(active_tab) %}
         <div class="ml-auto">
-            <button type="submit" form="role-display-form" class="inline-flex size-9 items-center justify-center rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors" aria-label="Save display settings">
+            <button type="submit" form="{{ save_form_id or 'role-display-form' }}" data-global-save-button {% if not save_form_id %}hidden{% endif %} class="inline-flex size-9 items-center justify-center rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors" aria-label="Save">
                 <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z"/><path d="M17 21v-8H7v8M7 3v5h8"/></svg>
             </button>
         </div>
     </header>
 
     <main class="flex-1 p-4 md:p-6">
-        {% if error %}
-        <div class="mb-4 flex items-center gap-2 rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">{{ error }}</div>
-        {% endif %}
+        {{ flash("error", error) }}
 
         <div class="flex gap-6">
             <aside class="w-56 shrink-0 space-y-1">
@@ -54,10 +54,10 @@
             <div class="min-w-0 flex-1">
                 {% call tabs_ui.tabs() %}
                 {% call tabs_ui.tabs_list() %}
-                    {% call tabs_ui.tabs_tab(value="display", active=(active_tab == "display")) %}Display{% endcall %}
-                    {% call tabs_ui.tabs_tab(value="permissions", active=(active_tab == "permissions")) %}Permissions{% endcall %}
-                    {% call tabs_ui.tabs_tab(value="sidebar", active=(active_tab == "sidebar")) %}Sidebar{% endcall %}
-                    {% call tabs_ui.tabs_tab(value="members", active=(active_tab == "members")) %}Members ({{ members|length }}){% endcall %}
+                    {% call tabs_ui.tabs_tab(value="display", active=(active_tab == "display"), attrs={"data-save-form": "role-display-form"}) %}Display{% endcall %}
+                    {% call tabs_ui.tabs_tab(value="permissions", active=(active_tab == "permissions"), attrs={"data-save-form": "role-permissions-form"}) %}Permissions{% endcall %}
+                    {% call tabs_ui.tabs_tab(value="sidebar", active=(active_tab == "sidebar"), attrs={"data-save-form": "role-sidebar-form"}) %}Sidebar{% endcall %}
+                    {% call tabs_ui.tabs_tab(value="members", active=(active_tab == "members"), attrs={"data-save-form": ""}) %}Members ({{ members|length }}){% endcall %}
                 {% endcall %}
 
                 {% call tabs_ui.tabs_panel(value="display", active=(active_tab == "display"), class="max-w-lg") %}
@@ -91,7 +91,7 @@
                 {% call tabs_ui.tabs_panel(value="permissions", active=(active_tab == "permissions"), class="max-w-2xl space-y-4") %}
                 <div data-slot="command">
                     {{ command_input(placeholder="Search permissions...") }}
-                    <form method="post" action="{{ url_for('onboarding.org_roles_update_permissions', role_id=role.id) }}" class="mt-4 space-y-6">
+                    <form id="role-permissions-form" method="post" action="{{ url_for('onboarding.org_roles_update_permissions', role_id=role.id) }}" class="mt-4 space-y-6">
                         {{ csrf_field() }}
                         {% call accordion_ui.accordion() %}
                         {% for category, perms in permission_groups %}
@@ -114,14 +114,13 @@
                         {% endcall %}
                         {% endfor %}
                         {% endcall %}
-                        {% call button.button(type="submit") %}Save permissions{% endcall %}
                     </form>
                 </div>
                 {% endcall %}
 
                 {% call tabs_ui.tabs_panel(value="sidebar", active=(active_tab == "sidebar"), class="max-w-md space-y-4") %}
                 <p class="text-sm text-muted-foreground">Choose which pages members with this role can see.</p>
-                <form method="post" action="{{ url_for('onboarding.org_roles_update_sidebar', role_id=role.id) }}" class="space-y-3">
+                <form id="role-sidebar-form" method="post" action="{{ url_for('onboarding.org_roles_update_sidebar', role_id=role.id) }}" class="space-y-3">
                     {{ csrf_field() }}
                     <div class="flex flex-col gap-2">
                         {% for key, label in nav_keys %}
@@ -130,7 +129,6 @@
                         </label>
                         {% endfor %}
                     </div>
-                    {% call button.button(type="submit") %}Save sidebar{% endcall %}
                 </form>
                 {% endcall %}
 

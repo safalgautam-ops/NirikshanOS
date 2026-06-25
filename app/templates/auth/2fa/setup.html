@@ -3,6 +3,7 @@
 {% from "components/ui/field.html" import field_group, field, field_label, field_description %}
 {% from "components/ui/input.html" import input %}
 {% from "components/ui/button.html" import button %}
+{% from "components/ui/toast.html" import flash %}
 {% from "macros/csrf.html" import csrf_field %}
 
 {% block title %}Set up 2FA - NirikshanOS{% endblock %}
@@ -20,11 +21,7 @@
               <p class="text-sm text-muted-foreground">Scan the QR code with your authenticator app (Google Authenticator, Authy, 1Password, etc.), then enter the 6-digit code to confirm.</p>
             </div>
 
-            {% if error %}
-            <div class="rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-              {{ error }}
-            </div>
-            {% endif %}
+            {{ flash("error", error) }}
 
             <div class="flex justify-center rounded-lg border bg-white p-4">
               <img src="data:image/png;base64,{{ qr }}" alt="TOTP QR code" class="h-48 w-48" />
@@ -48,7 +45,7 @@
             {% endcall %}
 
             <p class="text-center text-sm text-muted-foreground">
-              <a class="underline underline-offset-4 hover:text-foreground" href="{{ url_for('auth.settings_connections') }}">Cancel</a>
+              <a class="underline underline-offset-4 hover:text-foreground" href="{{ url_for('auth.settings_connections', tab='security') }}">Cancel</a>
             </p>
           {% endcall %}
         </form>

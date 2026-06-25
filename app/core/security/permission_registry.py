@@ -43,7 +43,19 @@ def all_permissions() -> list[Permission]:
 async def sync_to_db() -> None:
     """Upsert every registered permission into the DB, and grant each one to
     System Admin — keeps that role's "gets everything" guarantee true as new
-    permissions get added in code, without ever needing a manual migration."""
+    permissions get added in code, without ever needing a manual migration.
+
+    Also deletes any `permissions` row whose (resource, action) is no longer
+    registered in code - otherwise a permission removed from a feature (or,
+    historically, one seeded directly by a migration for a feature that was
+    never built) lingers in the DB forever as a "fake" permission nothing
+    actually enforces, just because nothing ever deletes stale rows."""
+    registered = {(p.resource, p.action) for p in all_permissions()}
+    existing = await db.table("permissions").all(allow_full_table=True)
+    for row in existing:
+        if (row["resource"], row["action"]) not in registered:
+            await db.table("permissions").where("id", row["id"]).delete()
+
     system_admin = await db.table("roles").where("name", "System Admin").first()
 
     for permission in all_permissions():

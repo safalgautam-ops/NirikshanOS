@@ -13,7 +13,7 @@ from app.core.security.org_permissions import (
     is_org_owner,
     require_org_permission,
 )
-from app.core.security.permissions import get_user_permission_names, get_visible_nav_keys
+from app.core.security.permissions import get_visible_nav_keys, user_has_any_role
 from app.core.security.sessions import login_required
 from app.features.onboarding.permissions import (
     ORG_ROLE_CREATE,
@@ -61,12 +61,13 @@ onboarding_bp = Blueprint("onboarding", __name__, url_prefix="/onboarding")
 @onboarding_bp.before_request
 async def _block_platform_staff() -> None:
     """Organization create/join/staff/role self-service is for regular,
-    tenant-side users only. Platform staff (anyone holding a system
-    permission - see permissions.py) already manage every organization from
+    tenant-side users only. Platform staff (anyone holding a system role -
+    see permissions.py) already manage every organization from
     /admin/organizations; they must never become a tenant member through
     their own platform identity, so this entire blueprint doesn't exist for
-    them."""
-    if g.user_id is not None and await get_user_permission_names(g.user_id):
+    them. Checked by role membership, not by granted permissions - a staff
+    role with zero permissions assigned is still staff."""
+    if g.user_id is not None and await user_has_any_role(g.user_id):
         return redirect(url_for("dashboard"))
 
 
@@ -154,7 +155,7 @@ async def create_view():
         )
     except OnboardingError as exc:
         return redirect(url_for("onboarding.index", error=str(exc)))
-    return redirect(url_for("dashboard"))
+    return redirect(url_for("onboarding.index"))
 
 
 @onboarding_bp.route("/join", methods=["GET", "POST"])
@@ -174,7 +175,7 @@ async def join_view():
         await join_by_code(code=form.get("code", ""), user_id=g.user_id)
     except OnboardingError as exc:
         return redirect(url_for("onboarding.index", error=str(exc), code=form.get("code", "")))
-    return redirect(url_for("dashboard"))
+    return redirect(url_for("onboarding.index"))
 
 
 @onboarding_bp.route("/invite/regenerate", methods=["POST"])

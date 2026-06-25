@@ -26,10 +26,15 @@ class Config:
 
     REDIS_URL = os.environ.get("REDIS_URL", "redis://127.0.0.1:6379/0")
 
-    # Caps any single request body (e.g. the org-onboarding logo/document
-    # uploads in app/core/storage.py) - Quart reads this straight off
-    # app.config, no extra wiring needed.
-    MAX_CONTENT_LENGTH = 10 * 1024 * 1024  # 10 MB
+    # Outer ceiling for any single request body - Quart reads this straight
+    # off app.config, no extra wiring needed. This platform handles large
+    # forensic evidence (disk/memory images can run 30-100GB), so this just
+    # has to not be the bottleneck; it matches nginx's client_max_body_size
+    # (see docker/nginx/nginx.conf). The real, much smaller limits for
+    # today's actual upload features (org logo/documents) are enforced in
+    # app/core/storage.py - a future large-file feature (evidence uploads)
+    # would enforce its own larger limit the same way, not by raising this.
+    MAX_CONTENT_LENGTH = 100 * 1024 * 1024 * 1024  # 100 GB
 
     APP_URL = os.environ.get("APP_URL", "http://localhost:8000")
 

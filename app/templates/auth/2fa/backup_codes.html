@@ -25,7 +25,7 @@
           </div>
 
           {% call field() %}
-            {% call button_link(href=url_for('auth.settings_connections'), class="w-full") %}I've saved these codes{% endcall %}
+            {% call button_link(href=url_for('auth.settings_connections', tab='security'), class="w-full") %}I've saved these codes{% endcall %}
           {% endcall %}
         {% endcall %}
       {% endcall %}

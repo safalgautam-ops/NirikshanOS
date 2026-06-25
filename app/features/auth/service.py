@@ -6,6 +6,9 @@ Routes call these functions and react to the exceptions they raise.
 
 from __future__ import annotations
 
+from werkzeug.datastructures import FileStorage
+
+from app.core import storage
 from app.core.utils.passwords import hash_password, verify_password
 from app.features.auth import passkey as pk_module
 from app.features.auth import repository
@@ -157,6 +160,36 @@ async def change_own_password(user_id: str, new_password: str) -> None:
     so no code/old-password is required here)."""
     await repository.update_credential_password(user_id, hash_password(new_password))
     await repository.clear_must_change_password(user_id)
+
+
+async def change_password(user_id: str, *, current_password: str, new_password: str) -> None:
+    """Voluntary password change from the settings page - unlike
+    change_own_password() above, this one isn't already-proven-by-login, so
+    it requires the current password before accepting a new one."""
+    pw_hash = await repository.get_credential_password_hash(user_id)
+    if not pw_hash:
+        raise AuthError("This account doesn't have a password set - sign in with your connected provider instead.")
+    if not verify_password(pw_hash, current_password):
+        raise AuthError("Current password is incorrect.")
+    if len(new_password) < 8:
+        raise AuthError("New password must be at least 8 characters.")
+    await repository.update_credential_password(user_id, hash_password(new_password))
+
+
+# ── Profile ───────────────────────────────────────────────────────────────────
+
+
+async def update_profile(user_id: str, *, name: str, avatar: FileStorage | None) -> None:
+    name = name.strip()
+    if not name:
+        raise AuthError("Name is required.")
+    await repository.update_user_name(user_id, name)
+    if avatar and avatar.filename:
+        old_user = await repository.get_user_by_id(user_id)
+        image_path = await storage.save_avatar(avatar)
+        await repository.update_user_image(user_id, image_path)
+        if old_user and old_user["image"] and old_user["image"].startswith("uploads/avatars/"):
+            storage.delete_file(old_user["image"])
 
 
 # ── OAuth ─────────────────────────────────────────────────────────────────────

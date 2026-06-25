@@ -424,7 +424,11 @@ async def search_org_assignable_users(org_id: str, role_id: str, search: str) ->
     other_members = await (
         db.table("organization_members")
         .where("organization_id", org_id)
-        .where("role_id", role_id, op="!=")
+        # role_id IS NULL for most members (nobody's assigned them a role
+        # yet) - a plain `!= role_id` silently drops those rows, since SQL
+        # NULL != anything is UNKNOWN, not TRUE. Has to be spelled out as an
+        # explicit OR so members with no role still show up as assignable.
+        .or_where([("role_id", None), ("role_id", "!=", role_id)])
         .select("user_id")
         .all(allow_full_table=True)
     )

@@ -31,7 +31,7 @@ from quart import Quart, Response, g, redirect, request, url_for
 from app.core.db.orm import db, raw_sql  # the query builder + safe raw-SQL wrapper
 from app.core.security.organization_gate import needs_organization_onboarding
 from app.core.security.org_permissions import get_org_visible_nav_keys
-from app.core.security.permissions import get_user_permission_names
+from app.core.security.permissions import user_has_any_role
 from app.core.utils.ids import new_id  # generates unique ids for new rows
 
 SESSION_COOKIE = "session_token"  # the name of the cookie we store the token in
@@ -133,15 +133,30 @@ def apply_session_loader(app: Quart) -> None:
         g.org_locked = False
         g.org_nav_keys = []
         g.is_platform_staff = False
+        g.current_user_name = None
+        g.current_user_image = None
         if g.user_id is not None:
-            user = await db.table("user").where("id", g.user_id).select("must_change_password").first()
+            user = (
+                await db.table("user")
+                .where("id", g.user_id)
+                .select("must_change_password", "name", "image")
+                .first()
+            )
             g.must_change_password = bool(user and user["must_change_password"])
-            # Holds any system permission - platform staff. Drives the
+            # Display-only fields the topbar's user menu reads directly
+            # (g is injected into every template context) - avoids every
+            # route that renders the topbar needing to fetch and pass the
+            # user explicitly, same rationale as g.org_locked below.
+            g.current_user_name = user["name"] if user else None
+            g.current_user_image = user["image"] if user else None
+            # Holds any system role - platform staff. Drives the
             # sidebar: staff never see organization onboarding UI at all (see
             # sidebar.html and onboarding/routes.py's blueprint guard), since
             # they manage every org from /admin/organizations instead of
-            # being a tenant member themselves.
-            g.is_platform_staff = bool(await get_user_permission_names(g.user_id))
+            # being a tenant member themselves. Checked by role membership,
+            # not by whether any granted permission currently exists - a
+            # staff role with zero permissions assigned is still staff.
+            g.is_platform_staff = await user_has_any_role(g.user_id)
             # Drives the sidebar's lock icons - templates read g.org_locked
             # directly (Quart injects g into every template context).
             g.org_locked = await needs_organization_onboarding(g.user_id)

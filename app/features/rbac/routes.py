@@ -116,7 +116,10 @@ async def add_member(role_id: str):
 @rbac_bp.route("/<role_id>/members/<user_id>/remove", methods=["POST"])
 @require_permission(ROLE_EDIT)
 async def remove_member(role_id: str, user_id: str):
-    await service.remove_member(role_id, user_id)
+    try:
+        await service.remove_member(role_id, user_id, requested_by=g.user_id)
+    except RBACError as exc:
+        return redirect(url_for("rbac.edit_view", role_id=role_id, tab="members", error=str(exc)))
     return redirect(url_for("rbac.edit_view", role_id=role_id, tab="members"))
 
 

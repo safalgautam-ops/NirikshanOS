@@ -3,6 +3,7 @@
 {% from "components/ui/field.html" import field_group, field, field_label %}
 {% from "components/ui/input.html" import input %}
 {% from "components/ui/button.html" import button %}
+{% from "components/ui/toast.html" import flash %}
 {% from "macros/csrf.html" import csrf_field %}
 
 {% block title %}Activate account - NirikshanOS{% endblock %}
@@ -23,17 +24,8 @@
               </p>
             </div>
 
-            {% if resent %}
-            <div class="rounded-md border border-green-500/50 bg-green-500/10 px-3 py-2 text-sm text-green-700 dark:text-green-400">
-              A new code has been sent.
-            </div>
-            {% endif %}
-
-            {% if error %}
-            <div class="rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-              {{ error }}
-            </div>
-            {% endif %}
+            {{ flash("success", "A new code has been sent." if resent else None) }}
+            {{ flash("error", error) }}
 
             <input type="hidden" name="email" value="{{ email }}" />
 

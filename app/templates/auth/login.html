@@ -2,7 +2,8 @@
 card_panel %} {% from "components/ui/field.html" import field_group, field,
 field_label %} {% from "components/ui/input.html" import input %} {% from
 "components/ui/button.html" import button %} {% from
-"components/ui/separator.html" import separator %} {% from "macros/csrf.html"
+"components/ui/separator.html" import separator %} {% from
+"components/ui/toast.html" import flash %} {% from "macros/csrf.html"
 import csrf_field %} {% block title %}Login - NirikshanOS{% endblock %} {% block
 body %}
 <div class="flex min-h-screen items-center justify-center p-6">
@@ -118,13 +119,8 @@ body %}
                     type="hidden"
                     name="next"
                     value="{{ next_url }}"
-                />{% endif %} {% call field_group() %} {% if error %}
-                <div
-                    class="rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive"
-                >
-                    {{ error }}
-                </div>
-                {% endif %} {% call field() %} {{ field_label("Email",
+                />{% endif %} {% call field_group() %} {{ flash("error", error) }}
+                {% call field() %} {{ field_label("Email",
                 for_id="email") }} {{ input(name="email", type="email",
                 placeholder="m@example.com", required=True, attrs={"id":
                 "email"}) }} {% endcall %} {% call field() %}

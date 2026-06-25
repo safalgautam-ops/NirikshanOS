@@ -8,6 +8,7 @@ dialog %} {% from "dashboard/components/sidebar.html" import sidebar %} {% from
 "dashboard/components/topbar.html" import topbar %} {% from
 "components/ui/breadcrumb.html" import breadcrumb_trail %} {% from
 "components/ui/table-pagination.html" import table_pagination %} {% from
+"components/ui/toast.html" import flash %} {% from
 "macros/csrf.html" import csrf_field %} {% macro lock_icon() %}<svg
     class="size-3.5 shrink-0 text-muted-foreground"
     xmlns="http://www.w3.org/2000/svg"
@@ -84,27 +85,7 @@ visible_keys=visible_keys) }}
                 </form>
             </div>
 
-            {# Error #} {% if error %}
-            <div
-                class="flex items-center gap-2 rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
-            >
-                <svg
-                    class="size-4 shrink-0"
-                    xmlns="http://www.w3.org/2000/svg"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                >
-                    <circle cx="12" cy="12" r="10" />
-                    <line x1="12" y1="8" x2="12" y2="12" />
-                    <line x1="12" y1="16" x2="12.01" y2="16" />
-                </svg>
-                {{ error }}
-            </div>
-            {% endif %} {# Table #} {% call frame.frame() %} {% call
+            {{ flash("error", error) }} {# Table #} {% call frame.frame() %} {% call
             table.table(variant="card") %} {% call table.table_header() %} {%
             call table.table_row() %} {{ table.table_head("", class="w-9") }} {{
             table.table_head("Staff Roles — " ~ page.total) }} {{

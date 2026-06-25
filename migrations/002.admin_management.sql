@@ -60,6 +60,15 @@ INSERT INTO `roles` (`id`, `name`, `description`, `priority`, `is_system`, `is_d
   (UUID(), 'Application Staff',  'Internal staff access',                              100,  false, false, '#3b82f6'),
   (UUID(), 'Member',             'Default role granted to new users',                  0,    false, true,  '#22c55e');
 
+-- Only seeds permissions for features that actually exist and enforce them
+-- (see app/core/security/permission_registry.py) - every other feature's
+-- permissions self-register from its own permissions.py at app startup, and
+-- sync_to_db() removes any DB row that isn't backed by a real registration.
+-- (case/evidence/analysis/report/audit permissions used to be seeded here
+-- too, for features that were never built - nothing in code ever enforced
+-- them, so System Admin's permission list showed capabilities that didn't
+-- exist. Removed rather than left as dead rows for a feature to "claim"
+-- later - whoever builds that feature should declare its own permissions.)
 INSERT INTO `permissions` (`id`, `resource`, `action`, `category`, `description`) VALUES
   (UUID(), 'user',         'view',   'User Management',         'View users'),
   (UUID(), 'user',         'edit',   'User Management',         'Edit users'),
@@ -71,18 +80,7 @@ INSERT INTO `permissions` (`id`, `resource`, `action`, `category`, `description`
   (UUID(), 'role',         'view',   'Roles & Permissions',     'View roles'),
   (UUID(), 'role',         'create', 'Roles & Permissions',     'Create roles'),
   (UUID(), 'role',         'edit',   'Roles & Permissions',     'Edit roles'),
-  (UUID(), 'role',         'delete', 'Roles & Permissions',     'Delete roles'),
-  (UUID(), 'case',         'view',   'Case Management',         'View cases'),
-  (UUID(), 'case',         'create', 'Case Management',         'Create cases'),
-  (UUID(), 'case',         'edit',   'Case Management',         'Edit cases'),
-  (UUID(), 'case',         'delete', 'Case Management',         'Delete cases'),
-  (UUID(), 'evidence',     'view',   'Evidence',                'View evidence'),
-  (UUID(), 'evidence',     'upload', 'Evidence',                'Upload evidence'),
-  (UUID(), 'evidence',     'delete', 'Evidence',                'Delete evidence'),
-  (UUID(), 'analysis',     'run',    'Analysis',                'Run analyzers'),
-  (UUID(), 'report',       'view',   'Reports',                 'View reports'),
-  (UUID(), 'report',       'create', 'Reports',                 'Create reports'),
-  (UUID(), 'audit',        'view',   'Audit',                   'View audit logs');
+  (UUID(), 'role',         'delete', 'Roles & Permissions',     'Delete roles');
 
 -- System Admin gets every permission.
 INSERT INTO `role_permissions` (`role_id`, `permission_id`)

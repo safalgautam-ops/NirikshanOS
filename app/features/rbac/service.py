@@ -133,5 +133,7 @@ async def add_member(role_id: str, user_id: str, assigned_by: str) -> None:
     await repository.add_member(role_id, user_id, assigned_by)
 
 
-async def remove_member(role_id: str, user_id: str) -> None:
+async def remove_member(role_id: str, user_id: str, *, requested_by: str) -> None:
+    if user_id == requested_by:
+        raise RBACError("You can't remove yourself from a role.")
     await repository.remove_member(role_id, user_id)

@@ -9,6 +9,7 @@ as dialog %} {% from
 "dashboard/components/topbar.html" import topbar %} {% from
 "components/ui/breadcrumb.html" import breadcrumb_trail %} {% from
 "components/ui/table-pagination.html" import table_pagination %} {% from
+"components/ui/toast.html" import flash %} {% from
 "macros/csrf.html" import csrf_field %}
 {% set cancel_classes = "relative inline-flex h-9 shrink-0 cursor-pointer items-center justify-center gap-2 whitespace-nowrap rounded-lg border border-input bg-popover px-[calc(--spacing(3)-1px)] text-sm text-foreground shadow-xs/5 outline-none transition-shadow hover:bg-accent/50 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-64 sm:h-8" %}
 {% block body %} {{ sidebar(active="admin_users",
@@ -19,9 +20,7 @@ visible_keys=visible_keys) }}
     <main class="flex-1 p-4 md:p-6">
         {{ breadcrumb_trail([("Dashboard", "/"), ("Users", None)]) }}
 
-        {% if error %}
-        <div class="mb-4 rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">{{ error }}</div>
-        {% endif %}
+        {{ flash("error", error) }}
 
         <div class="grid gap-4 p-2">
             {# Filter toolbar #}

@@ -78,6 +78,20 @@ removes `.dark` if the user explicitly chose light. #}
             defer
             src="{{ url_for('static', filename='js/ui-runtime.js') }}"
         ></script>
+        {# Toast notifications - replaces inline error/success banners
+        across the app. See app/static/js/toast-runtime.js and
+        components/ui/toast.html's flash() macro. #}
+        <script
+            defer
+            src="{{ url_for('static', filename='js/toast-runtime.js') }}"
+        ></script>
+        {# Client-side mirror of the upload size limits enforced in
+        app/core/storage.py - rejects oversized files before they upload,
+        via the same toast system above. See app/static/js/file-validate.js. #}
+        <script
+            defer
+            src="{{ url_for('static', filename='js/file-validate.js') }}"
+        ></script>
     </head>
     <body class="min-h-screen bg-background text-foreground antialiased">
         {% block body %}{% endblock %}

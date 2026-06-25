@@ -6,6 +6,7 @@
 {% from "dashboard/components/sidebar.html" import sidebar %}
 {% from "dashboard/components/topbar.html" import topbar %}
 {% from "components/ui/breadcrumb.html" import breadcrumb_trail %}
+{% from "components/ui/toast.html" import flash %}
 {% from "macros/csrf.html" import csrf_field %}
 
 {% block title %}Organization Staff - NirikshanOS{% endblock %}
@@ -21,9 +22,7 @@
         {{ breadcrumb_trail([("Dashboard", "/"), ("Organization Staff", None)]) }}
 
         <div class="grid gap-4 p-3">
-            {% if error %}
-            <div class="flex items-center gap-2 rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">{{ error }}</div>
-            {% endif %}
+            {{ flash("error", error) }}
 
             <p class="text-sm text-muted-foreground">
                 Manage who belongs to this organization. Role assignment happens from
