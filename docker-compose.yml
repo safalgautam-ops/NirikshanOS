@@ -21,12 +21,14 @@ services:
       - .:/app
     env_file:
       - .env
-    # Waits for MySQL/Redis to report healthy, not just "started", before
-    # the app's startup hook tries to connect.
+    # Waits for MySQL/Redis/MinIO to report healthy, not just "started",
+    # before the app's startup hook tries to connect.
     depends_on:
       mysql:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      minio:
         condition: service_healthy
 
   # Background job processor - separate container so a slow/crashed
@@ -45,6 +47,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      minio:
+        condition: service_healthy
 
   mysql:
     image: mysql:8.0
@@ -58,7 +62,17 @@ services:
       - mysql_data:/var/lib/mysql
     # Lets `depends_on: condition: service_healthy` work for web/worker.
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD}"]
+      test:
+        [
+          "CMD",
+          "mysqladmin",
+          "ping",
+          "-h",
+          "localhost",
+          "-u",
+          "root",
+          "-p${MYSQL_ROOT_PASSWORD}",
+        ]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -71,5 +85,49 @@ services:
       timeout: 5s
       retries: 10
 
+  # evidence all live here (MinIO -- a storage server that exactly behaves like Amazon s3)
+  # now instead of on local disk for storing user avatars, organization logos, documents, and case evidence.
+  # (app/core/object_storage.py). Web console at http://localhost:9001.
+  minio:
+    image: minio/minio:latest # use the official MinIO program
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY} # admin username
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY} # admin password
+    command: server /data --console-address ":9001" # start the server, store the files in /data
+    ports:
+      - "9000:9000" # the API other programs talk to (S3 protocol)
+      - "9001:9001" # a web page you can open in a browser to manage files
+    volumes:
+      - minio_data:/data # keeps files saved even if the container restarts
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"] # is MinIO actually ready?
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped # auto-restarts if it crashes
+
+  # a bucket is the top-level folder/container for files.
+  # this service creates two buckets and then exits
+  # public one (logo, avatars) is set to anonymous download so anyone can view those images without logging in
+  # private one (case evidence, documents) stays locked down -- only the app can access it.
+  # don't error if the bucket is already there, so re-running is safe
+  # $ gets interpreted by Compose itself;
+  # $$ escapes it so the actual shell inside the container sees a normal $ and reads the env correctly
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy # wait until MinIO passes its healthcheck
+    env_file:
+      - .env
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 $$MINIO_ACCESS_KEY $$MINIO_SECRET_KEY &&
+      mc mb --ignore-existing local/$$MINIO_BUCKET_PUBLIC &&
+      mc mb --ignore-existing local/$$MINIO_BUCKET_PRIVATE &&
+      mc anonymous set download local/$$MINIO_BUCKET_PUBLIC
+      "
+
 volumes:
   mysql_data:
+  minio_data:

@@ -9,14 +9,18 @@ uvicorn).
 The actual ASGI app instance lives in run.py at the project root.
 """
 
-from quart import Quart, g, redirect, render_template, request, url_for
+from quart import Quart, g, render_template, request, url_for
 
 from app.config import Config
 from app.core.db.pool import close_pool, get_pool, init_pool
+from app.core.object_storage import bootstrap_buckets
 from app.core.security.csrf import apply_csrf_protection
 from app.core.security.headers import apply_security_headers
+from app.core.security.htmx import redirect_or_htmx
+from app.core.security.org_permission_registry import (
+    sync_to_db as sync_org_permissions_to_db,
+)
 from app.core.security.organization_gate import needs_organization_onboarding
-from app.core.security.org_permission_registry import sync_to_db as sync_org_permissions_to_db
 from app.core.security.permission_registry import sync_to_db as sync_permissions_to_db
 from app.core.security.permissions import get_visible_nav_keys
 from app.core.security.sessions import apply_session_loader, login_required
@@ -24,6 +28,8 @@ from app.core.templating import cn, html_attrs, read_input_css_for_browser_runti
 from app.extensions import close_redis, get_redis, init_redis
 from app.features.auth.repository import get_user_by_id
 from app.features.auth.routes import auth_bp
+from app.features.cases.routes import cases_bp
+from app.features.evidence.routes import evidence_bp
 from app.features.onboarding.routes import onboarding_bp
 from app.features.organizations.routes import organizations_bp
 from app.features.rbac.routes import rbac_bp
@@ -49,7 +55,9 @@ def create_app() -> Quart:
     # runtime (live, no build step) vs. the static built tailwind.css used in
     # production - flip QUART_DEBUG=true/false in .env to switch.
     app.jinja_env.globals["debug"] = app.config["DEBUG"]
-    app.jinja_env.globals["read_input_css_for_browser_runtime"] = read_input_css_for_browser_runtime
+    app.jinja_env.globals["read_input_css_for_browser_runtime"] = (
+        read_input_css_for_browser_runtime
+    )
 
     # Registers the after_request hook that adds CSP/X-Frame-Options/etc.
     apply_security_headers(app)
@@ -58,17 +66,15 @@ def create_app() -> Quart:
     # Double-submit cookie CSRF check on every POST/PUT/PATCH/DELETE.
     apply_csrf_protection(app)
 
-    # Accounts created with an auto-generated temp password (e.g. admin-created
-    # staff, see app/features/staff/service.py) carry must_change_password=True.
-    # Until they set their own password, every route except the change-password
-    # page itself (and logout) bounces back there - load_session() already set
-    # g.must_change_password for this request.
+    # When an admin creates a staff account, the system may create that account with a temporary password.
+    # Until the account is activated, the user must change their password before they can log in. (g.must_change_password=True)
+    # Routes that are allowed to be accessed without a password change: change-password, logout, static files, and None (default route).
     _PASSWORD_GATE_EXEMPT = {"auth.change_password_view", "auth.logout", "static", None}
 
     @app.before_request
     async def require_password_change() -> None:
         if g.must_change_password and request.endpoint not in _PASSWORD_GATE_EXEMPT:
-            return redirect(url_for("auth.change_password_view"))
+            return redirect_or_htmx(url_for("auth.change_password_view"))
 
     # Self-registered users (no role permissions, no organization yet) get
     # routed straight to the create-or-join page on login/register, not the
@@ -122,8 +128,9 @@ def create_app() -> Quart:
             return
         if request.endpoint in _ORG_GATE_EXEMPT:
             return
+        # check if this logged-in user still needs organization onboarding
         if await needs_organization_onboarding(g.user_id):
-            return redirect(url_for("onboarding.index"))
+            return redirect_or_htmx(url_for("onboarding.index"))
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(users_bp)
@@ -131,6 +138,8 @@ def create_app() -> Quart:
     app.register_blueprint(organizations_bp)
     app.register_blueprint(rbac_bp)
     app.register_blueprint(staff_bp)
+    app.register_blueprint(cases_bp)
+    app.register_blueprint(evidence_bp)
 
     @app.before_serving
     async def startup() -> None:
@@ -145,6 +154,12 @@ def create_app() -> Quart:
         )
         # Opens the shared Redis client (sessions/rate-limit/pub-sub later).
         await init_redis(app.config["REDIS_URL"])  # create once at start
+
+        # Belt-and-suspenders: the docker-compose minio-init service already
+        # creates both buckets + the public-read policy on every `compose up`,
+        # but this makes the app self-sufficient too (e.g. after wiping the
+        # minio_data volume, or running `compose up web` on its own).
+        await bootstrap_buckets()
 
         # Every feature's permissions.py module ran register_permissions() at
         # import time (above, via each routes.py import) - upsert them into the

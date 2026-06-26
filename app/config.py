@@ -26,20 +26,51 @@ class Config:
 
     REDIS_URL = os.environ.get("REDIS_URL", "redis://127.0.0.1:6379/0")
 
-    # Outer ceiling for any single request body - Quart reads this straight
-    # off app.config, no extra wiring needed. This platform handles large
-    # forensic evidence (disk/memory images can run 30-100GB), so this just
-    # has to not be the bottleneck; it matches nginx's client_max_body_size
-    # (see docker/nginx/nginx.conf). The real, much smaller limits for
-    # today's actual upload features (org logo/documents) are enforced in
-    # app/core/storage.py - a future large-file feature (evidence uploads)
-    # would enforce its own larger limit the same way, not by raising this.
+    # holds all the MinIO storage settings the app needs
+    # ties together the Docker setup and the nginx setup you saw earlier
+    # MinIO needs different addresses depending on who is talking to it.
+    # MINIO_ENDPOINT is the address the app itself uses to reach MinIO.
+    # Inside Docker, containers talk to each other by service name, so the app reaches MinIO at http://minio:9000
+    # The name minio only works inside the Docker network -- your browser has no idea what minio means
+    MINIO_ENDPOINT = os.environ.get("MINIO_ENDPOINT", "http://127.0.0.1:9000")
+    """
+    For private files (case evidence), the app doesn't make them public.
+    Instead, when an authorized user needs to download one, the app generates
+    a special temporary link — a presigned URL — that grants access to that one
+    file for a short time. The browser then uses that link to fetch the file
+    directly from MinIO, not through the app.
+    """
+    MINIO_PRESIGN_ENDPOINT = os.environ.get(
+        "MINIO_PRESIGN_ENDPOINT", "http://localhost:9000"
+    )
+    # for public files, no signed link is needed. The browser just hits http://localhost/media/...
+    # and connecting back to the nginx config -- nginx's /media/ location
+    MINIO_PUBLIC_URL = os.environ.get("MINIO_PUBLIC_URL", "http://localhost/media")
+    MINIO_ACCESS_KEY = os.environ.get(
+        "MINIO_ACCESS_KEY", "minioadmin"
+    )  # username for the app's S3 client to log in
+    MINIO_SECRET_KEY = os.environ.get(
+        "MINIO_SECRET_KEY", "minioadmin"
+    )  # password for the same
+    MINIO_BUCKET_PUBLIC = os.environ.get(
+        "MINIO_BUCKET_PUBLIC", "nirikshan-public"
+    )  # bucket for the public file
+    MINIO_BUCKET_PRIVATE = os.environ.get(
+        "MINIO_BUCKET_PRIVATE", "nirikshan-private"
+    )  # bucket for the private file
+
+    # A file upload is a part of the request body, so this affects uploads.
+    # This is the Quart app outer limit.
+    # Now, Nginx and quart app allows up to 100GB uploads.
+    # platform-level maxmium
     MAX_CONTENT_LENGTH = 100 * 1024 * 1024 * 1024  # 100 GB
 
     APP_URL = os.environ.get("APP_URL", "http://localhost:8000")
 
     RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
-    RESEND_FROM_EMAIL = os.environ.get("RESEND_FROM_EMAIL", "NirikshanOS <noreply@example.com>")
+    RESEND_FROM_EMAIL = os.environ.get(
+        "RESEND_FROM_EMAIL", "NirikshanOS <noreply@example.com>"
+    )
 
     GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "")
     GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "")

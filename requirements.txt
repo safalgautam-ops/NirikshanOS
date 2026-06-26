@@ -26,3 +26,7 @@ Pillow
 
 # WebAuthn / Passkeys (server-side challenge + verification)
 webauthn
+
+# Async S3 client (MinIO) - object storage for avatars, org logos,
+# documents, and case evidence (see app/core/object_storage.py)
+aioboto3
