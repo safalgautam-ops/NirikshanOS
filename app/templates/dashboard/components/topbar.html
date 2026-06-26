@@ -23,7 +23,7 @@
           {% call menu_trigger(target="#topbar-user-menu") %}
             {% call avatar() %}
               {% if g.current_user_image %}
-              {{ avatar_image(src=url_for('static', filename=g.current_user_image), alt=g.current_user_name or "") }}
+              {{ avatar_image(src=g.current_user_image, alt=g.current_user_name or "") }}
               {% else %}
               {{ avatar_fallback(text=(g.current_user_name or "?")[:2]|upper) }}
               {% endif %}

@@ -1,0 +1,183 @@
+{% extends "layouts/base.html" %}
+{% block title %}Cases - NirikshanOS{% endblock %}
+{% from "components/ui/card.html" import card, card_header, card_title, card_description, card_panel %}
+{% from "components/ui/badge.html" import badge %}
+{% from "components/ui/button.html" import button %}
+{% from "components/ui/dialog.html" import dialog, dialog_trigger, dialog_close, dialog_header, dialog_title, dialog_description, dialog_footer %}
+{% from "components/ui/field.html" import field_group, field, field_label %}
+{% from "components/ui/input.html" import input %}
+{% from "components/ui/input-group.html" import input_group, input_group_input, input_group_addon %}
+{% from "components/ui/textarea.html" import textarea %}
+{% from "components/ui/select.html" import select_simple %}
+{% from "dashboard/components/sidebar.html" import sidebar %}
+{% from "dashboard/components/topbar.html" import topbar %}
+{% from "components/ui/breadcrumb.html" import breadcrumb_trail %}
+{% from "components/ui/toast.html" import flash %}
+{% from "macros/csrf.html" import csrf_field %}
+
+{% set cancel_classes = "relative inline-flex h-9 shrink-0 cursor-pointer items-center justify-center gap-2 whitespace-nowrap rounded-lg border border-input bg-popover px-[calc(--spacing(3)-1px)] text-sm text-foreground shadow-xs/5 outline-none transition-shadow hover:bg-accent/50 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-64 sm:h-8" %}
+
+{% set severity_variant = {"low": "secondary", "medium": "info", "high": "warning", "critical": "error"} %}
+{% set status_variant = {"completed": "success", "failed": "error", "cancelled": "secondary", "paused": "secondary"} %}
+{% set classification_labels = dict(classifications) %}
+{% set severity_labels = dict(severities) %}
+{% set forensic_status_labels = dict(forensic_statuses) %}
+
+{% macro case_card(c) %}
+<a href="{{ url_for('cases.detail_view', case_id=c.id) }}" class="block" data-case-title="{{ c.title|lower }}">
+  {% call card(class="h-full transition-shadow hover:shadow-md") %}
+    {% call card_header() %}
+      {{ card_title(c.title) }}
+      {{ card_description(c.case_number) }}
+    {% endcall %}
+    {% call card_panel(class="pt-0 flex flex-wrap gap-1.5") %}
+      {{ badge(severity_labels.get(c.severity, c.severity), variant=severity_variant.get(c.severity, "outline")) }}
+      {{ badge(forensic_status_labels.get(c.forensic_status, c.forensic_status), variant=status_variant.get(c.forensic_status, "outline")) }}
+      {% if c.classification %}{{ badge(classification_labels.get(c.classification, c.classification), variant="outline") }}{% endif %}
+    {% endcall %}
+  {% endcall %}
+</a>
+{% endmacro %}
+
+{% block body %}
+{{ sidebar(active="case", visible_keys=visible_keys) }}
+
+<div class="flex flex-col md:pl-60" x-data="{ q: '' }">
+    {{ topbar("Cases") }}
+    <main class="flex-1 p-4 md:p-6">
+        {{ breadcrumb_trail([("Dashboard", "/"), ("Cases", None)]) }}
+
+        {{ flash("error", error) }}
+
+        <div class="grid gap-6 p-2">
+            <div class="flex items-center justify-between gap-3">
+                {% call input_group(class="max-w-sm") %}
+                    {{ input_group_input(name="q", placeholder="Search cases…", attrs={"type": "search", "aria-label": "Search cases", "x-model": "q"}) }}
+                    {% call input_group_addon() %}
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></svg>
+                    {% endcall %}
+                {% endcall %}
+
+                {% call dialog_trigger(target="#create-case-dialog", class="inline-flex h-9 shrink-0 cursor-pointer items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground shadow-xs/5 hover:bg-primary/90") %}
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="size-4"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+                    New Case
+                {% endcall %}
+            </div>
+
+            <div class="space-y-3">
+                <h2 class="text-sm font-medium text-muted-foreground">Recent Cases</h2>
+                {% if not recent_cases %}
+                <p class="text-sm text-muted-foreground">No cases yet - create the first one above.</p>
+                {% else %}
+                <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                    {% for c in recent_cases %}{{ case_card(c) }}{% endfor %}
+                </div>
+                {% endif %}
+            </div>
+
+            <div class="space-y-3">
+                <h2 class="text-sm font-medium text-muted-foreground">All Cases</h2>
+                {% if not all_cases %}
+                <p class="text-sm text-muted-foreground">Nothing here yet.</p>
+                {% else %}
+                <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3" data-case-grid>
+                    {% for c in all_cases %}
+                    <div x-show="!q || {{ (c.title|lower)|tojson|forceescape }}.includes(q.toLowerCase())">
+                        {{ case_card(c) }}
+                    </div>
+                    {% endfor %}
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </main>
+</div>
+
+{% call dialog(attrs={"id": "create-case-dialog"}) %}
+    {% call dialog_header() %}
+        {{ dialog_title("Create a new case") }}
+        {{ dialog_description("Set the case's details and decide who can access it. You'll upload evidence right after.") }}
+    {% endcall %}
+    <form
+        x-data="caseCreateForm({{ org_members|tojson|forceescape }})"
+        method="post"
+        action="{{ url_for('cases.create_view') }}"
+        class="max-h-[60vh] overflow-y-auto"
+    >
+        {{ csrf_field() }}
+        <template x-for="m in members" :key="m.id">
+            <input type="hidden" name="member_ids" :value="m.id">
+        </template>
+
+        {% call field_group() %}
+            {% call field() %}
+                {{ field_label("Case title", for_id="case-title") }}
+                {{ input(name="title", placeholder="e.g. Suspicious outbound traffic on finance VLAN", required=True, attrs={"id": "case-title"}) }}
+            {% endcall %}
+            {% call field() %}
+                {{ field_label("Description", for_id="case-description") }}
+                {{ textarea(name="description", placeholder="What happened, and why this case was opened", attrs={"id": "case-description"}) }}
+            {% endcall %}
+            <div class="grid gap-4 sm:grid-cols-2">
+                {% call field() %}
+                    {{ field_label("Classification") }}
+                    {{ select_simple("classification", classifications, placeholder="Select classification", key="case-classification") }}
+                {% endcall %}
+                {% call field() %}
+                    {{ field_label("Severity") }}
+                    {{ select_simple("severity", severities, value="medium", placeholder="Select severity", key="case-severity") }}
+                {% endcall %}
+            </div>
+            {% call field() %}
+                {{ field_label("Forensic examination status") }}
+                {{ select_simple("forensic_status", forensic_statuses, value="not_started", placeholder="Select status", key="case-forensic-status") }}
+            {% endcall %}
+
+            {% call field() %}
+                {{ field_label("Add members") }}
+                <p class="text-xs text-muted-foreground">Only you (the creator) and anyone added below will be able to see or manage this case.</p>
+                <div class="relative">
+                    <input
+                        type="text"
+                        x-model="query"
+                        @focus="open = true"
+                        @click.outside="open = false"
+                        placeholder="Search this organization's members…"
+                        class="flex h-9 w-full items-center rounded-lg border border-input bg-background px-3 text-sm shadow-xs/5 outline-none transition-shadow focus-visible:ring-2 focus-visible:ring-ring"
+                    >
+                    <div x-show="open && filtered().length" x-cloak class="absolute z-20 mt-1 max-h-48 w-full overflow-y-auto rounded-lg border bg-popover p-1 shadow-md">
+                        <template x-for="m in filtered()" :key="m.id">
+                            <button type="button" @click="addMember(m)" class="flex w-full items-center justify-between gap-2 rounded-md px-2.5 py-1.5 text-left text-sm hover:bg-accent hover:text-accent-foreground">
+                                <span>
+                                    <span x-text="m.name" class="font-medium"></span>
+                                    <span x-text="' — ' + m.email" class="text-muted-foreground"></span>
+                                </span>
+                            </button>
+                        </template>
+                    </div>
+                </div>
+
+                <div class="mt-2 divide-y rounded-lg border" x-show="members.length" x-cloak>
+                    <template x-for="m in members" :key="m.id">
+                        <div class="flex items-center gap-3 px-3 py-2">
+                            <div class="min-w-0 flex-1">
+                                <div class="truncate text-sm font-medium" x-text="m.name"></div>
+                                <div class="truncate text-xs text-muted-foreground" x-text="m.email"></div>
+                            </div>
+                            <span class="text-xs text-muted-foreground" x-text="m.role_name || 'Member'"></span>
+                            <button type="button" @click="removeMember(m.id)" class="text-muted-foreground hover:text-destructive" aria-label="Remove">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-4"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                            </button>
+                        </div>
+                    </template>
+                </div>
+            {% endcall %}
+        {% endcall %}
+
+        {% call dialog_footer(class="mt-4") %}
+            {% call dialog_close(class=cancel_classes) %}Cancel{% endcall %}
+            {% call button(type="submit") %}Next: Upload evidence{% endcall %}
+        {% endcall %}
+    </form>
+{% endcall %}
+{% endblock %}

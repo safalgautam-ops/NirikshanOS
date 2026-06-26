@@ -29,8 +29,9 @@ from functools import wraps
 from quart import Quart, Response, g, redirect, request, url_for
 
 from app.core.db.orm import db, raw_sql  # the query builder + safe raw-SQL wrapper
-from app.core.security.organization_gate import needs_organization_onboarding
+from app.core.security.htmx import redirect_or_htmx
 from app.core.security.org_permissions import get_org_visible_nav_keys
+from app.core.security.organization_gate import needs_organization_onboarding
 from app.core.security.permissions import user_has_any_role
 from app.core.utils.ids import new_id  # generates unique ids for new rows
 
@@ -62,8 +63,10 @@ async def create_session(user_id: str, ip: str | None, user_agent: str | None) -
             "userId": user_id,  # which user this session belongs to
         }
     )
-    await db.table("user").where("id", user_id).patch(
-        {"lastLoginAt": datetime.now(timezone.utc)}
+    await (
+        db.table("user")
+        .where("id", user_id)
+        .patch({"lastLoginAt": datetime.now(timezone.utc)})
     )
     return token  # caller will store this in the cookie
 
@@ -127,6 +130,9 @@ def apply_session_loader(app: Quart) -> None:
         token = request.cookies.get(SESSION_COOKIE)
         # Look up the user id for that token, and stash it on `g` (the per-request scratchpad)
         # so any route handler this request can read g.user_id. If no token, it's None.
+        # if token exists, check database session table
+        # if token is valid, set g.user_id to the user id from the session table
+        # if token is invalid or not found, set g.user_id to None
         g.user_id = await get_user_id_for_token(token) if token else None
 
         g.must_change_password = False
@@ -165,13 +171,17 @@ def apply_session_loader(app: Quart) -> None:
             g.org_nav_keys = await get_org_visible_nav_keys(g.user_id)
 
 
-PENDING_2FA_COOKIE = "pending_2fa"
+PENDING_2FA_COOKIE = "pending_2fa"  # temporary cookie name
 _PENDING_2FA_TTL = 300  # 5 minutes
 
 
+# creating a secure temporary token for the user
 def create_pending_2fa_token(user_id: str, secret_key: str) -> str:
+    # gets the current time as UNIX timestamp
     ts = str(int(time.time()))
+    # main token data
     payload = f"{user_id}.{ts}"
+    # HMAC signature of the payload using the secret key
     sig = hmac.new(secret_key.encode(), payload.encode(), hashlib.sha256).hexdigest()
     return f"{payload}.{sig}"
 
@@ -181,9 +191,12 @@ def verify_pending_2fa_token(value: str, secret_key: str) -> str | None:
         parts = value.split(".", 2)
         if len(parts) != 3:
             return None
+        # split the token into 3 parts: user_id, timestamp, and signature
         user_id, ts_str, sig = parts
         payload = f"{user_id}.{ts_str}"
-        expected = hmac.new(secret_key.encode(), payload.encode(), hashlib.sha256).hexdigest()
+        expected = hmac.new(
+            secret_key.encode(), payload.encode(), hashlib.sha256
+        ).hexdigest()  # recalculate the correct signature using the same secret key
         if not hmac.compare_digest(sig, expected):
             return None
         if int(time.time()) - int(ts_str) > _PENDING_2FA_TTL:
@@ -214,7 +227,7 @@ def login_required(view):
             destination = request.path
             if request.query_string:
                 destination += "?" + request.query_string.decode()
-            return redirect(url_for("auth.login", next=destination))
+            return redirect_or_htmx(url_for("auth.login", next=destination))
         # Logged in -> run the actual route handler and return its result.
         return await view(*args, **kwargs)
 

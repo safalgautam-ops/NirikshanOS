@@ -4,18 +4,20 @@ info if they do - see app/templates/onboarding/{index,invite}.html."""
 
 from __future__ import annotations
 
-from quart import Blueprint, abort, g, redirect, render_template, request, send_file, url_for
+from quart import Blueprint, abort, g, redirect, render_template, request, url_for
 
 from app.core.security.org_permissions import (
     ORG_NAV_KEYS,
     get_user_org_membership,
     get_user_org_permission_names,
     is_org_owner,
+    require_any_org_permission,
     require_org_permission,
 )
 from app.core.security.permissions import get_visible_nav_keys, user_has_any_role
 from app.core.security.sessions import login_required
 from app.features.onboarding.permissions import (
+    ORG_DOCUMENT_VIEW,
     ORG_ROLE_CREATE,
     ORG_ROLE_DELETE,
     ORG_ROLE_EDIT,
@@ -92,7 +94,11 @@ async def index():
         owner = bool(membership and is_org_owner(g.user_id, membership))
         granted = await get_user_org_permission_names(g.user_id)
         can_manage_org = ORG_SETTINGS_MANAGE.name in granted
-        documents = await list_documents(org["id"]) if can_manage_org else []
+        # A role with only the narrower "view documents" grant should still
+        # see the documents list (just not the upload/delete controls or
+        # the invite code/link, which stay behind can_manage_org).
+        can_view_documents = can_manage_org or ORG_DOCUMENT_VIEW.name in granted
+        documents = await list_documents(org["id"]) if can_view_documents else []
         other_members = [m for m in await list_staff(org["id"]) if m["id"] != g.user_id]
         member_options = [(m["id"], m["name"]) for m in other_members]
         if org["verification_status"] != "approved":
@@ -103,6 +109,7 @@ async def index():
                 org_type_label=org_type_labels.get(org["org_type"], org["org_type"]),
                 visible_keys=visible_keys,
                 can_manage_org=can_manage_org,
+                can_view_documents=can_view_documents,
                 is_owner=owner,
                 other_members=other_members,
                 error=request.args.get("error"),
@@ -114,6 +121,7 @@ async def index():
             org_type_label=org_type_labels.get(org["org_type"], org["org_type"]),
             visible_keys=visible_keys,
             can_manage_org=can_manage_org,
+            can_view_documents=can_view_documents,
             is_owner=owner,
             other_members=other_members,
             member_options=member_options,
@@ -189,15 +197,13 @@ async def regenerate_invite_view():
 
 
 @onboarding_bp.route("/documents/<doc_id>")
-@require_org_permission(ORG_SETTINGS_MANAGE)
+@require_any_org_permission(ORG_SETTINGS_MANAGE, ORG_DOCUMENT_VIEW)
 async def download_document_view(doc_id: str):
     result = await get_document_for_download(doc_id=doc_id, user_id=g.user_id)
     if not result:
         abort(404)
-    path, original_filename = result
-    if not path.is_file():
-        abort(404)
-    return await send_file(path, as_attachment=True, attachment_filename=original_filename)
+    url, _original_filename = result
+    return redirect(url)
 
 
 @onboarding_bp.route("/documents", methods=["POST"])

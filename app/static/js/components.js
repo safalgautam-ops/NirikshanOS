@@ -72,4 +72,37 @@ document.addEventListener("alpine:init", () => {
       return true;
     },
   }));
+
+  // Drives the "Add members" picker in the create-case dialog
+  // (cases/list.html). orgMembers is this organization's full member list,
+  // passed from the server once at render time - filtering/picking happens
+  // entirely client-side since the list is small and the case doesn't exist
+  // yet to scope a server-side search against (see cases/repository.py's
+  // search_org_members_not_in_case, which only works once a case id exists).
+  Alpine.data("caseCreateForm", (orgMembers) => ({
+    query: "",
+    open: false,
+    members: [],
+    allMembers: orgMembers || [],
+
+    filtered() {
+      const q = this.query.trim().toLowerCase();
+      const chosenIds = new Set(this.members.map((m) => m.id));
+      return this.allMembers
+        .filter((m) => !chosenIds.has(m.id))
+        .filter((m) => !q || m.name.toLowerCase().includes(q) || m.email.toLowerCase().includes(q))
+        .slice(0, 8);
+    },
+
+    addMember(member) {
+      if (this.members.some((existing) => existing.id === member.id)) return;
+      this.members.push(member);
+      this.query = "";
+      this.open = false;
+    },
+
+    removeMember(id) {
+      this.members = this.members.filter((m) => m.id !== id);
+    },
+  }));
 });

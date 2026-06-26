@@ -1,0 +1,205 @@
+{% extends "layouts/base.html" %}
+{% block title %}{{ case.title }} - Cases - NirikshanOS{% endblock %}
+{% from "components/ui/card.html" import card, card_header, card_title, card_description, card_panel %}
+{% from "components/ui/badge.html" import badge %}
+{% from "components/ui/button.html" import button %}
+{% from "components/ui/dialog.html" import dialog, dialog_trigger, dialog_close, dialog_header, dialog_title, dialog_description, dialog_footer %}
+{% from "components/ui/field.html" import field_group, field, field_label %}
+{% from "components/ui/input.html" import input %}
+{% from "components/ui/textarea.html" import textarea %}
+{% from "components/ui/select.html" import select_simple %}
+{% import "components/ui/table.html" as table %}
+{% from "dashboard/components/sidebar.html" import sidebar %}
+{% from "dashboard/components/topbar.html" import topbar %}
+{% from "components/ui/breadcrumb.html" import breadcrumb_trail %}
+{% from "components/ui/toast.html" import flash %}
+{% from "macros/csrf.html" import csrf_field %}
+
+{% set cancel_classes = "relative inline-flex h-9 shrink-0 cursor-pointer items-center justify-center gap-2 whitespace-nowrap rounded-lg border border-input bg-popover px-[calc(--spacing(3)-1px)] text-sm text-foreground shadow-xs/5 outline-none transition-shadow hover:bg-accent/50 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-64 sm:h-8" %}
+
+{% set severity_variant = {"low": "secondary", "medium": "info", "high": "warning", "critical": "error"} %}
+{% set status_variant = {"completed": "success", "failed": "error", "cancelled": "secondary", "paused": "secondary"} %}
+
+{% block body %}
+{{ sidebar(active="case", visible_keys=visible_keys) }}
+
+<div class="flex flex-col md:pl-60">
+    {{ topbar(case.title) }}
+    <main class="flex-1 p-4 md:p-6">
+        {{ breadcrumb_trail([("Dashboard", "/"), ("Cases", url_for('cases.list_view')), (case.title, None)]) }}
+
+        {{ flash("error", error) }}
+
+        <div class="grid gap-6 p-2 lg:grid-cols-3">
+            <div class="space-y-6 lg:col-span-2">
+                {% call card() %}
+                    {% call card_header() %}
+                        {{ card_title(case.title) }}
+                        {{ card_description(case.case_number) }}
+                    {% endcall %}
+                    {% call card_panel(class="pt-0") %}
+                        <form method="post" action="{{ url_for('cases.update_view', case_id=case.id) }}">
+                            {{ csrf_field() }}
+                            {% call field_group() %}
+                                {% call field() %}
+                                    {{ field_label("Case title", for_id="edit-title") }}
+                                    {{ input(name="title", value=case.title, required=True, attrs={"id": "edit-title"}) }}
+                                {% endcall %}
+                                {% call field() %}
+                                    {{ field_label("Description", for_id="edit-description") }}
+                                    {{ textarea(name="description", value=case.description or "", attrs={"id": "edit-description"}) }}
+                                {% endcall %}
+                                <div class="grid gap-4 sm:grid-cols-2">
+                                    {% call field() %}
+                                        {{ field_label("Classification") }}
+                                        {{ select_simple("classification", classifications, value=case.classification, placeholder="Select classification", key="edit-classification") }}
+                                    {% endcall %}
+                                    {% call field() %}
+                                        {{ field_label("Severity") }}
+                                        {{ select_simple("severity", severities, value=case.severity, placeholder="Select severity", key="edit-severity") }}
+                                    {% endcall %}
+                                </div>
+                                {% call field() %}
+                                    {{ field_label("Forensic examination status") }}
+                                    {{ select_simple("forensic_status", forensic_statuses, value=case.forensic_status, placeholder="Select status", key="edit-forensic-status") }}
+                                {% endcall %}
+                                {% call field() %}
+                                    {% call button(type="submit") %}Save changes{% endcall %}
+                                {% endcall %}
+                            {% endcall %}
+                        </form>
+                    {% endcall %}
+                {% endcall %}
+
+                {% call card() %}
+                    {% call card_header() %}
+                        {{ card_title("Evidence") }}
+                        {{ card_description("Files collected for this case, uploaded in resumable chunks.") }}
+                    {% endcall %}
+                    {% call card_panel(class="pt-0") %}
+                        <div data-evidence-root data-case-id="{{ case.id }}">
+                            <button type="button" data-slot="dialog-trigger" data-target="#evidence-upload-dialog" aria-controls="evidence-upload-dialog"
+                                class="inline-flex h-9 shrink-0 cursor-pointer items-center justify-center gap-2 rounded-lg border border-input bg-background px-4 text-sm font-medium shadow-xs/5 hover:bg-accent/50">
+                                Upload evidence
+                            </button>
+                            <p class="mt-3 text-sm text-muted-foreground" data-evidence-empty>No evidence uploaded yet.</p>
+                            {% call table.table(variant="card", class="mt-3 hidden", attrs={"data-evidence-table": ""}) %}
+                                {% call table.table_header() %}
+                                    {% call table.table_row() %}
+                                        {{ table.table_head("File Name") }}
+                                        {{ table.table_head("Format", class="w-24") }}
+                                        {{ table.table_head("Size", class="w-28") }}
+                                        {{ table.table_head("Status", class="w-32") }}
+                                        {{ table.table_head("Action", class="w-16 text-right") }}
+                                    {% endcall %}
+                                {% endcall %}
+                                {% call table.table_body(attrs={"data-evidence-rows": ""}) %}{% endcall %}
+                            {% endcall %}
+                        </div>
+                    {% endcall %}
+                {% endcall %}
+            </div>
+
+            <div class="space-y-6">
+                {% call card() %}
+                    {% call card_header() %}
+                        {{ card_title("Access") }}
+                        {{ card_description("Only the case's creator and the members below can see or manage it.") }}
+                    {% endcall %}
+                    {% call card_panel(class="pt-0 space-y-4") %}
+                        <div class="divide-y rounded-lg border">
+                            {% if not members %}
+                            <div class="px-3 py-6 text-center text-sm text-muted-foreground">No members added yet.</div>
+                            {% else %}
+                            {% for member in members %}
+                            <div class="flex items-center gap-3 px-3 py-2.5">
+                                <div class="min-w-0 flex-1">
+                                    <div class="truncate text-sm font-medium">{{ member.name }}</div>
+                                    <div class="truncate text-xs text-muted-foreground">{{ member.email }}</div>
+                                </div>
+                                {% if is_owner or member.id != g.user_id %}
+                                <form method="post" action="{{ url_for('cases.remove_member_view', case_id=case.id, user_id=member.id) }}">
+                                    {{ csrf_field() }}
+                                    {% call button(variant="ghost", size="icon-xs", type="submit", class="text-muted-foreground hover:bg-destructive/10 hover:text-destructive", attrs={"aria-label": "Remove " ~ member.name}) %}
+                                    <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                                    {% endcall %}
+                                </form>
+                                {% endif %}
+                            </div>
+                            {% endfor %}
+                            {% endif %}
+                        </div>
+
+                        <div class="space-y-2 border-t border-border pt-4">
+                            <p class="text-sm font-medium">Add member</p>
+                            {{ input(name="q", type="search", placeholder="Search this org's members…", attrs={ "hx-get": url_for('cases.search_members_view', case_id=case.id), "hx-trigger": "input changed delay:300ms", "hx-target": "#case-member-results" }) }}
+                            <div id="case-member-results" class="flex flex-col gap-1"></div>
+                        </div>
+                    {% endcall %}
+                {% endcall %}
+
+                {% call card() %}
+                    {% call card_header() %}
+                        {{ card_title("Status") }}
+                    {% endcall %}
+                    {% call card_panel(class="pt-0 flex flex-wrap gap-1.5") %}
+                        {{ badge(case.severity, variant=severity_variant.get(case.severity, "outline")) }}
+                        {{ badge(case.forensic_status, variant=status_variant.get(case.forensic_status, "outline")) }}
+                        {% if case.classification %}{{ badge(case.classification, variant="outline") }}{% endif %}
+                    {% endcall %}
+                {% endcall %}
+            </div>
+        </div>
+    </main>
+</div>
+
+{% call dialog(attrs={"id": "evidence-upload-dialog"}) %}
+    {% call dialog_header() %}
+        {{ dialog_title("Upload evidence") }}
+        {{ dialog_description("Drag and drop up to 5 files. Uploads are chunked and resumable - you can pause and continue later.") }}
+    {% endcall %}
+    <div data-evidence-dropzone data-case-id="{{ case.id }}" class="rounded-lg border-2 border-dashed border-input p-8 text-center text-sm text-muted-foreground">
+        Drop files here, or
+        <button type="button" data-evidence-browse class="font-medium text-primary underline-offset-4 hover:underline">browse</button>
+        <input type="file" data-evidence-file-input multiple hidden>
+        <p class="mt-1 text-xs">Up to 5 files per upload.</p>
+    </div>
+    {% call table.table(variant="card", class="mt-4 hidden", attrs={"data-evidence-upload-table": ""}) %}
+        {% call table.table_header() %}
+            {% call table.table_row() %}
+                {{ table.table_head("File Name") }}
+                {{ table.table_head("Format", class="w-24") }}
+                {{ table.table_head("Size", class="w-28") }}
+                {{ table.table_head("Progress", class="w-40") }}
+                {{ table.table_head("Action", class="w-20 text-right") }}
+            {% endcall %}
+        {% endcall %}
+        {% call table.table_body(attrs={"data-evidence-upload-rows": ""}) %}{% endcall %}
+    {% endcall %}
+    {% call dialog_footer() %}
+        {% call dialog_close(class=cancel_classes) %}Done{% endcall %}
+    {% endcall %}
+{% endcall %}
+
+{% if just_created %}
+<script>
+  document.addEventListener("DOMContentLoaded", () => {
+    const dlg = document.getElementById("evidence-upload-dialog");
+    if (dlg && typeof dlg.showModal === "function") {
+      dlg.showModal();
+      dlg.dataset.state = "open";
+    }
+  });
+</script>
+{% endif %}
+
+<script src="{{ url_for('static', filename='js/evidence-upload.js') }}"></script>
+<script>
+  document.addEventListener("DOMContentLoaded", () => {
+    initEvidenceUpload({
+      caseId: "{{ case.id }}",
+      csrfToken: "{{ csrf_token() }}",
+    });
+  });
+</script>
+{% endblock %}

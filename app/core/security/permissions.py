@@ -7,9 +7,10 @@ from __future__ import annotations
 
 from functools import wraps
 
-from quart import abort, g, redirect, url_for
+from quart import abort, g, url_for
 
 from app.core.db.orm import db
+from app.core.security.htmx import redirect_or_htmx
 from app.core.security.permission_registry import Permission
 
 # Platform-admin pages only - Dashboard and Organization are NOT here, they're
@@ -109,7 +110,7 @@ def require_permission(*permissions: Permission):
         @wraps(view)
         async def wrapped(*args, **kwargs):
             if g.user_id is None:
-                return redirect(url_for("auth.login"))
+                return redirect_or_htmx(url_for("auth.login"))
             granted = await get_user_permission_names(g.user_id)
             required = {permission.name for permission in permissions}
             if not required.issubset(granted):

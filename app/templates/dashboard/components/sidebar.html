@@ -8,9 +8,10 @@ None for "no restriction" (see app/core/security/permissions.py NAV_KEYS -
 both lists must stay in sync).
 
 One Platform group (Dashboard, Organization, and - mixed directly in, no
-separate "Your Organization" heading - the org's own Staff/Roles), plus a
-separately-gated Administration group. Three independent rules, never mix
-these up:
+separate "Your Organization" heading - the org's own Staff/Roles), an
+Application group (org-scoped feature pages like Case, gated the same way
+as Staff/Roles), plus a separately-gated Administration group. Three
+independent rules, never mix these up:
 
 1. Dashboard/Organization - always rendered for every logged-in user, never
    permission-gated and never locked. Baseline navigation plus the only path
@@ -37,9 +38,11 @@ instead of being a tenant member through their own platform identity (see
 onboarding/routes.py's blueprint guard, which enforces this server-side too). #}
 {% macro sidebar(active="dashboard", visible_keys=None) %}
 {% set org_items = [ ("org_staff", "Staff", "/onboarding/staff"), ("org_role", "Roles", "/onboarding/roles") ] %}
+{% set app_items = [ ("case", "Case", "/cases/") ] %}
 {% set admin_items = [ ("admin_users", "Users", "/admin/users"), ("admin_organizations", "Organizations", "/admin/organizations"), ("admin_roles", "Roles", "/admin/roles"), ("admin_staff", "Staff", "/admin/staff") ] %}
 {% set visible_admin_items = admin_items|selectattr("0", "in", visible_keys)|list if visible_keys is not none else admin_items %}
 {% set visible_org_items = org_items|selectattr("0", "in", g.org_nav_keys)|list if g.org_nav_keys is not none else org_items %}
+{% set visible_app_items = app_items|selectattr("0", "in", g.org_nav_keys)|list if g.org_nav_keys is not none else app_items %}
 <aside
     class="hidden md:flex md:w-60 md:flex-col md:fixed md:inset-y-0 border-r border-sidebar-border bg-sidebar text-sidebar-foreground"
 >
@@ -59,6 +62,15 @@ onboarding/routes.py's blueprint guard, which enforces this server-side too). #}
             {% endfor %}
             {% endif %}
         </div>
+
+        {% if not g.is_platform_staff %}
+        <div class="space-y-1">
+            <p class="px-3 text-xs font-medium uppercase text-sidebar-foreground/50">Application</p>
+            {% for key, label, href in (app_items if g.org_locked else visible_app_items) %}
+            {{ _nav_link(key, label, href, active, locked=g.org_locked) }}
+            {% endfor %}
+        </div>
+        {% endif %}
 
         {% if visible_admin_items %}
         <div class="space-y-1">

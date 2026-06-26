@@ -29,7 +29,7 @@
                     <div class="space-y-4">
                         <div class="flex items-center gap-3">
                             {% if org.logo_path %}
-                            <img src="{{ url_for('static', filename=org.logo_path) }}" alt="" class="h-12 w-12 rounded-md border object-cover" />
+                            <img src="{{ org.logo_path }}" alt="" class="h-12 w-12 rounded-md border object-cover" />
                             {% endif %}
                             <div>
                                 <p class="text-sm text-muted-foreground">Organization</p>
@@ -64,10 +64,10 @@
                             </div>
                         </div>
 
-                        {% if can_manage_org %}
-                        {% if documents %}
+                        {% if can_view_documents %}
                         <div>
                             <p class="mb-1.5 text-sm text-muted-foreground">Government documents</p>
+                            {% if documents %}
                             <ul class="space-y-1">
                                 {% for doc in documents %}
                                 <li>
@@ -76,9 +76,13 @@
                                 {% endfor %}
                             </ul>
                             <p class="mt-1 text-xs text-muted-foreground">Documents are locked once verified - contact a platform admin to change them.</p>
+                            {% else %}
+                            <p class="text-sm text-muted-foreground">No documents on file.</p>
+                            {% endif %}
                         </div>
                         {% endif %}
 
+                        {% if can_manage_org %}
                         <div>
                             <p class="mb-1.5 text-sm text-muted-foreground">Invite code</p>
                             <code class="block rounded-md border bg-muted px-3 py-2 text-sm tabular-nums" id="invite-code">{{ org.invite_code }}</code>
@@ -95,8 +99,10 @@
                             {{ csrf_field() }}
                             {% call button(type="submit", variant="outline") %}Regenerate code{% endcall %}
                         </form>
-                        {% else %}
-                        <p class="text-xs text-muted-foreground">Government documents and invite settings are only visible to members with organization-settings access.</p>
+                        {% endif %}
+
+                        {% if not can_view_documents and not can_manage_org %}
+                        <p class="text-xs text-muted-foreground">Government documents and invite settings are only visible to members with the right organization-settings access.</p>
                         {% endif %}
                     </div>
                 {% endcall %}

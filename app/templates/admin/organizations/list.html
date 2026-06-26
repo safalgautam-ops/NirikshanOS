@@ -228,7 +228,7 @@ sidebar(active="admin_organizations", visible_keys=visible_keys) }}
                         <div class="grid gap-3 sm:grid-cols-2 text-sm">
                             {% if selected_org.logo_path %}
                             <div class="sm:col-span-2">
-                                <img src="{{ url_for('static', filename=selected_org.logo_path) }}" alt="" class="h-12 w-12 rounded-md border object-cover" />
+                                <img src="{{ selected_org.logo_path }}" alt="" class="h-12 w-12 rounded-md border object-cover" />
                             </div>
                             {% endif %}
                             <div>

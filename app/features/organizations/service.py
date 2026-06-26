@@ -90,9 +90,9 @@ async def delete_organization(org_id: str) -> None:
     # (app/features/onboarding/service.py).
     logo_path, document_paths = await repository.delete_organization(org_id)
     if logo_path:
-        storage.delete_file(logo_path)
+        await storage.delete_file(logo_path)
     for document_path in document_paths:
-        storage.delete_file(document_path)
+        await storage.delete_file(document_path)
 
 
 async def add_documents(org_id: str, files: list[FileStorage]) -> None:
@@ -116,7 +116,7 @@ async def delete_document(org_id: str, doc_id: str) -> None:
     if not doc or doc["organization_id"] != org_id:
         raise OrganizationError("Document not found.")
     await repository.delete_document(doc_id)
-    storage.delete_file(doc["file_path"])
+    await storage.delete_file(doc["file_path"])
 
 
 async def approve_organization(org_id: str, *, reviewed_by: str) -> None:

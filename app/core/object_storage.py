@@ -120,6 +120,12 @@ async def bootstrap_buckets() -> None:
         await client.put_bucket_policy(
             Bucket=Config.MINIO_BUCKET_PUBLIC, Policy=json.dumps(policy)
         )
+        # Note: MinIO doesn't implement the S3 PutBucketCors API (it 404s/
+        # NotImplemented-s) - CORS for evidence parts being PUT straight
+        # from the browser to a presigned MinIO URL is instead configured
+        # server-wide via `mc admin config set local api cors_allow_origin=...`,
+        # which defaults to "*" out of the box. See _browser_origin() if
+        # that default is ever locked down and this needs revisiting.
 
 
 """

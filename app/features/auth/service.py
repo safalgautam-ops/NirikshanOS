@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from werkzeug.datastructures import FileStorage
 
+from app.config import Config
 from app.core import storage
 from app.core.utils.passwords import hash_password, verify_password
 from app.features.auth import passkey as pk_module
@@ -188,8 +189,8 @@ async def update_profile(user_id: str, *, name: str, avatar: FileStorage | None)
         old_user = await repository.get_user_by_id(user_id)
         image_path = await storage.save_avatar(avatar)
         await repository.update_user_image(user_id, image_path)
-        if old_user and old_user["image"] and old_user["image"].startswith("uploads/avatars/"):
-            storage.delete_file(old_user["image"])
+        if old_user and old_user["image"] and old_user["image"].startswith(Config.MINIO_PUBLIC_URL):
+            await storage.delete_file(old_user["image"])
 
 
 # ── OAuth ─────────────────────────────────────────────────────────────────────

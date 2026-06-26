@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from quart import Blueprint, abort, g, redirect, render_template, request, send_file, url_for
+from quart import Blueprint, abort, g, redirect, render_template, request, url_for
 
 from app.core import storage
 from app.core.security.permissions import get_visible_nav_keys, require_permission
@@ -174,10 +174,8 @@ async def download_document_view(doc_id: str):
     doc = await repository.get_document(doc_id)
     if not doc:
         abort(404)
-    path = storage.resolve_document_path(doc["file_path"])
-    if not path.is_file():
-        abort(404)
-    return await send_file(path, as_attachment=True, attachment_filename=doc["original_filename"])
+    url = await storage.get_document_url(doc["file_path"])
+    return redirect(url)
 
 
 @organizations_bp.route("/<org_id>/documents", methods=["POST"])

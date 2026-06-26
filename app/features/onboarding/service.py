@@ -192,7 +192,7 @@ async def delete_document(org_id: str, doc_id: str) -> None:
     if not doc or doc["organization_id"] != org_id:
         raise OnboardingError("Document not found.")
     await org_repository.delete_document(doc_id)
-    storage.delete_file(doc["file_path"])
+    await storage.delete_file(doc["file_path"])
 
 
 async def regenerate_invite_code(user_id: str) -> str:
@@ -203,15 +203,15 @@ async def regenerate_invite_code(user_id: str) -> str:
 
 
 async def get_document_for_download(*, doc_id: str, user_id: str):
-    """Returns (filesystem path, original filename) if the requesting user
-    belongs to the document's organization, else None - the route turns
-    that into a 404 rather than leaking whether the id exists."""
+    """Returns (presigned download URL, original filename) if the
+    requesting user belongs to the document's organization, else None - the
+    route turns that into a 404 rather than leaking whether the id exists."""
     doc = await org_repository.get_document(doc_id)
     if not doc:
         return None
     if not await org_repository.is_member(doc["organization_id"], user_id):
         return None
-    return storage.resolve_document_path(doc["file_path"]), doc["original_filename"]
+    return await storage.get_document_url(doc["file_path"]), doc["original_filename"]
 
 
 async def delete_organization(org_id: str, *, requested_by: str) -> None:
@@ -228,9 +228,9 @@ async def delete_organization(org_id: str, *, requested_by: str) -> None:
         raise OnboardingError("Only the organization's owner can delete it.")
     logo_path, document_paths = await org_repository.delete_organization(org_id)
     if logo_path:
-        storage.delete_file(logo_path)
+        await storage.delete_file(logo_path)
     for document_path in document_paths:
-        storage.delete_file(document_path)
+        await storage.delete_file(document_path)
 
 
 # ── org staff (the org's own member list) ───────────────────────────────────

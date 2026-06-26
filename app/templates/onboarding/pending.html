@@ -29,7 +29,7 @@
                     <div class="space-y-4">
                         <div class="flex items-center gap-3">
                             {% if org.logo_path %}
-                            <img src="{{ url_for('static', filename=org.logo_path) }}" alt="" class="h-12 w-12 rounded-md border object-cover" />
+                            <img src="{{ org.logo_path }}" alt="" class="h-12 w-12 rounded-md border object-cover" />
                             {% endif %}
                             <div class="flex-1">
                                 <p class="text-sm text-muted-foreground">Organization</p>
@@ -74,7 +74,7 @@
                             </div>
                         </div>
 
-                        {% if can_manage_org %}
+                        {% if can_view_documents %}
                         <div>
                             <p class="mb-1.5 text-sm text-muted-foreground">Government documents</p>
                             {% if documents %}
@@ -82,24 +82,28 @@
                                 {% for doc in documents %}
                                 <li class="flex items-center justify-between gap-2">
                                     <a href="{{ url_for('onboarding.download_document_view', doc_id=doc.id) }}" class="text-sm text-primary underline underline-offset-4 hover:no-underline">{{ doc.original_filename }}</a>
+                                    {% if can_manage_org %}
                                     <form method="post" action="{{ url_for('onboarding.delete_document_view', doc_id=doc.id) }}">
                                         {{ csrf_field() }}
                                         {% call button(type="submit", variant="ghost", size="icon-xs", class="text-muted-foreground hover:bg-destructive/10 hover:text-destructive", attrs={"aria-label": "Remove " ~ doc.original_filename}) %}
                                         <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
                                         {% endcall %}
                                     </form>
+                                    {% endif %}
                                 </li>
                                 {% endfor %}
                             </ul>
                             {% else %}
                             <p class="text-sm text-muted-foreground">No documents on file.</p>
                             {% endif %}
+                            {% if can_manage_org %}
                             <form method="post" action="{{ url_for('onboarding.upload_document_view') }}" enctype="multipart/form-data" class="mt-2 flex items-center gap-2">
                                 {{ csrf_field() }}
                                 <input type="file" name="documents" multiple accept=".pdf,.png,.jpg,.jpeg" data-max-size-bytes="26214400" data-max-size-label="25MB" class="text-sm text-muted-foreground file:mr-2 file:rounded-md file:border file:border-input file:bg-popover file:px-2 file:py-1 file:text-sm file:font-medium" />
                                 {% call button(type="submit", variant="outline", size="sm") %}Upload{% endcall %}
                             </form>
                             <p class="mt-1 text-xs text-muted-foreground">You can add or remove documents until this organization is verified.</p>
+                            {% endif %}
                         </div>
                         {% endif %}
                     </div>

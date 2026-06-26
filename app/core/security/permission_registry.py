@@ -16,21 +16,26 @@ from app.core.db.orm import db
 from app.core.utils.ids import new_id
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True)  # dataclass objects become immutable after creation
 class Permission:
-    resource: str
-    action: str
-    category: str
-    description: str
+    resource: str  # what it's about
+    action: str  # what you can do
+    category: str  # heading for grouping it in the UI
+    description: str  # human-readable description of the permission
 
+    # computed property that returns the permission name as "resource.action"
+    # This glues the two together into a readable name: "user" + "delete" → "user.delete".
     @property
     def name(self) -> str:
         return f"{self.resource}.{self.action}"
 
 
+# registry of all permissions, keyed by (resource, action) tuple
 _registry: dict[tuple[str, str], Permission] = {}
 
 
+# how a feature writes its permission into the registry
+# using this pair (resource, action) as the key means the same permission can't be written twice; if written, overwrites
 def register_permissions(*permissions: Permission) -> None:
     for permission in permissions:
         _registry[(permission.resource, permission.action)] = permission
@@ -41,29 +46,26 @@ def all_permissions() -> list[Permission]:
 
 
 async def sync_to_db() -> None:
-    """Upsert every registered permission into the DB, and grant each one to
-    System Admin — keeps that role's "gets everything" guarantee true as new
-    permissions get added in code, without ever needing a manual migration.
 
-    Also deletes any `permissions` row whose (resource, action) is no longer
-    registered in code - otherwise a permission removed from a feature (or,
-    historically, one seeded directly by a migration for a feature that was
-    never built) lingers in the DB forever as a "fake" permission nothing
-    actually enforces, just because nothing ever deletes stale rows."""
-    registered = {(p.resource, p.action) for p in all_permissions()}
-    existing = await db.table("permissions").all(allow_full_table=True)
+    registered = {
+        (p.resource, p.action) for p in all_permissions()
+    }  # everything the code knows
+    existing = await db.table("permissions").all(
+        allow_full_table=True
+    )  # everything in the DB
+    # go through each existing permission and delete it if it's not registered in code
     for row in existing:
         if (row["resource"], row["action"]) not in registered:
             await db.table("permissions").where("id", row["id"]).delete()
 
     system_admin = await db.table("roles").where("name", "System Admin").first()
 
-    for permission in all_permissions():
+    for permission in all_permissions():  # for each permission the CODE knows
         row = await (
             db.table("permissions")
             .where("resource", permission.resource)
             .where("action", permission.action)
-            .first()
+            .first()  # is it already in the DB?
         )
         if row is None:
             permission_id = new_id()
@@ -78,10 +80,22 @@ async def sync_to_db() -> None:
             )
         else:
             permission_id = row["id"]
-            await db.table("permissions").where("id", permission_id).patch(
-                {"category": permission.category, "description": permission.description}
+            await (
+                db.table("permissions")
+                .where("id", permission_id)
+                .patch(
+                    {
+                        "category": permission.category,
+                        "description": permission.description,
+                    }
+                )
             )
 
+        # check if the system admin role is assigned this permission
+        # if not, grant it now so the role always has this permission
+        # (this avoids needing to manually grant permissions to the system admin role)
+        # one permission can belong to many roles
+        # one role can have many permissions
         if system_admin is not None:
             already_granted = await (
                 db.table("role_permissions")

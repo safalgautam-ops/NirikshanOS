@@ -10,10 +10,20 @@ ORG_ROLE_DELETE = OrgPermission("org_role", "delete", "Organization Roles", "Del
 
 # Invite code/link and government verification documents are sensitive -
 # regular members only see the organization's basic profile fields; this is
-# what additionally unlocks invites + documents on that same page.
+# what additionally unlocks invites + documents (viewing AND managing -
+# upload/delete/regenerate) on that same page.
 ORG_SETTINGS_MANAGE = OrgPermission(
     "org_settings", "manage", "Organization Settings",
-    "View government documents, view/regenerate the invite code and link",
+    "Upload/delete government documents, view/regenerate the invite code and link",
+)
+
+# A narrower grant than ORG_SETTINGS_MANAGE - lets a role see and download
+# the organization's submitted documents (e.g. for a compliance reviewer)
+# without also handing them upload/delete and the invite code/link. The org
+# owner already bypasses both (see org_permissions.is_org_owner).
+ORG_DOCUMENT_VIEW = OrgPermission(
+    "org_document", "view", "Organization Settings",
+    "View and download this organization's submitted government documents",
 )
 
 register_org_permissions(
@@ -24,4 +34,5 @@ register_org_permissions(
     ORG_ROLE_EDIT,
     ORG_ROLE_DELETE,
     ORG_SETTINGS_MANAGE,
+    ORG_DOCUMENT_VIEW,
 )

@@ -12,9 +12,10 @@ from __future__ import annotations
 
 from functools import wraps
 
-from quart import abort, g, redirect, url_for
+from quart import abort, g, url_for
 
 from app.core.db.orm import db
+from app.core.security.htmx import redirect_or_htmx
 from app.core.security.org_permission_registry import OrgPermission, all_org_permissions
 
 # Single source of truth for both sidebar.html and the org Roles editor's
@@ -22,6 +23,7 @@ from app.core.security.org_permission_registry import OrgPermission, all_org_per
 ORG_NAV_KEYS: list[tuple[str, str]] = [
     ("org_staff", "Staff"),
     ("org_role", "Roles"),
+    ("case", "Cases"),
 ]
 
 
@@ -96,10 +98,34 @@ def require_org_permission(*permissions: OrgPermission):
         @wraps(view)
         async def wrapped(*args, **kwargs):
             if g.user_id is None:
-                return redirect(url_for("auth.login"))
+                return redirect_or_htmx(url_for("auth.login"))
             granted = await get_user_org_permission_names(g.user_id)
             required = {permission.name for permission in permissions}
             if not required.issubset(granted):
+                abort(403)
+            return await view(*args, **kwargs)
+
+        return wrapped
+
+    return decorator
+
+
+def require_any_org_permission(*permissions: OrgPermission):
+    """Like require_org_permission, but OR instead of AND - passes if the
+    signed-in user's org role holds at least one of the given permissions,
+    not necessarily all of them. Used where a broader "manage" permission
+    and a narrower "view" permission should both unlock the same read-only
+    route (e.g. a role granted only document-viewing shouldn't need full
+    settings-management access just to download what it can already see)."""
+
+    def decorator(view):
+        @wraps(view)
+        async def wrapped(*args, **kwargs):
+            if g.user_id is None:
+                return redirect_or_htmx(url_for("auth.login"))
+            granted = await get_user_org_permission_names(g.user_id)
+            required = {permission.name for permission in permissions}
+            if not required & granted:
                 abort(403)
             return await view(*args, **kwargs)
 

@@ -41,7 +41,7 @@
           <div class="flex items-center gap-4">
             {% call avatar(class="size-16") %}
               {% if user.image %}
-              {{ avatar_image(src=url_for('static', filename=user.image), alt=user.name or "") }}
+              {{ avatar_image(src=user.image, alt=user.name or "") }}
               {% else %}
               {{ avatar_fallback(text=(user.name or "?")[:2]|upper, class="text-lg") }}
               {% endif %}
