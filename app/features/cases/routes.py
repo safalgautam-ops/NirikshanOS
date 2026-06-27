@@ -11,6 +11,8 @@ check, since those are real management actions, not viewing."""
 
 from __future__ import annotations
 
+from datetime import timedelta
+
 from quart import Blueprint, abort, g, redirect, render_template, request, url_for
 
 from app.core.security.org_permissions import (
@@ -113,10 +115,64 @@ async def create_view():
     return redirect(url_for("cases.detail_view", case_id=case_id, created="1"))
 
 
+async def _member_rows(case: dict, members: list, creator: dict | None, organization_id: str) -> list[dict]:
+    """Members-tab rows: the creator (who never needs a case_members row to
+    have access - see can_access_case) plus everyone explicitly added,
+    each annotated with their *organization* role (there's no separate
+    case-level role system - see cases/permissions.py) for the Role column."""
+    role_by_user_id = {
+        m["id"]: m["role_name"] for m in await org_repository.list_members(organization_id) if m.get("role_name")
+    }
+    rows = []
+    if creator:
+        rows.append(
+            {
+                "id": creator["id"],
+                "name": creator["name"],
+                "email": creator["email"],
+                "role_label": "Case Creator",
+                "last_activity": case["created_at"],
+                "is_creator": True,
+            }
+        )
+    for member in members:
+        rows.append(
+            {
+                "id": member["id"],
+                "name": member["name"],
+                "email": member["email"],
+                "role_label": role_by_user_id.get(member["id"], "Member"),
+                "last_activity": member["added_at"],
+                "is_creator": False,
+            }
+        )
+    return rows
+
+
+def _mock_activity_log(case: dict, creator_name: str, evidence: list) -> list[dict]:
+    """Illustrative audit trail - there's no real activity/event logging
+    behind this yet (see the Activity tab's note in the template), so this
+    is a fixed example sequence anchored to this case's real creation time
+    and, where one exists, its first real evidence file - not a literal
+    history of what actually happened."""
+    started = case["created_at"]
+    first_file = evidence[0]["filename"] if evidence else "evidence.bin"
+    return [
+        {"timestamp": started, "actor": creator_name, "action": "Case created", "target": case["case_number"], "status": "Completed"},
+        {"timestamp": started + timedelta(minutes=6), "actor": creator_name, "action": "Evidence uploaded", "target": first_file, "status": "Completed"},
+        {"timestamp": started + timedelta(minutes=8), "actor": creator_name, "action": "Hash generated", "target": first_file, "status": "Completed"},
+        {"timestamp": started + timedelta(minutes=20), "actor": creator_name, "action": "Module started", "target": "YARA Scan", "status": "Running"},
+        {"timestamp": started + timedelta(minutes=22), "actor": creator_name, "action": "Module completed", "target": "YARA Scan", "status": "Completed"},
+        {"timestamp": started + timedelta(minutes=25), "actor": creator_name, "action": "Finding saved to report", "target": "YARA Scan result", "status": "Completed"},
+        {"timestamp": started + timedelta(minutes=30), "actor": creator_name, "action": "Report exported", "target": case["case_number"] + " report", "status": "Completed"},
+    ]
+
+
 @cases_bp.route("/<case_id>")
 @login_required
 async def detail_view(case_id: str):
     case = await _require_visible_case(case_id)
+    org_id = await _require_org_id()
     members = await get_case_members(case_id)
     evidence = await list_case_evidence(case_id)
     completed_evidence = [e for e in evidence if e["status"] == "completed"]
@@ -133,14 +189,17 @@ async def detail_view(case_id: str):
         for e in completed_evidence
     ]
     creator = await get_user_by_id(case["created_by"])
+    creator_name = creator["name"] if creator else "—"
     visible_keys = await get_visible_nav_keys(g.user_id)
     return await render_template(
         "cases/detail.html",
         case=case,
-        creator_name=creator["name"] if creator else "—",
+        creator_name=creator_name,
         members=members,
+        member_rows=await _member_rows(case, members, creator, org_id),
         evidence=evidence,
         analyze_evidence=analyze_evidence,
+        activity_log=_mock_activity_log(case, creator_name, evidence),
         classification_label=dict(CLASSIFICATIONS).get(case["classification"], case["classification"] or "—"),
         severity_label=dict(SEVERITIES).get(case["severity"], case["severity"]),
         forensic_status_label=dict(FORENSIC_STATUSES).get(case["forensic_status"], case["forensic_status"]),

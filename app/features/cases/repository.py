@@ -119,7 +119,7 @@ async def get_case_members(case_id: str) -> list:
         db.table("case_members")
         .join("user", "case_members.user_id", "user.id")
         .where("case_members.case_id", case_id)
-        .select("user.id", "user.name", "user.email")
+        .select("user.id", "user.name", "user.email", "case_members.added_at")
         .order_by("user.name")
         .all(allow_full_table=True)
     )

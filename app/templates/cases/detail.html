@@ -32,6 +32,26 @@
 </div>
 {%- endmacro %}
 
+{# One entry in the Activity tab's audit timeline - a dot + connecting line
+   on the left, the event's timestamp/actor/action/target/status on the
+   right. is_last drops the connecting line off the final entry. #}
+{% macro activity_row(item, is_last=false) -%}
+<div class="relative flex gap-4">
+    <div class="flex flex-col items-center">
+        <span class="{{ cn('z-10 mt-1.5 size-2.5 shrink-0 rounded-full', 'bg-success' if item.status == 'Completed' else 'bg-info') }}"></span>
+        {% if not is_last %}<span class="w-px flex-1 bg-border"></span>{% endif %}
+    </div>
+    <div class="min-w-0 flex-1 pb-6">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+            <p class="text-sm font-medium">{{ item.action }}</p>
+            {{ badge(item.status, variant="success" if item.status == "Completed" else "info") }}
+        </div>
+        <p class="text-xs text-muted-foreground">{{ item.actor }} · {{ item.target }}</p>
+        <p class="mt-0.5 text-xs text-muted-foreground">{{ item.timestamp.strftime("%b %d, %Y %H:%M") }}</p>
+    </div>
+</div>
+{%- endmacro %}
+
 {% block body %}
 {#- One shared Alpine scope for the whole page, not one per x-data attribute
    - the Analyze tab's planner and both the Review Analysis Plan and Current
@@ -394,36 +414,54 @@
             {% endcall %}
 
             {# ── Members ───────────────────────────────────────────────────── #}
-            {% call tabs_panel(value="members", class="mt-4 space-y-4") %}
+            {% call tabs_panel(value="members", class="mt-4 w-full space-y-4") %}
                 <p class="text-sm text-muted-foreground">Manage analysts, reviewers, roles, and access for this case.</p>
-                {% call card() %}
+                {% call card(class="w-full") %}
                     {% call card_header() %}
                         {{ card_title("Access") }}
                         {{ card_description("Only the case's creator and the members below can see or manage it.") }}
                     {% endcall %}
                     {% call card_panel(class="pt-0 space-y-4") %}
-                        <div class="divide-y rounded-lg border">
-                            {% if not members %}
-                            <div class="px-3 py-6 text-center text-sm text-muted-foreground">No members added yet.</div>
-                            {% else %}
-                            {% for member in members %}
-                            <div class="flex items-center gap-3 px-3 py-2.5">
-                                <div class="min-w-0 flex-1">
-                                    <div class="truncate text-sm font-medium">{{ member.name }}</div>
-                                    <div class="truncate text-xs text-muted-foreground">{{ member.email }}</div>
-                                </div>
-                                {% if is_owner or member.id != g.user_id %}
-                                <form method="post" action="{{ url_for('cases.remove_member_view', case_id=case.id, user_id=member.id) }}">
-                                    {{ csrf_field() }}
-                                    {% call button(variant="ghost", size="icon-xs", type="submit", class="text-muted-foreground hover:bg-destructive/10 hover:text-destructive", attrs={"aria-label": "Remove " ~ member.name}) %}
-                                    <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                        {% if not member_rows %}
+                        <div class="rounded-lg border px-3 py-6 text-center text-sm text-muted-foreground">No members added yet.</div>
+                        {% else %}
+                        {% call table.table(variant="card", class="w-full") %}
+                            {% call table.table_header() %}
+                                {% call table.table_row() %}
+                                    {{ table.table_head("Name") }}
+                                    {{ table.table_head("Role") }}
+                                    {{ table.table_head("Last Activity") }}
+                                    {{ table.table_head("Actions", class="text-right") }}
+                                {% endcall %}
+                            {% endcall %}
+                            {% call table.table_body() %}
+                                {% for row in member_rows %}
+                                {% call table.table_row() %}
+                                    {% call table.table_cell() %}
+                                        <div class="min-w-0">
+                                            <div class="truncate font-medium">{{ row.name }}</div>
+                                            <div class="truncate text-xs text-muted-foreground">{{ row.email }}</div>
+                                        </div>
                                     {% endcall %}
-                                </form>
-                                {% endif %}
-                            </div>
-                            {% endfor %}
-                            {% endif %}
-                        </div>
+                                    {% call table.table_cell() %}{{ badge(row.role_label, variant="default" if row.is_creator else "secondary") }}{% endcall %}
+                                    {% call table.table_cell() %}<span class="text-muted-foreground">{{ row.last_activity.strftime("%b %d, %Y %H:%M") }}</span>{% endcall %}
+                                    {% call table.table_cell(class="text-right") %}
+                                        {% if not row.is_creator and (is_owner or row.id != g.user_id) %}
+                                        <form method="post" action="{{ url_for('cases.remove_member_view', case_id=case.id, user_id=row.id) }}" class="inline">
+                                            {{ csrf_field() }}
+                                            {% call button(variant="ghost", size="icon-xs", type="submit", class="text-muted-foreground hover:bg-destructive/10 hover:text-destructive", attrs={"aria-label": "Remove " ~ row.name}) %}
+                                            <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                                            {% endcall %}
+                                        </form>
+                                        {% else %}
+                                        <span class="text-xs text-muted-foreground">—</span>
+                                        {% endif %}
+                                    {% endcall %}
+                                {% endcall %}
+                                {% endfor %}
+                            {% endcall %}
+                        {% endcall %}
+                        {% endif %}
 
                         <div class="space-y-2 border-t border-border pt-4">
                             <p class="text-sm font-medium">Add member</p>
@@ -438,9 +476,20 @@
             {% call tabs_panel(value="activity", class="mt-4 space-y-4") %}
                 <p class="text-sm text-muted-foreground">View the complete audit trail of actions performed inside this case.</p>
                 {% call card() %}
-                    {% call card_panel(class="py-12 text-center") %}
-                        <p class="text-sm font-medium">Activity logging isn't wired up yet</p>
-                        <p class="mt-1 text-sm text-muted-foreground">This will show every action taken inside this case as it happens.</p>
+                    {% call card_header() %}
+                        {{ card_title("Audit Trail") }}
+                        {{ card_description("Real activity logging isn't wired up yet - this previews the format it'll use once it is.") }}
+                    {% endcall %}
+                    {% call card_panel(class="pt-0") %}
+                        {% if not activity_log %}
+                        <p class="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">No activity recorded yet.</p>
+                        {% else %}
+                        <div>
+                            {% for item in activity_log %}
+                            {{ activity_row(item, is_last=loop.last) }}
+                            {% endfor %}
+                        </div>
+                        {% endif %}
                     {% endcall %}
                 {% endcall %}
             {% endcall %}
