@@ -8,6 +8,8 @@
 {% from "components/ui/input.html" import input %}
 {% from "components/ui/textarea.html" import textarea %}
 {% from "components/ui/select.html" import select_simple %}
+{% from "components/ui/checkbox.html" import checkbox %}
+{% from "components/ui/tabs.html" import tabs, tabs_list, tabs_tab, tabs_panel %}
 {% import "components/ui/table.html" as table %}
 {% from "dashboard/components/sidebar.html" import sidebar %}
 {% from "dashboard/components/topbar.html" import topbar %}
@@ -20,7 +22,23 @@
 {% set severity_variant = {"low": "secondary", "medium": "info", "high": "warning", "critical": "error"} %}
 {% set status_variant = {"completed": "success", "failed": "error", "cancelled": "secondary", "paused": "secondary"} %}
 
+{# A label/value row used by the Overview summary card and the Evidences
+   tab's per-file cards - "value" is rendered unescaped on purpose, since
+   callers pass already-safe macro output (badge(), etc.) through it. #}
+{% macro kv_row(label, value, class="") -%}
+<div class="{{ cn('flex items-center justify-between gap-4 px-5 py-3 text-sm', class) }}">
+    <span class="text-muted-foreground">{{ label }}</span>
+    <span class="font-medium text-right">{{ value }}</span>
+</div>
+{%- endmacro %}
+
 {% block body %}
+{#- One shared Alpine scope for the whole page, not one per x-data attribute
+   - the Analyze tab's planner and both the Review Analysis Plan and Current
+   Job Queue dialogs all read/write the same `plan` array, so they have to
+   be the same component instance, not three independent ones that happen
+   to share a name. #}
+<div x-data="analyzeWorkspace({{ analyze_evidence|tojson|forceescape }})" x-cloak>
 {{ sidebar(active="case", visible_keys=visible_keys) }}
 
 <div class="flex flex-col md:pl-60">
@@ -30,77 +48,354 @@
 
         {{ flash("error", error) }}
 
-        <div class="grid gap-6 p-2 lg:grid-cols-3">
-            <div class="space-y-6 lg:col-span-2">
-                {% call card() %}
-                    {% call card_header() %}
-                        {{ card_title(case.title) }}
-                        {{ card_description(case.case_number) }}
+        <div class="p-2">
+            {% call tabs() %}
+            {% call tabs_list(class="w-full flex-wrap sm:w-fit") %}
+                {% call tabs_tab(value="overview", active=true) %}Overview{% endcall %}
+                {% call tabs_tab(value="evidences") %}Evidences{% endcall %}
+                {% call tabs_tab(value="analyze") %}Analyze{% endcall %}
+                {% call tabs_tab(value="results") %}Results{% endcall %}
+                {% call tabs_tab(value="report") %}Report{% endcall %}
+                {% call tabs_tab(value="members") %}Members{% endcall %}
+                {% call tabs_tab(value="activity") %}Activity{% endcall %}
+            {% endcall %}
+
+            {# ── Overview ──────────────────────────────────────────────────── #}
+            {% call tabs_panel(value="overview", active=true, class="mt-4 space-y-4") %}
+                <div class="flex items-start justify-between gap-4">
+                    <p class="text-sm text-muted-foreground">Review the case summary, investigation status, key details, and progress.</p>
+                    <button type="button" data-slot="dialog-trigger" data-target="#edit-case-dialog" aria-controls="edit-case-dialog"
+                        class="inline-flex h-9 shrink-0 cursor-pointer items-center justify-center gap-2 rounded-lg border border-input bg-background px-4 text-sm font-medium shadow-xs/5 hover:bg-accent/50">
+                        Edit case
+                    </button>
+                </div>
+
+                <div class="mx-auto max-w-2xl overflow-hidden rounded-2xl border bg-card shadow-xs/5">
+                    <div class="divide-y divide-border">
+                        {{ kv_row("Case Title", case.title) }}
+                        {{ kv_row("Case ID", case.case_number) }}
+                        {{ kv_row("Classification", classification_label) }}
+                        {{ kv_row("Severity", badge(severity_label, variant=severity_variant.get(case.severity, "outline"))) }}
+                        {{ kv_row("Status", badge(forensic_status_label, variant=status_variant.get(case.forensic_status, "outline"))) }}
+                        {{ kv_row("Created by", creator_name) }}
+                        {{ kv_row("Last Modified", case.updated_at.strftime("%b %d, %Y %H:%M")) }}
+                        {{ kv_row("Evidence Count", (evidence|length|string) ~ (" File" if evidence|length == 1 else " Files")) }}
+                        {{ kv_row("Analysis Job Count", "0") }}
+                        {{ kv_row("Report Status", badge("Draft", variant="secondary")) }}
+                    </div>
+                </div>
+
+                {% if case.description %}
+                <div class="mx-auto max-w-2xl rounded-2xl border bg-card p-5 shadow-xs/5">
+                    <p class="mb-1.5 text-sm font-medium">Description</p>
+                    <p class="whitespace-pre-wrap text-sm text-muted-foreground">{{ case.description }}</p>
+                </div>
+                {% endif %}
+            {% endcall %}
+
+            {# ── Evidences ─────────────────────────────────────────────────── #}
+            {% call tabs_panel(value="evidences", class="mt-4 space-y-4") %}
+                <p class="text-sm text-muted-foreground">Manage uploaded files, view metadata, hashes, file types, and chain of custody.</p>
+
+                <div data-evidence-root data-case-id="{{ case.id }}" class="space-y-4">
+                    <div class="flex items-center justify-between gap-3">
+                        <p class="text-sm text-muted-foreground">{{ evidence|length }} file(s) collected for this case.</p>
+                        <button type="button" data-slot="dialog-trigger" data-target="#evidence-upload-dialog" aria-controls="evidence-upload-dialog"
+                            class="inline-flex h-9 shrink-0 cursor-pointer items-center justify-center gap-2 rounded-lg border border-input bg-background px-4 text-sm font-medium shadow-xs/5 hover:bg-accent/50">
+                            Upload evidence
+                        </button>
+                    </div>
+                    <p class="text-sm text-muted-foreground" data-evidence-empty>No evidence uploaded yet.</p>
+                    <div class="hidden space-y-4" data-evidence-cards></div>
+                </div>
+            {% endcall %}
+
+            {# ── Analyze ───────────────────────────────────────────────────── #}
+            {% call tabs_panel(value="analyze", class="mt-4 space-y-4") %}
+                <div class="flex items-start justify-between gap-4">
+                    <p class="text-sm text-muted-foreground">Select evidence files, choose compatible modules, build an analysis plan.</p>
+                    {# A real button() can't be used here - the macro hardcodes its own
+                       data-slot="button", which would collide with the dialog-trigger
+                       contract ui-runtime.js matches on (see the other dialog triggers
+                       in this file/onboarding templates - all raw <button>s for the
+                       same reason). #}
+                    <button type="button" data-slot="dialog-trigger" data-target="#review-analysis-plan" aria-controls="review-analysis-plan"
+                        class="relative inline-flex h-9 shrink-0 cursor-pointer items-center justify-center gap-2 rounded-lg border border-primary bg-primary px-4 text-sm font-medium text-primary-foreground shadow-xs hover:bg-primary/90">
+                        <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 3l16 9-16 9V3z"/></svg>
+                        Analyze
+                        <span x-show="plan.length" x-cloak x-text="plan.length" class="ms-1 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary-foreground/20 px-1 text-xs"></span>
+                    </button>
+                </div>
+
+                <div class="mt-4 grid gap-4 lg:grid-cols-3">
+                    {# Column 1: Evidence Files #}
+                    {% call card() %}
+                        {% call card_header() %}{{ card_title("Evidence Files") }}{% endcall %}
+                        {% call card_panel(class="pt-0 space-y-3") %}
+                            {{ input(type="search", placeholder="Search evidence…", attrs={"x-model": "evidenceQuery"}) }}
+                            <div class="flex flex-wrap gap-1.5">
+                                <button type="button" @click="evidenceFilter = 'all'"
+                                    class="rounded-full border px-2.5 py-1 text-xs font-medium transition-colors"
+                                    :class="evidenceFilter === 'all' ? 'border-primary bg-primary/10 text-primary' : 'border-input text-muted-foreground hover:bg-accent/50'">All</button>
+                                {# Pills are generated from whatever evidence types this case actually
+                                   has - not a fixed guess at what kinds of evidence a case "usually" has. #}
+                                <template x-for="[type, label] in availableEvidenceTypes()" :key="type">
+                                    <button type="button" @click="evidenceFilter = type" x-text="label"
+                                        class="rounded-full border px-2.5 py-1 text-xs font-medium transition-colors"
+                                        :class="evidenceFilter === type ? 'border-primary bg-primary/10 text-primary' : 'border-input text-muted-foreground hover:bg-accent/50'"></button>
+                                </template>
+                            </div>
+                            <p x-show="!evidence.length" class="rounded-lg border border-dashed p-4 text-center text-xs text-muted-foreground">No completed evidence yet - upload files from the Evidences tab.</p>
+                            <div class="space-y-2">
+                                <template x-for="item in filteredEvidence()" :key="item.id">
+                                    <label class="flex cursor-pointer items-start gap-2.5 rounded-lg border p-3 transition-colors" :class="isEvidenceSelected(item.id) ? 'border-primary bg-primary/5' : 'border-input hover:bg-accent/30'">
+                                        {{ checkbox(class="mt-0.5", attrs={":checked": "isEvidenceSelected(item.id)", "@change": "toggleEvidence(item.id)"}) }}
+                                        <span class="min-w-0 flex-1">
+                                            <span class="block truncate text-sm font-medium" x-text="item.filename"></span>
+                                            <span class="block text-xs text-muted-foreground" x-text="evidenceTypeLabelOf(item) + ' · Not Analyzed'"></span>
+                                        </span>
+                                    </label>
+                                </template>
+                            </div>
+                            {% call button(variant="link", size="sm", class="h-auto p-0 text-xs", attrs={"@click": "selectAllEvidence()", "x-show": "filteredEvidence().length"}) %}Select all{% endcall %}
+                        {% endcall %}
                     {% endcall %}
-                    {% call card_panel(class="pt-0") %}
-                        <form method="post" action="{{ url_for('cases.update_view', case_id=case.id) }}">
-                            {{ csrf_field() }}
-                            {% call field_group() %}
-                                {% call field() %}
-                                    {{ field_label("Case title", for_id="edit-title") }}
-                                    {{ input(name="title", value=case.title, required=True, attrs={"id": "edit-title"}) }}
-                                {% endcall %}
-                                {% call field() %}
-                                    {{ field_label("Description", for_id="edit-description") }}
-                                    {{ textarea(name="description", value=case.description or "", attrs={"id": "edit-description"}) }}
-                                {% endcall %}
-                                <div class="grid gap-4 sm:grid-cols-2">
-                                    {% call field() %}
-                                        {{ field_label("Classification") }}
-                                        {{ select_simple("classification", classifications, value=case.classification, placeholder="Select classification", key="edit-classification") }}
-                                    {% endcall %}
-                                    {% call field() %}
-                                        {{ field_label("Severity") }}
-                                        {{ select_simple("severity", severities, value=case.severity, placeholder="Select severity", key="edit-severity") }}
-                                    {% endcall %}
+
+                    {# Column 2: Compatible Modules - which modules show up depends entirely
+                       on the selected evidence's detected type(s) (requirements 1-4):
+                       nothing selected -> a prompt; one type (one file, or several files that
+                       share a type) -> a single module list that applies to all of them;
+                       several different types -> one module list per evidence file. #}
+                    {% call card() %}
+                        {% call card_header() %}{{ card_title("Compatible Modules") }}{% endcall %}
+                        {% call card_panel(class="pt-0 space-y-3") %}
+                            {{ input(type="search", placeholder="Search modules…", attrs={"x-model": "moduleQuery"}) }}
+                            <div class="flex flex-wrap gap-1.5">
+                                <button type="button" @click="moduleFilter = 'all'"
+                                    class="rounded-full border px-2.5 py-1 text-xs font-medium transition-colors"
+                                    :class="moduleFilter === 'all' ? 'border-primary bg-primary/10 text-primary' : 'border-input text-muted-foreground hover:bg-accent/50'">All</button>
+                                <template x-for="cat in availableCategories()" :key="cat">
+                                    <button type="button" @click="moduleFilter = cat" x-text="moduleCategoryLabels[cat]"
+                                        class="rounded-full border px-2.5 py-1 text-xs font-medium transition-colors"
+                                        :class="moduleFilter === cat ? 'border-primary bg-primary/10 text-primary' : 'border-input text-muted-foreground hover:bg-accent/50'"></button>
+                                </template>
+                            </div>
+
+                            <template x-if="compatibleView().mode === 'empty'">
+                                <p class="rounded-lg border border-dashed p-4 text-center text-xs text-muted-foreground">Select at least one evidence file on the left to see compatible modules.</p>
+                            </template>
+
+                            {# One shared module list, applied to every selected file. #}
+                            <template x-if="compatibleView().mode === 'shared'">
+                                <div class="space-y-3" x-data="{ view: compatibleView() }" x-effect="view = compatibleView()">
+                                    <p x-show="view.fileCount > 1" class="text-xs text-muted-foreground">Applies to all <span x-text="view.fileCount"></span> selected <span x-text="view.evidenceLabel"></span> files.</p>
+                                    <template x-for="group in view.groups" :key="group.category">
+                                        <div>
+                                            <p class="mb-1.5 text-xs font-medium text-muted-foreground" x-text="group.label"></p>
+                                            <div class="space-y-1.5">
+                                                <template x-for="mod in group.modules" :key="mod.id">
+                                                    <button type="button" @click="selectModule(mod.id)" class="flex w-full items-center justify-between rounded-lg border px-3 py-2 text-left text-sm transition-colors"
+                                                        :class="selectedModule === mod.id ? 'border-primary bg-primary/5' : 'border-input hover:bg-accent/30'">
+                                                        <span class="min-w-0">
+                                                            <span class="block truncate" x-text="mod.name"></span>
+                                                            <span class="block truncate text-xs text-muted-foreground" x-text="mod.tool"></span>
+                                                        </span>
+                                                        <svg x-show="selectedModule === mod.id" class="size-4 shrink-0 text-primary" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg>
+                                                    </button>
+                                                </template>
+                                            </div>
+                                        </div>
+                                    </template>
                                 </div>
-                                {% call field() %}
-                                    {{ field_label("Forensic examination status") }}
-                                    {{ select_simple("forensic_status", forensic_statuses, value=case.forensic_status, placeholder="Select status", key="edit-forensic-status") }}
-                                {% endcall %}
-                                {% call field() %}
-                                    {% call button(type="submit") %}Save changes{% endcall %}
-                                {% endcall %}
-                            {% endcall %}
-                        </form>
-                    {% endcall %}
-                {% endcall %}
+                            </template>
 
-                {% call card() %}
-                    {% call card_header() %}
-                        {{ card_title("Evidence") }}
-                        {{ card_description("Files collected for this case, uploaded in resumable chunks.") }}
+                            {# Several different evidence types selected - one module list per file. #}
+                            <template x-if="compatibleView().mode === 'byFile'">
+                                <div class="space-y-4" x-data="{ view: compatibleView() }" x-effect="view = compatibleView()">
+                                    <template x-for="file in view.files" :key="file.evidenceId">
+                                        <div class="rounded-lg border">
+                                            <p class="border-b bg-muted/40 px-3 py-2 text-sm font-medium">
+                                                <span x-text="file.evidenceName"></span>
+                                                <span class="ms-1 text-xs font-normal text-muted-foreground" x-text="'(' + file.evidenceLabel + ')'"></span>
+                                            </p>
+                                            <div class="space-y-3 p-3">
+                                                <template x-for="group in file.groups" :key="group.category">
+                                                    <div>
+                                                        <p class="mb-1.5 text-xs font-medium text-muted-foreground" x-text="group.label"></p>
+                                                        <div class="space-y-1.5">
+                                                            <template x-for="mod in group.modules" :key="mod.id">
+                                                                <button type="button" @click="selectModule(mod.id, [file.evidenceId])" class="flex w-full items-center justify-between rounded-lg border px-3 py-2 text-left text-sm transition-colors"
+                                                                    :class="selectedModule === mod.id && targetEvidenceIds.includes(file.evidenceId) ? 'border-primary bg-primary/5' : 'border-input hover:bg-accent/30'">
+                                                                    <span class="min-w-0">
+                                                                        <span class="block truncate" x-text="mod.name"></span>
+                                                                        <span class="block truncate text-xs text-muted-foreground" x-text="mod.tool"></span>
+                                                                    </span>
+                                                                    <svg x-show="selectedModule === mod.id && targetEvidenceIds.includes(file.evidenceId)" class="size-4 shrink-0 text-primary" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg>
+                                                                </button>
+                                                            </template>
+                                                        </div>
+                                                    </div>
+                                                </template>
+                                            </div>
+                                        </div>
+                                    </template>
+                                </div>
+                            </template>
+                        {% endcall %}
                     {% endcall %}
-                    {% call card_panel(class="pt-0") %}
-                        <div data-evidence-root data-case-id="{{ case.id }}">
-                            <button type="button" data-slot="dialog-trigger" data-target="#evidence-upload-dialog" aria-controls="evidence-upload-dialog"
-                                class="inline-flex h-9 shrink-0 cursor-pointer items-center justify-center gap-2 rounded-lg border border-input bg-background px-4 text-sm font-medium shadow-xs/5 hover:bg-accent/50">
-                                Upload evidence
-                            </button>
-                            <p class="mt-3 text-sm text-muted-foreground" data-evidence-empty>No evidence uploaded yet.</p>
-                            {% call table.table(variant="card", class="mt-3 hidden", attrs={"data-evidence-table": ""}) %}
-                                {% call table.table_header() %}
-                                    {% call table.table_row() %}
-                                        {{ table.table_head("File Name") }}
-                                        {{ table.table_head("Format", class="w-24") }}
-                                        {{ table.table_head("Size", class="w-28") }}
-                                        {{ table.table_head("Status", class="w-32") }}
-                                        {{ table.table_head("Action", class="w-16 text-right") }}
-                                    {% endcall %}
-                                {% endcall %}
-                                {% call table.table_body(attrs={"data-evidence-rows": ""}) %}{% endcall %}
-                            {% endcall %}
-                        </div>
-                    {% endcall %}
-                {% endcall %}
-            </div>
 
-            <div class="space-y-6">
+                    {# Column 3: Configure Selected Module - entirely driven by whichever
+                       module was last clicked in column 2; nothing renders here until one is. #}
+                    {% call card() %}
+                        {% call card_header() %}{{ card_title("Configure Selected Module") }}{% endcall %}
+                        {% call card_panel(class="pt-0 space-y-4") %}
+                            <template x-if="!selectedModule">
+                                <p class="rounded-lg border border-dashed p-4 text-center text-xs text-muted-foreground">Click a module in the middle column to configure it.</p>
+                            </template>
+                            <template x-if="selectedModule">
+                                <div class="space-y-4">
+                                    <div>
+                                        <p class="text-sm">Selected: <span class="font-medium" x-text="moduleMap[selectedModule].name"></span></p>
+                                        <p class="text-xs text-muted-foreground" x-text="moduleMap[selectedModule].tool + ' · ' + moduleMap[selectedModule].description"></p>
+                                        <p class="mt-1 text-xs text-muted-foreground">
+                                            Applies to <span x-text="targetFiles().length"></span> file(s): <span x-text="targetFiles().map(f => f.filename).join(', ')"></span>
+                                        </p>
+                                        <div class="mt-2 flex flex-wrap gap-1.5">
+                                            <span class="rounded-sm bg-muted px-1.5 py-0.5 text-xs text-muted-foreground" x-text="'Output: ' + moduleMap[selectedModule].outputType"></span>
+                                            <span class="rounded-sm bg-muted px-1.5 py-0.5 text-xs text-muted-foreground" x-text="'Runtime: ' + moduleMap[selectedModule].estimatedRuntime"></span>
+                                            <span class="rounded-sm bg-muted px-1.5 py-0.5 text-xs text-muted-foreground" x-text="'Risk: ' + moduleMap[selectedModule].riskLevel"></span>
+                                            <span class="rounded-sm bg-muted px-1.5 py-0.5 text-xs text-muted-foreground" x-text="'Isolation: ' + moduleMap[selectedModule].isolationLevel"></span>
+                                        </div>
+                                    </div>
+
+                                    <template x-for="f in moduleMap[selectedModule].fields" :key="f.key">
+                                        <div class="space-y-1.5">
+                                            <label class="text-xs font-medium text-muted-foreground" x-text="f.label"></label>
+                                            <template x-if="f.type === 'select'">
+                                                <select class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm shadow-xs outline-none focus-visible:ring-2 focus-visible:ring-ring dark:bg-input/32" x-model="moduleOptions[f.key]">
+                                                    <template x-for="opt in f.options" :key="opt">
+                                                        <option :value="opt" x-text="opt"></option>
+                                                    </template>
+                                                </select>
+                                            </template>
+                                            <template x-if="f.type === 'number'">
+                                                <input type="number" class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm shadow-xs outline-none focus-visible:ring-2 focus-visible:ring-ring dark:bg-input/32" x-model.number="moduleOptions[f.key]">
+                                            </template>
+                                            <template x-if="f.type === 'checkbox'">
+                                                <label class="flex items-center gap-2 text-sm">
+                                                    <input type="checkbox" class="size-4 rounded border border-input accent-primary" x-model="moduleOptions[f.key]">
+                                                    <span x-text="moduleOptions[f.key] ? 'Yes' : 'No'"></span>
+                                                </label>
+                                            </template>
+                                            <template x-if="f.type === 'checklist'">
+                                                <div class="flex flex-wrap gap-3">
+                                                    <template x-for="opt in f.options" :key="opt">
+                                                        <label class="flex items-center gap-1.5 text-sm">
+                                                            <input type="checkbox" class="size-4 rounded border border-input accent-primary" :checked="moduleOptions[f.key].includes(opt)" @change="toggleChecklistValue(f.key, opt)">
+                                                            <span x-text="opt"></span>
+                                                        </label>
+                                                    </template>
+                                                </div>
+                                            </template>
+                                        </div>
+                                    </template>
+
+                                    {% call button(class="w-full", attrs={"@click": "addToPlan()", ":disabled": "!targetFiles().length"}) %}Add to Plan{% endcall %}
+                                </div>
+                            </template>
+                        {% endcall %}
+                    {% endcall %}
+                </div>
+            {% endcall %}
+
+            {# ── Results ───────────────────────────────────────────────────── #}
+            {% call tabs_panel(value="results", class="mt-4 space-y-4") %}
+                <p class="text-sm text-muted-foreground">Review analysis outputs, extracted artifacts, findings, timelines, and IOCs.</p>
+                <template x-if="!results.length">
+                    {% call card() %}
+                        {% call card_panel(class="py-12 text-center") %}
+                            <p class="text-sm font-medium">No analysis results yet</p>
+                            <p class="mt-1 text-sm text-muted-foreground">Build and run an analysis plan from the Analyze tab to see results here.</p>
+                        {% endcall %}
+                    {% endcall %}
+                </template>
+                <template x-if="results.length">
+                    <div class="space-y-4">
+                        <template x-for="group in groupedResults()" :key="group.evidenceName">
+                            <div class="overflow-hidden rounded-2xl border bg-card shadow-xs/5">
+                                <p class="border-b bg-muted/40 px-4 py-2.5 text-sm font-medium" x-text="group.evidenceName"></p>
+                                <div class="divide-y divide-border">
+                                    <template x-for="result in group.results" :key="result.id">
+                                        <div class="space-y-2 px-4 py-3">
+                                            <div class="flex items-start justify-between gap-3">
+                                                <div class="min-w-0">
+                                                    <p class="text-sm font-medium" x-text="result.moduleName"></p>
+                                                    <p class="text-xs text-muted-foreground" x-text="result.tool + ' · ' + result.outputType"></p>
+                                                </div>
+                                                <span class="shrink-0 rounded-sm bg-success/8 px-1.5 py-0.5 text-xs font-medium text-success-soft">Completed</span>
+                                            </div>
+                                            <p class="text-sm text-muted-foreground" x-text="result.output"></p>
+                                            <div class="flex flex-wrap gap-3 pt-1">
+                                                <button type="button" data-slot="dialog-trigger" data-target="#result-view-dialog" aria-controls="result-view-dialog" @click="viewResult(result)" class="text-xs font-medium text-primary hover:underline">View</button>
+                                                <button type="button" @click="isFindingSaved(result.id) ? removeFromReport(result.id) : saveToReport(result.id)"
+                                                    class="text-xs font-medium hover:underline" :class="isFindingSaved(result.id) ? 'text-success-soft' : 'text-primary'"
+                                                    x-text="isFindingSaved(result.id) ? 'Saved to Report' : 'Save to Report'"></button>
+                                                <button type="button" @click="saveAsIoc(result.id)" :disabled="isSavedAsIoc(result.id)"
+                                                    class="text-xs font-medium text-primary hover:underline disabled:pointer-events-none disabled:text-muted-foreground"
+                                                    x-text="isSavedAsIoc(result.id) ? 'Saved as IOC' : 'Save as IOC'"></button>
+                                                <button type="button" @click="exportResult(result)" class="text-xs font-medium text-primary hover:underline">Export</button>
+                                            </div>
+                                        </div>
+                                    </template>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </template>
+            {% endcall %}
+
+            {# ── Report ────────────────────────────────────────────────────── #}
+            {% call tabs_panel(value="report", class="mt-4 space-y-4") %}
+                <p class="text-sm text-muted-foreground">Build the final case report from selected findings, notes, and evidence.</p>
+                {# Only findings explicitly saved from the Results tab show up here -
+                   not every completed result automatically. #}
+                <template x-if="!savedFindings().length">
+                    {% call card() %}
+                        {% call card_panel(class="py-12 text-center space-y-3") %}
+                            <p class="text-sm font-medium">No findings saved to this report yet</p>
+                            <p class="mt-1 text-sm text-muted-foreground">Go to the Results tab and click "Save to Report" on whichever results belong in the final report.</p>
+                            {% call button(variant="outline", disabled=true) %}Generate report{% endcall %}
+                        {% endcall %}
+                    {% endcall %}
+                </template>
+                <template x-if="savedFindings().length">
+                    {% call card() %}
+                        {% call card_header() %}
+                            {{ card_title("Saved findings") }}
+                            <p class="text-sm text-muted-foreground"><span x-text="savedFindings().length"></span> finding(s) selected for this report.</p>
+                        {% endcall %}
+                        {% call card_panel(class="pt-0 space-y-4") %}
+                            <div class="divide-y rounded-lg border">
+                                <template x-for="result in savedFindings()" :key="result.id">
+                                    <div class="flex items-start justify-between gap-3 px-3 py-2.5 text-sm">
+                                        <div class="min-w-0">
+                                            <p class="font-medium" x-text="result.moduleName + ' — ' + result.evidenceName"></p>
+                                            <p class="text-xs text-muted-foreground" x-text="result.output"></p>
+                                        </div>
+                                        <button type="button" @click="removeFromReport(result.id)" class="shrink-0 text-xs text-muted-foreground hover:text-destructive">Remove</button>
+                                    </div>
+                                </template>
+                            </div>
+                            {% call button(variant="outline", disabled=true) %}Generate report{% endcall %}
+                            <p class="text-xs text-muted-foreground">Report generation isn't wired up yet - this would build a document from the findings above.</p>
+                        {% endcall %}
+                    {% endcall %}
+                </template>
+            {% endcall %}
+
+            {# ── Members ───────────────────────────────────────────────────── #}
+            {% call tabs_panel(value="members", class="mt-4 space-y-4") %}
+                <p class="text-sm text-muted-foreground">Manage analysts, reviewers, roles, and access for this case.</p>
                 {% call card() %}
                     {% call card_header() %}
                         {{ card_title("Access") }}
@@ -137,26 +432,65 @@
                         </div>
                     {% endcall %}
                 {% endcall %}
+            {% endcall %}
 
+            {# ── Activity ──────────────────────────────────────────────────── #}
+            {% call tabs_panel(value="activity", class="mt-4 space-y-4") %}
+                <p class="text-sm text-muted-foreground">View the complete audit trail of actions performed inside this case.</p>
                 {% call card() %}
-                    {% call card_header() %}
-                        {{ card_title("Status") }}
-                    {% endcall %}
-                    {% call card_panel(class="pt-0 flex flex-wrap gap-1.5") %}
-                        {{ badge(case.severity, variant=severity_variant.get(case.severity, "outline")) }}
-                        {{ badge(case.forensic_status, variant=status_variant.get(case.forensic_status, "outline")) }}
-                        {% if case.classification %}{{ badge(case.classification, variant="outline") }}{% endif %}
+                    {% call card_panel(class="py-12 text-center") %}
+                        <p class="text-sm font-medium">Activity logging isn't wired up yet</p>
+                        <p class="mt-1 text-sm text-muted-foreground">This will show every action taken inside this case as it happens.</p>
                     {% endcall %}
                 {% endcall %}
-            </div>
+            {% endcall %}
+            {% endcall %}
         </div>
     </main>
 </div>
 
+{% call dialog(attrs={"id": "edit-case-dialog"}) %}
+    {% call dialog_header() %}
+        {{ dialog_title("Edit case") }}
+        {{ dialog_description(case.case_number) }}
+    {% endcall %}
+    <form method="post" action="{{ url_for('cases.update_view', case_id=case.id) }}">
+        {{ csrf_field() }}
+        {% call field_group() %}
+            {% call field() %}
+                {{ field_label("Case title", for_id="edit-title") }}
+                {{ input(name="title", value=case.title, required=True, attrs={"id": "edit-title"}) }}
+            {% endcall %}
+            {% call field() %}
+                {{ field_label("Description", for_id="edit-description") }}
+                {{ textarea(name="description", value=case.description or "", attrs={"id": "edit-description"}) }}
+            {% endcall %}
+            <div class="grid gap-4 sm:grid-cols-2">
+                {% call field() %}
+                    {{ field_label("Classification") }}
+                    {{ select_simple("classification", classifications, value=case.classification, placeholder="Select classification", key="edit-classification") }}
+                {% endcall %}
+                {% call field() %}
+                    {{ field_label("Severity") }}
+                    {{ select_simple("severity", severities, value=case.severity, placeholder="Select severity", key="edit-severity") }}
+                {% endcall %}
+            </div>
+            {% call field() %}
+                {{ field_label("Forensic examination status") }}
+                {{ select_simple("forensic_status", forensic_statuses, value=case.forensic_status, placeholder="Select status", key="edit-forensic-status") }}
+            {% endcall %}
+        {% endcall %}
+        {% call dialog_footer(class="mt-4") %}
+            {% call dialog_close(class=cancel_classes) %}Cancel{% endcall %}
+            {% call button(type="submit") %}Save changes{% endcall %}
+        {% endcall %}
+    </form>
+{% endcall %}
+
 {% call dialog(attrs={"id": "evidence-upload-dialog"}) %}
     {% call dialog_header() %}
         {{ dialog_title("Upload evidence") }}
-        {{ dialog_description("Drag and drop up to 5 files. Uploads are chunked and resumable - you can pause and continue later.") }}
+        {{ dialog_description("Drag and drop up to 5 files. Uploads are sent straight to object storage in parts - you can pause and continue later.") }}
     {% endcall %}
     <div data-evidence-dropzone data-case-id="{{ case.id }}" class="rounded-lg border-2 border-dashed border-input p-8 text-center text-sm text-muted-foreground">
         Drop files here, or
@@ -180,6 +514,103 @@
         {% call dialog_close(class=cancel_classes) %}Done{% endcall %}
     {% endcall %}
 {% endcall %}
+
+{% call dialog(attrs={"id": "review-analysis-plan", "style": "max-width: 44rem"}) %}
+    {% call dialog_header() %}
+        {{ dialog_title("Review Analysis Plan") }}
+    {% endcall %}
+    <div class="grid grid-cols-3 gap-3 rounded-lg border bg-muted/40 p-3 text-center">
+        <div><p class="text-xs text-muted-foreground">Total Jobs</p><p class="text-lg font-semibold" x-text="plan.length"></p></div>
+        <div><p class="text-xs text-muted-foreground">Estimated Time</p><p class="text-lg font-semibold" x-text="plan.length ? ('~' + estimatedMinutes + ' minutes') : '—'"></p></div>
+        <div><p class="text-xs text-muted-foreground">Risk</p><p class="text-lg font-semibold" x-text="riskLabel"></p></div>
+    </div>
+
+    <p x-show="!plan.length" class="mt-4 rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
+        Nothing staged yet - go to the Analyze tab, pick evidence and a module, and click "Add to Plan".
+    </p>
+
+    <div class="mt-4 max-h-80 space-y-4 overflow-y-auto" x-show="plan.length">
+        <template x-for="group in groupedPlan()" :key="group.evidenceName">
+            <div class="rounded-lg border">
+                <p class="border-b bg-muted/40 px-3 py-2 text-sm font-medium" x-text="group.evidenceName"></p>
+                <div class="divide-y">
+                    <template x-for="job in group.jobs" :key="job.id">
+                        <div class="flex items-start justify-between gap-3 px-3 py-2.5 text-sm">
+                            <div class="min-w-0">
+                                <p class="font-medium" x-text="job.moduleName"></p>
+                                <p class="text-xs text-muted-foreground" x-text="job.tool + ' · ' + job.summary"></p>
+                            </div>
+                            <button type="button" @click="removeFromPlan(job.id)" class="shrink-0 text-xs text-muted-foreground hover:text-destructive">Remove</button>
+                        </div>
+                    </template>
+                </div>
+            </div>
+        </template>
+    </div>
+
+    {% call dialog_footer(class="mt-4") %}
+        {% call button(variant="outline", attrs={"@click": "clearPlan()", ":disabled": "!plan.length"}) %}Clear Plan{% endcall %}
+        {% call button(variant="outline", attrs={":disabled": "!plan.length"}) %}Save as Preset{% endcall %}
+        {% call dialog_close(class=cancel_classes) %}Cancel{% endcall %}
+        {% call button(attrs={"@click": "startAnalysis()", ":disabled": "!plan.length"}) %}Analyze <span x-text="plan.length"></span> Jobs{% endcall %}
+    {% endcall %}
+{% endcall %}
+
+{% call dialog(attrs={"id": "current-job-queue", "style": "max-width: 44rem"}) %}
+    {% call dialog_header() %}
+        {{ dialog_title("Current Job Queue") }}
+        {{ dialog_description("There's no real job runner behind this yet, so every job mock-completes instantly - see the Results tab.") }}
+    {% endcall %}
+    {% call table.table(variant="card", class="mt-2") %}
+        {% call table.table_header() %}
+            {% call table.table_row() %}
+                {{ table.table_head("Job") }}
+                {{ table.table_head("File") }}
+                {{ table.table_head("Module") }}
+                {{ table.table_head("Status") }}
+                {{ table.table_head("Progress") }}
+            {% endcall %}
+        {% endcall %}
+        {% call table.table_body() %}
+            <template x-for="job in queue" :key="job.id">
+                {% call table.table_row() %}
+                    {% call table.table_cell() %}<span x-text="job.moduleName"></span>{% endcall %}
+                    {% call table.table_cell() %}<span x-text="job.evidenceName"></span>{% endcall %}
+                    {% call table.table_cell() %}<span x-text="job.tool"></span>{% endcall %}
+                    {% call table.table_cell() %}{{ badge("Completed", variant="success") }}{% endcall %}
+                    {% call table.table_cell() %}<div class="h-2 w-24 overflow-hidden rounded-full bg-muted"><div class="h-full w-full bg-success"></div></div>{% endcall %}
+                {% endcall %}
+            </template>
+        {% endcall %}
+    {% endcall %}
+    <div x-show="!queue.length" class="mt-2 text-center text-sm text-muted-foreground">No jobs queued.</div>
+    {% call dialog_footer(class="mt-4") %}
+        {% call dialog_close(class=cancel_classes) %}Close{% endcall %}
+    {% endcall %}
+{% endcall %}
+
+{% call dialog(attrs={"id": "result-view-dialog", "style": "max-width: 36rem"}) %}
+    {% call dialog_header() %}
+        {{ dialog_title("Result Detail") }}
+        {{ dialog_description(attrs={"x-text": "viewingResult ? (viewingResult.moduleName + ' on ' + viewingResult.evidenceName) : ''"}) }}
+    {% endcall %}
+    <template x-if="viewingResult">
+        <div class="space-y-3 text-sm">
+            <div class="flex flex-wrap gap-1.5">
+                <span class="rounded-sm bg-muted px-1.5 py-0.5 text-xs text-muted-foreground" x-text="'Tool: ' + viewingResult.tool"></span>
+                <span class="rounded-sm bg-muted px-1.5 py-0.5 text-xs text-muted-foreground" x-text="'Output: ' + viewingResult.outputType"></span>
+                <span class="rounded-sm bg-muted px-1.5 py-0.5 text-xs text-muted-foreground" x-text="'Risk: ' + viewingResult.risk"></span>
+                <span class="rounded-sm bg-muted px-1.5 py-0.5 text-xs text-muted-foreground" x-text="'Isolation: ' + viewingResult.isolation"></span>
+            </div>
+            <p class="rounded-lg border bg-muted/40 p-3 text-muted-foreground" x-text="viewingResult.output"></p>
+            <p class="text-xs text-muted-foreground" x-text="'Options: ' + viewingResult.summary"></p>
+        </div>
+    </template>
+    {% call dialog_footer(class="mt-4") %}
+        {% call dialog_close(class=cancel_classes) %}Close{% endcall %}
+    {% endcall %}
+{% endcall %}
+</div>
 
 {% if just_created %}
 <script>

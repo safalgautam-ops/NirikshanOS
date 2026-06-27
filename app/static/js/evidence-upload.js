@@ -46,6 +46,45 @@ function evidenceFormatOf(filename) {
   return dot === -1 ? "—" : filename.slice(dot + 1).toUpperCase();
 }
 
+// Friendlier "Detected File Type" label for the Evidences tab's cards.
+// There's no real file-type detection (magic-byte sniffing) behind this -
+// it's the same extension evidenceFormatOf() reads, just mapped to a label
+// an examiner would recognize. Falls back to "<EXT> File" for anything not
+// in the table, so it never just shows a bare, unlabeled extension.
+const EVIDENCE_TYPE_LABELS = {
+  exe: "PE Executable", dll: "PE Library", sys: "Driver (SYS)",
+  pcap: "PCAP Capture", pcapng: "PCAP Capture", cap: "Packet Capture",
+  mem: "Memory Image", dmp: "Memory Dump", vmem: "Memory Image", raw: "Raw Memory Image",
+  eml: "Email Message", msg: "Email Message", pst: "Email Archive", mbox: "Email Archive",
+  pdf: "PDF Document", doc: "Word Document", docx: "Word Document",
+  zip: "Archive", "7z": "Archive", rar: "Archive", tar: "Archive", gz: "Archive",
+  jpg: "Image", jpeg: "Image", png: "Image", gif: "Image",
+  log: "Log File", txt: "Text File", csv: "CSV Data",
+  img: "Disk Image", dd: "Disk Image", e01: "Disk Image (E01)", vmdk: "Virtual Disk",
+};
+function evidenceTypeLabelOf(filename) {
+  const ext = evidenceFormatOf(filename).toLowerCase();
+  if (ext === "—") return "Unknown";
+  return EVIDENCE_TYPE_LABELS[ext] || `${ext.toUpperCase()} File`;
+}
+
+function evidenceStatusBadgeClasses(status) {
+  return {
+    completed: "bg-success/8 text-success-soft",
+    uploading: "bg-info/8 text-info-soft",
+    failed: "bg-destructive/8 text-destructive-soft",
+    cancelled: "bg-secondary text-secondary-foreground",
+    paused: "bg-secondary text-secondary-foreground",
+  }[status] || "bg-secondary text-secondary-foreground";
+}
+
+function evidenceFormatDate(iso) {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+}
+
 /* this class handles uploading evidence files to MinIO directly,
   without ever sending the file's bytes through the app.
 
@@ -316,8 +355,7 @@ function initEvidenceUpload({ caseId, csrfToken }) {
   const browseButton = dropzone.querySelector("[data-evidence-browse]");
   const uploadTable = document.querySelector("[data-evidence-upload-table]");
   const uploadRows = document.querySelector("[data-evidence-upload-rows]");
-  const persistedTable = document.querySelector("[data-evidence-table]");
-  const persistedRows = document.querySelector("[data-evidence-rows]");
+  const persistedCards = document.querySelector("[data-evidence-cards]");
   const emptyState = document.querySelector("[data-evidence-empty]");
 
   const activeUploads = new Map(); // row element -> EvidenceUpload
@@ -482,45 +520,68 @@ function initEvidenceUpload({ caseId, csrfToken }) {
     );
   }
 
+  function evidenceRow(label, valueHtml) {
+    return `<div class="flex items-center justify-between gap-4 px-5 py-2.5 text-sm">
+      <span class="text-muted-foreground">${label}</span>
+      <span class="min-w-0 truncate text-right font-medium" title="${label}">${valueHtml}</span>
+    </div>`;
+  }
+
+  function buildEvidenceCard(item) {
+    const card = document.createElement("div");
+    card.className = "overflow-hidden rounded-2xl border bg-card shadow-xs/5";
+    card.innerHTML = `
+      <div class="flex items-center justify-between gap-3 border-b px-5 py-3">
+        <p class="min-w-0 truncate text-sm font-semibold">${item.filename}</p>
+        <span class="shrink-0 rounded-sm px-1.5 py-0.5 text-xs font-medium ${evidenceStatusBadgeClasses(item.status)}">${statusLabelFor(item.status)}</span>
+      </div>
+      <div class="divide-y divide-border">
+        ${evidenceRow("Detected File Type", evidenceTypeLabelOf(item.filename))}
+        ${evidenceRow("MIME Type", item.mime_type || "—")}
+        ${evidenceRow("Size", evidenceFormatBytes(item.size_bytes))}
+        ${evidenceRow("SHA256", item.sha256 ? `<span class="font-mono text-xs">${item.sha256}</span>` : "Computing…")}
+        ${evidenceRow("Uploaded By", item.uploaded_by_name || "—")}
+        ${evidenceRow("Uploaded At", evidenceFormatDate(item.uploaded_at))}
+        ${evidenceRow("Analysis Status", "Not Analyzed")}
+        ${evidenceRow("Tags", "—")}
+        <div class="flex items-center justify-between gap-4 px-5 py-2.5 text-sm">
+          <span class="text-muted-foreground">Actions</span>
+          <div class="flex justify-end gap-1" data-cell="actions"></div>
+        </div>
+      </div>
+    `;
+    const del = actionButton("Delete", { class: "hover:text-destructive" });
+    del.innerHTML = iconTrash();
+    del.addEventListener("click", async () => {
+      const form = new FormData();
+      form.append("csrf_token", csrfToken);
+      await fetch(`/cases/${caseId}/evidence/${item.id}/delete`, {
+        method: "POST",
+        body: form,
+      });
+      refreshPersistedEvidence();
+    });
+    card.querySelector('[data-cell="actions"]').appendChild(del);
+    return card;
+  }
+
   async function refreshPersistedEvidence() {
+    if (!persistedCards) return;
     try {
       const res = await fetch(`/cases/${caseId}/evidence`);
       if (!res.ok) return;
       const body = await res.json();
-      persistedRows.innerHTML = "";
+      persistedCards.innerHTML = "";
       if (!body.items.length) {
         emptyState.classList.remove("hidden");
-        persistedTable.classList.add("hidden");
+        persistedCards.classList.add("hidden");
         return;
       }
       emptyState.classList.add("hidden");
-      persistedTable.classList.remove("hidden");
-      body.items.forEach((item) => {
-        const row = document.createElement("tr");
-        row.className = "border-b";
-        row.innerHTML = `
-          <td class="whitespace-nowrap p-2.5 align-middle truncate">${item.filename}</td>
-          <td class="whitespace-nowrap p-2.5 align-middle">${evidenceFormatOf(item.filename)}</td>
-          <td class="whitespace-nowrap p-2.5 align-middle">${evidenceFormatBytes(item.size_bytes)}</td>
-          <td class="whitespace-nowrap p-2.5 align-middle">${statusLabelFor(item.status)}</td>
-          <td class="p-2.5 align-middle text-right"><div class="flex justify-end gap-1" data-cell="actions"></div></td>
-        `;
-        const del = actionButton("Delete", { class: "hover:text-destructive" });
-        del.innerHTML = iconTrash();
-        del.addEventListener("click", async () => {
-          const form = new FormData();
-          form.append("csrf_token", csrfToken);
-          await fetch(`/cases/${caseId}/evidence/${item.id}/delete`, {
-            method: "POST",
-            body: form,
-          });
-          refreshPersistedEvidence();
-        });
-        row.querySelector('[data-cell="actions"]').appendChild(del);
-        persistedRows.appendChild(row);
-      });
+      persistedCards.classList.remove("hidden");
+      body.items.forEach((item) => persistedCards.appendChild(buildEvidenceCard(item)));
     } catch (_err) {
-      /* best-effort refresh - leave the table as-is on failure */
+      /* best-effort refresh - leave the cards as-is on failure */
     }
   }
 

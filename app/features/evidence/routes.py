@@ -71,6 +71,8 @@ async def list_view(case_id: str):
                     "received_bytes": item["received_bytes"],
                     "status": item["status"],
                     "sha256": item["sha256"],
+                    "uploaded_by_name": item["uploaded_by_name"],
+                    "uploaded_at": item["uploaded_at"].isoformat() if item["uploaded_at"] else None,
                 }
                 for item in items
             ]

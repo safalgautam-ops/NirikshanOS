@@ -46,10 +46,15 @@ async def get_evidence(evidence_id: str):
 
 
 async def list_case_evidence(case_id: str) -> list:
+    """Joins in the uploader's name for display (Evidences/Analyze tabs'
+    "Uploaded By" field) - evidence itself only stores uploaded_by as a
+    user id."""
     return await (
         db.table("evidence")
-        .where("case_id", case_id)
-        .order_by("uploaded_at", "DESC")
+        .join("user", "evidence.uploaded_by", "user.id")
+        .where("evidence.case_id", case_id)
+        .order_by("evidence.uploaded_at", "DESC")
+        .select("evidence.*", "user.name as uploaded_by_name")
         .all(allow_full_table=True)
     )
 

@@ -34,6 +34,8 @@ from app.features.cases.service import (
     search_addable_members,
     update_case,
 )
+from app.features.auth.repository import get_user_by_id
+from app.features.evidence.service import list_case_evidence
 from app.features.organizations import repository as org_repository
 
 cases_bp = Blueprint("cases", __name__, url_prefix="/cases")
@@ -116,11 +118,32 @@ async def create_view():
 async def detail_view(case_id: str):
     case = await _require_visible_case(case_id)
     members = await get_case_members(case_id)
+    evidence = await list_case_evidence(case_id)
+    completed_evidence = [e for e in evidence if e["status"] == "completed"]
+    # Lightweight, JSON-safe subset for the Analyze tab's Alpine state - the
+    # full evidence rows carry datetime columns (uploaded_at) that don't
+    # belong baked into the page as JSON just to back a client-side planner.
+    analyze_evidence = [
+        {
+            "id": e["id"],
+            "filename": e["filename"],
+            "mime_type": e["mime_type"],
+            "size_bytes": e["size_bytes"],
+        }
+        for e in completed_evidence
+    ]
+    creator = await get_user_by_id(case["created_by"])
     visible_keys = await get_visible_nav_keys(g.user_id)
     return await render_template(
         "cases/detail.html",
         case=case,
+        creator_name=creator["name"] if creator else "—",
         members=members,
+        evidence=evidence,
+        analyze_evidence=analyze_evidence,
+        classification_label=dict(CLASSIFICATIONS).get(case["classification"], case["classification"] or "—"),
+        severity_label=dict(SEVERITIES).get(case["severity"], case["severity"]),
+        forensic_status_label=dict(FORENSIC_STATUSES).get(case["forensic_status"], case["forensic_status"]),
         classifications=CLASSIFICATIONS,
         severities=SEVERITIES,
         forensic_statuses=FORENSIC_STATUSES,
