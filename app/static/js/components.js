@@ -1,9 +1,6 @@
-// Small Alpine.data() components that need real JS (DOM measurement, multi-
-// statement logic) the CSP build's inline-attribute parser can't run - see
-// the comment in layouts/base.html on why that parser only handles simple
-// expressions. Lives in a real same-origin file, so CSP (script-src 'self')
-// allows it; this is the supported way to do anything non-trivial with the
-// CSP build, not a workaround.
+/* this file defines Alpine components */
+
+// this waits until Alpine is ready, then registers your custom components
 document.addEventListener("alpine:init", () => {
   // Drives tabs.html's sliding active-tab indicator (next-app's TabsList).
   // Measures the active trigger's box and writes it as inline style on the
@@ -2178,33 +2175,30 @@ document.addEventListener("alpine:init", () => {
     );
   }
 
-  // Drives the Analyze tab's 3-column planner, the Review Analysis Plan and
-  // Current Job Queue dialogs, and the Results tab (cases/detail.html) -
-  // all one Alpine component instance shared across that markup (see the
-  // single x-data on the page's outer wrapper). Pick evidence + a module +
-  // that module's options, "Add to Plan" stages a job client-side; only
-  // "Analyze N Jobs" "runs" anything, and since there's no real job runner
-  // behind this, running a plan just mock-completes every staged job
-  // instantly and drops its (fake) output into the Results tab.
+  /* this component manages the Analyze tab's planner and job queue */
   Alpine.data("analyzeWorkspace", (evidenceItems) => ({
+    /*
+    this analyze page needs to remember some things while the user is using it
+    and those things are called "state" variables
+    */
     moduleMap: MODULE_MAP,
     evidenceTypeLabels: EVIDENCE_TYPE_LABELS,
     moduleCategoryLabels: MODULE_CATEGORY_LABELS,
-    evidence: evidenceItems || [],
-    evidenceFilter: "all",
-    evidenceQuery: "",
-    moduleFilter: "all",
-    moduleQuery: "",
-    selectedEvidence: [],
-    selectedModule: null,
-    targetEvidenceIds: [],
-    moduleOptions: {},
-    plan: [],
-    queue: [],
-    results: [],
-    savedFindingIds: [],
-    savedIocIds: [],
-    viewingResult: null,
+    evidence: evidenceItems || [], // for remembering the evidence items (files) inside Alpine (state)
+    evidenceFilter: "all", // for remembering the evidence filter (all, generic, binary, etc.)
+    evidenceQuery: "", // for remembering the evidence query (search term). if typed photo, page shows only files whose name include "photo"
+    moduleFilter: "all", // for remembering the module filter (all, generic, binary, etc.)
+    moduleQuery: "", // for remembering the module query (search term)
+    selectedEvidence: [], // for remembering the selected evidence items (files)
+    selectedModule: null, // for remembering the selected module
+    targetEvidenceIds: [], // for remembering the target evidence items (files)
+    moduleOptions: {}, // for remembering the module options
+    plan: [], // for remembering the jobs the user has prepared but not started yet (add to plan)
+    queue: [], // for remembering the queue (started jobs)
+    results: [], // for remembering the completed anlysis results
+    savedFindingIds: [], // for remembering the saved finding IDs (so we can show them in the results: savedFindingsIds=["job1"])
+    savedIocIds: [], // for remembering the saved IOC IDs (so we can show them in the results: savedIocIds=["job2"])
+    viewingResult: null, // for remembering which result is currently opened in the details dialog/modal.
 
     evidenceTypeOf(item) {
       const ext = (item.filename || "").toLowerCase().split(".").pop();

@@ -11,8 +11,6 @@ check, since those are real management actions, not viewing."""
 
 from __future__ import annotations
 
-from datetime import timedelta
-
 from quart import Blueprint, abort, g, redirect, render_template, request, url_for
 
 from app.core.security.org_permissions import (
@@ -22,6 +20,7 @@ from app.core.security.org_permissions import (
 )
 from app.core.security.permissions import get_visible_nav_keys
 from app.core.security.sessions import login_required
+from app.features.audit import service as audit_service
 from app.features.cases.choices import CLASSIFICATIONS, FORENSIC_STATUSES, SEVERITIES
 from app.features.cases.permissions import CASE_CREATE, CASE_DELETE, CASE_EDIT
 from app.features.cases.service import (
@@ -40,7 +39,12 @@ from app.features.auth.repository import get_user_by_id
 from app.features.evidence.service import list_case_evidence
 from app.features.organizations import repository as org_repository
 
+
 cases_bp = Blueprint("cases", __name__, url_prefix="/cases")
+
+
+def _ip() -> str | None:
+    return request.remote_addr
 
 
 async def _require_org_id() -> str:
@@ -108,6 +112,13 @@ async def create_view():
         )
     except CaseError as exc:
         return redirect(url_for("cases.list_view", error=str(exc)))
+    await audit_service.record_case_activity(
+        case_id=case_id,
+        actor_id=g.user_id,
+        action=audit_service.CASE_CREATED,
+        target_label=form.get("title", ""),
+        ip_address=_ip(),
+    )
     # ?created=1 tells the case detail page to open the evidence-upload
     # dialog immediately - the create-case dialog's "step 2" in spirit, just
     # backed by a real page load instead of client-only dialog chaining, so
@@ -149,25 +160,6 @@ async def _member_rows(case: dict, members: list, creator: dict | None, organiza
     return rows
 
 
-def _mock_activity_log(case: dict, creator_name: str, evidence: list) -> list[dict]:
-    """Illustrative audit trail - there's no real activity/event logging
-    behind this yet (see the Activity tab's note in the template), so this
-    is a fixed example sequence anchored to this case's real creation time
-    and, where one exists, its first real evidence file - not a literal
-    history of what actually happened."""
-    started = case["created_at"]
-    first_file = evidence[0]["filename"] if evidence else "evidence.bin"
-    return [
-        {"timestamp": started, "actor": creator_name, "action": "Case created", "target": case["case_number"], "status": "Completed"},
-        {"timestamp": started + timedelta(minutes=6), "actor": creator_name, "action": "Evidence uploaded", "target": first_file, "status": "Completed"},
-        {"timestamp": started + timedelta(minutes=8), "actor": creator_name, "action": "Hash generated", "target": first_file, "status": "Completed"},
-        {"timestamp": started + timedelta(minutes=20), "actor": creator_name, "action": "Module started", "target": "YARA Scan", "status": "Running"},
-        {"timestamp": started + timedelta(minutes=22), "actor": creator_name, "action": "Module completed", "target": "YARA Scan", "status": "Completed"},
-        {"timestamp": started + timedelta(minutes=25), "actor": creator_name, "action": "Finding saved to report", "target": "YARA Scan result", "status": "Completed"},
-        {"timestamp": started + timedelta(minutes=30), "actor": creator_name, "action": "Report exported", "target": case["case_number"] + " report", "status": "Completed"},
-    ]
-
-
 @cases_bp.route("/<case_id>")
 @login_required
 async def detail_view(case_id: str):
@@ -199,7 +191,7 @@ async def detail_view(case_id: str):
         member_rows=await _member_rows(case, members, creator, org_id),
         evidence=evidence,
         analyze_evidence=analyze_evidence,
-        activity_log=_mock_activity_log(case, creator_name, evidence),
+        activity_log=await audit_service.get_case_activity_log(case_id),
         classification_label=dict(CLASSIFICATIONS).get(case["classification"], case["classification"] or "—"),
         severity_label=dict(SEVERITIES).get(case["severity"], case["severity"]),
         forensic_status_label=dict(FORENSIC_STATUSES).get(case["forensic_status"], case["forensic_status"]),
@@ -228,15 +220,38 @@ async def update_view(case_id: str):
             forensic_status=form.get("forensic_status", ""),
         )
     except CaseError as exc:
+        await audit_service.record_case_activity(
+            case_id=case_id,
+            actor_id=g.user_id,
+            action=audit_service.CASE_UPDATED,
+            target_label=form.get("title", ""),
+            status="failure",
+            ip_address=_ip(),
+            metadata={"error": str(exc)},
+        )
         return redirect(url_for("cases.detail_view", case_id=case_id, error=str(exc)))
+    await audit_service.record_case_activity(
+        case_id=case_id,
+        actor_id=g.user_id,
+        action=audit_service.CASE_UPDATED,
+        target_label=form.get("title", ""),
+        ip_address=_ip(),
+    )
     return redirect(url_for("cases.detail_view", case_id=case_id))
 
 
 @cases_bp.route("/<case_id>/delete", methods=["POST"])
 @require_org_permission(CASE_DELETE)
 async def delete_view(case_id: str):
-    await _require_visible_case(case_id)
+    case = await _require_visible_case(case_id)
     await delete_case(case_id)
+    await audit_service.record_case_activity(
+        case_id=case_id,
+        actor_id=g.user_id,
+        action=audit_service.CASE_DELETED,
+        target_label=case["title"],
+        ip_address=_ip(),
+    )
     return redirect(url_for("cases.list_view"))
 
 
@@ -249,6 +264,14 @@ async def add_member_view(case_id: str):
     try:
         if user_id:
             await add_member(case_id, user_id, added_by=g.user_id)
+            added_user = await get_user_by_id(user_id)
+            await audit_service.record_case_activity(
+                case_id=case_id,
+                actor_id=g.user_id,
+                action=audit_service.MEMBER_ADDED,
+                target_label=added_user["name"] if added_user else user_id,
+                ip_address=_ip(),
+            )
     except CaseError as exc:
         return redirect(url_for("cases.detail_view", case_id=case_id, error=str(exc)))
     return redirect(url_for("cases.detail_view", case_id=case_id))
@@ -258,10 +281,28 @@ async def add_member_view(case_id: str):
 @require_org_permission(CASE_EDIT)
 async def remove_member_view(case_id: str, user_id: str):
     await _require_visible_case(case_id)
+    target_user = await get_user_by_id(user_id)
+    target_label = target_user["name"] if target_user else user_id
     try:
         await remove_member(case_id, user_id, requested_by=g.user_id, is_owner=await _is_owner())
     except CaseError as exc:
+        await audit_service.record_case_activity(
+            case_id=case_id,
+            actor_id=g.user_id,
+            action=audit_service.MEMBER_REMOVED,
+            target_label=target_label,
+            status="failure",
+            ip_address=_ip(),
+            metadata={"error": str(exc)},
+        )
         return redirect(url_for("cases.detail_view", case_id=case_id, error=str(exc)))
+    await audit_service.record_case_activity(
+        case_id=case_id,
+        actor_id=g.user_id,
+        action=audit_service.MEMBER_REMOVED,
+        target_label=target_label,
+        ip_address=_ip(),
+    )
     return redirect(url_for("cases.detail_view", case_id=case_id))
 
 

@@ -26,6 +26,7 @@ from app.core.security.org_permissions import (
     require_org_permission,
 )
 from app.core.security.sessions import login_required
+from app.features.audit import service as audit_service
 from app.features.cases.permissions import EVIDENCE_DELETE, EVIDENCE_UPLOAD
 from app.features.cases.service import get_case_for_user
 from app.features.evidence.service import (
@@ -41,6 +42,10 @@ from app.features.evidence.service import (
 )
 
 evidence_bp = Blueprint("evidence", __name__, url_prefix="/cases")
+
+
+def _ip() -> str | None:
+    return request.remote_addr
 
 
 async def _is_owner() -> bool:
@@ -129,7 +134,23 @@ async def finalize_view(case_id: str, evidence_id: str):
     try:
         result = await finalize_upload(evidence_id)
     except EvidenceError as exc:
+        await audit_service.record_case_activity(
+            case_id=case_id,
+            actor_id=g.user_id,
+            action=audit_service.EVIDENCE_UPLOAD_FAILED,
+            target_label=evidence_id,
+            status="failure",
+            ip_address=_ip(),
+            metadata={"error": str(exc)},
+        )
         return jsonify({"error": str(exc)}), 400
+    await audit_service.record_case_activity(
+        case_id=case_id,
+        actor_id=g.user_id,
+        action=audit_service.EVIDENCE_UPLOADED,
+        target_label=result["filename"],
+        ip_address=_ip(),
+    )
     return jsonify(result)
 
 
@@ -160,7 +181,14 @@ async def resume_view(case_id: str, evidence_id: str):
 async def delete_view(case_id: str, evidence_id: str):
     await _require_visible_case(case_id)
     try:
-        await cancel_or_delete(evidence_id)
+        result = await cancel_or_delete(evidence_id)
     except EvidenceError as exc:
         return jsonify({"error": str(exc)}), 400
+    await audit_service.record_case_activity(
+        case_id=case_id,
+        actor_id=g.user_id,
+        action=audit_service.EVIDENCE_DELETED,
+        target_label=result["filename"],
+        ip_address=_ip(),
+    )
     return jsonify({"ok": True})

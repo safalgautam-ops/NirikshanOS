@@ -19,6 +19,7 @@ import mimetypes
 from app.config import Config
 from app.core import object_storage, storage
 from app.core.utils.ids import new_id
+from app.features.audit import service as audit_service
 from app.features.evidence import repository
 
 # S3/MinIO requires every part except the last to be at least 5MB - this
@@ -140,23 +141,37 @@ async def finalize_upload(evidence_id: str) -> dict:
 
     mime_type = _guess_mime_type(_extension(evidence["filename"]))
     await repository.mark_completed(evidence_id, size_bytes=size_bytes, mime_type=mime_type)
-    asyncio.create_task(_hash_evidence(evidence_id, evidence["s3_key"]))
-    return {"status": "completed", "size_bytes": size_bytes}
+    asyncio.create_task(
+        _hash_evidence(evidence_id, evidence["s3_key"], evidence["case_id"], evidence["uploaded_by"], evidence["filename"])
+    )
+    return {"status": "completed", "size_bytes": size_bytes, "filename": evidence["filename"]}
 
 
-async def _hash_evidence(evidence_id: str, s3_key: str) -> None:
+async def _hash_evidence(evidence_id: str, s3_key: str, case_id: str, uploaded_by: str, filename: str) -> None:
     """Background sha256/md5 fill-in. The app never sees evidence's raw
     bytes during upload (presigned-PUT goes straight browser-to-MinIO), so
     the only way to hash it is to stream it back after the fact via
     GetObject. This is a stopgap - workers/worker_main.py is still an idle
     "Week 4" stub with no real job queue - good enough at today's scale,
-    not meant to be the permanent home for this work."""
+    not meant to be the permanent home for this work.
+
+    This is the one audit-log write that happens from service.py rather
+    than routes.py: it runs in a detached background task with no HTTP
+    request behind it by the time it finishes, so there's no routes.py
+    call site to log from - the uploader is attributed as the actor since
+    hashing is just a continuation of their upload."""
     sha256 = hashlib.sha256()
     md5 = hashlib.md5()
     async for chunk in object_storage.stream_object(_BUCKET, s3_key):
         sha256.update(chunk)
         md5.update(chunk)
     await repository.set_hash(evidence_id, sha256=sha256.hexdigest(), md5=md5.hexdigest())
+    await audit_service.record_case_activity(
+        case_id=case_id,
+        actor_id=uploaded_by,
+        action=audit_service.EVIDENCE_HASHED,
+        target_label=filename,
+    )
 
 
 async def pause_upload(evidence_id: str) -> None:
@@ -179,7 +194,7 @@ async def resume_upload(evidence_id: str) -> None:
     await repository.set_status(evidence_id, "uploading")
 
 
-async def cancel_or_delete(evidence_id: str) -> None:
+async def cancel_or_delete(evidence_id: str) -> dict:
     evidence = await repository.get_evidence(evidence_id)
     if not evidence:
         raise EvidenceError("Evidence not found.")
@@ -188,6 +203,7 @@ async def cancel_or_delete(evidence_id: str) -> None:
     elif evidence["s3_key"]:
         await object_storage.delete_object(_BUCKET, evidence["s3_key"])
     await repository.delete_evidence(evidence_id)
+    return {"filename": evidence["filename"]}
 
 
 async def list_case_evidence(case_id: str):
