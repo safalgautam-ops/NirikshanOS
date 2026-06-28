@@ -171,4 +171,16 @@
   [x-cloak] {
     display: none !important;
   }
+
+  /* Topbar "find on page" matches - plain CSS since these <mark> elements
+     are injected by JS DOM manipulation, not authored in any template. */
+  mark.page-search-highlight {
+    background-color: var(--warning-soft);
+    color: inherit;
+    border-radius: 0.15em;
+  }
+  mark.page-search-highlight.page-search-current {
+    background-color: var(--warning);
+    color: var(--warning-foreground);
+  }
 }

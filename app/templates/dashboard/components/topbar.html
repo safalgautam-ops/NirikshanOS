@@ -5,7 +5,7 @@
     {% from "dashboard/components/topbar.html" import topbar %}
     {{ topbar("Dashboard") }}
 #}
-{% from "components/ui/input.html" import input %}
+{% from "components/ui/input-group.html" import input_group, input_group_addon, input_group_input %}
 {% from "components/ui/theme-toggle.html" import theme_toggle %}
 {% from "components/ui/avatar.html" import avatar, avatar_image, avatar_fallback %}
 {% from "components/ui/menu.html" import menu, menu_trigger, menu_popup, menu_item, menu_separator %}
@@ -15,8 +15,33 @@
 <header class="sticky top-0 z-10 flex h-14 items-center gap-4 border-b border-border bg-background/95 backdrop-blur px-4 md:px-6">
     <h1 class="text-lg font-semibold">{{ title }}</h1>
     <div class="ml-auto flex items-center gap-3">
-        <div class="hidden sm:block w-64">
-            {{ input(name="search", type="search", placeholder="Search...") }}
+        <div class="hidden sm:block w-64" x-data="pageSearch()" data-page-search-ignore>
+            {% call input_group() %}
+                {% call input_group_addon(class="pr-0") %}
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></svg>
+                {% endcall %}
+                {{ input_group_input(placeholder="Find on page...", attrs={
+                    "type": "text",
+                    "autocomplete": "off",
+                    "aria-label": "Find on page",
+                    "x-model": "query",
+                    "@input": "search()",
+                    "@keydown.enter.prevent": "$event.shiftKey ? prev() : next()",
+                    "@keydown.escape": "clear()",
+                }) }}
+                {% call input_group_addon(class="gap-1 pl-0") %}
+                    <span class="text-xs tabular-nums whitespace-nowrap" x-show="query" x-cloak x-text="matches.length ? (currentIndex + 1) + '/' + matches.length : 'No results'"></span>
+                    <button type="button" class="rounded p-0.5 hover:bg-accent disabled:opacity-30" x-show="matches.length" x-cloak title="Previous match" aria-label="Previous match" @click="prev()">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-3.5" aria-hidden="true"><path d="m18 15-6-6-6 6" /></svg>
+                    </button>
+                    <button type="button" class="rounded p-0.5 hover:bg-accent disabled:opacity-30" x-show="matches.length" x-cloak title="Next match" aria-label="Next match" @click="next()">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-3.5" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
+                    </button>
+                    <button type="button" class="rounded p-0.5 hover:bg-accent" x-show="query" x-cloak title="Clear search" aria-label="Clear search" @click="clear()">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-3.5" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12" /></svg>
+                    </button>
+                {% endcall %}
+            {% endcall %}
         </div>
         {{ theme_toggle() }}
         {% call menu(class="relative inline-block") %}

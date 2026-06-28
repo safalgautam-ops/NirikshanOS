@@ -1,0 +1,90 @@
+{% extends "layouts/base.html" %}
+{% block title %}Timeline Center - NirikshanOS{% endblock %}
+{% from "components/ui/card.html" import card, card_header, card_title, card_description, card_panel %}
+{% from "components/ui/badge.html" import badge %}
+{% from "components/ui/button.html" import button %}
+{% from "components/ui/input-group.html" import input_group, input_group_input, input_group_addon %}
+{% from "dashboard/components/sidebar.html" import sidebar %}
+{% from "dashboard/components/topbar.html" import topbar %}
+{% from "components/ui/breadcrumb.html" import breadcrumb_trail %}
+
+{% set severity_variant = {"low": "secondary", "medium": "info", "high": "warning", "critical": "error"} %}
+{% set status_variant = {"completed": "success", "failed": "error", "cancelled": "secondary", "paused": "secondary"} %}
+
+{% macro timeline_case_card(c) %}
+{% call card(class="h-full") %}
+    {% call card_header() %}
+        {{ card_title(c.title) }}
+        {{ card_description(c.case_number) }}
+    {% endcall %}
+    {% call card_panel(class="pt-0 space-y-4") %}
+        <div class="flex flex-wrap gap-1.5">
+            {% if c.classification %}{{ badge(classification_labels.get(c.classification, c.classification), variant="outline") }}{% endif %}
+            {{ badge(severity_labels.get(c.severity, c.severity), variant=severity_variant.get(c.severity, "outline")) }}
+            {{ badge(status_labels.get(c.forensic_status, c.forensic_status), variant=status_variant.get(c.forensic_status, "outline")) }}
+        </div>
+
+        <div class="grid grid-cols-4 gap-2 rounded-lg border bg-muted/40 p-3 text-center">
+            <div>
+                <p class="text-lg font-semibold">{{ c.total_items }}</p>
+                <p class="text-xs text-muted-foreground">Items</p>
+            </div>
+            <div>
+                <p class="text-lg font-semibold">{{ c.task_count }}</p>
+                <p class="text-xs text-muted-foreground">Tasks</p>
+            </div>
+            <div>
+                <p class="text-lg font-semibold">{{ c.note_count }}</p>
+                <p class="text-xs text-muted-foreground">Notes</p>
+            </div>
+            <div>
+                <p class="text-lg font-semibold">{{ c.milestone_count }}</p>
+                <p class="text-xs text-muted-foreground">Milestones</p>
+            </div>
+        </div>
+
+        <p class="text-xs text-muted-foreground">
+            {% if c.last_updated_at %}Last Updated: {{ c.last_updated_at.strftime("%b %d, %Y %H:%M") }}{% if c.last_updated_by %} by {{ c.last_updated_by }}{% endif %}
+            {% else %}No timeline activity yet{% endif %}
+        </p>
+
+        <a href="{{ url_for('timeline.case_view', case_id=c.id) }}" class="inline-flex h-9 w-full items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground shadow-xs/5 hover:bg-primary/90">
+            Open Timeline
+        </a>
+    {% endcall %}
+{% endcall %}
+{% endmacro %}
+
+{% block body %}
+{{ sidebar(active="timeline", visible_keys=visible_keys) }}
+
+<div class="flex flex-col md:pl-60" x-data="{ q: '' }">
+    {{ topbar("Timeline Center") }}
+    <main class="flex-1 p-4 md:p-6">
+        {{ breadcrumb_trail([("Dashboard", "/"), ("Timeline Center", None)]) }}
+
+        <div class="grid gap-6 p-2">
+            <p class="text-sm text-muted-foreground">Select a case to manage its manual investigation timeline.</p>
+
+            {% call input_group(class="max-w-sm") %}
+                {{ input_group_input(name="q", placeholder="Search cases…", attrs={"type": "search", "aria-label": "Search cases", "x-model": "q"}) }}
+                {% call input_group_addon() %}
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></svg>
+                {% endcall %}
+            {% endcall %}
+
+            {% if not cases %}
+            <p class="text-sm text-muted-foreground">No cases yet - create one from the Case section first.</p>
+            {% else %}
+            <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {% for c in cases %}
+                <div x-show="!q || {{ (c.title|lower)|tojson|forceescape }}.includes(q.toLowerCase()) || {{ (c.case_number|lower)|tojson|forceescape }}.includes(q.toLowerCase())">
+                    {{ timeline_case_card(c) }}
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+        </div>
+    </main>
+</div>
+{% endblock %}

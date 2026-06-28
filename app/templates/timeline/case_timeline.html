@@ -1,0 +1,325 @@
+{% extends "layouts/base.html" %}
+{% block title %}{{ case.title }} - Timeline - NirikshanOS{% endblock %}
+{% from "components/ui/card.html" import card, card_panel %}
+{% from "components/ui/badge.html" import badge %}
+{% from "components/ui/button.html" import button %}
+{% from "components/ui/dialog.html" import dialog, dialog_close, dialog_header, dialog_title, dialog_footer %}
+{% from "components/ui/field.html" import field_group, field, field_label %}
+{% from "components/ui/input.html" import input %}
+{% from "components/ui/textarea.html" import textarea %}
+{% from "components/ui/select.html" import select_simple %}
+{% from "dashboard/components/sidebar.html" import sidebar %}
+{% from "dashboard/components/topbar.html" import topbar %}
+{% from "components/ui/breadcrumb.html" import breadcrumb_trail %}
+{% from "components/ui/toast.html" import flash %}
+{% from "macros/csrf.html" import csrf_field %}
+
+{% set cancel_classes = "relative inline-flex h-9 shrink-0 cursor-pointer items-center justify-center gap-2 whitespace-nowrap rounded-lg border border-input bg-popover px-[calc(--spacing(3)-1px)] text-sm text-foreground shadow-xs/5 outline-none transition-shadow hover:bg-accent/50 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-64 sm:h-8" %}
+{% set trigger_classes = "inline-flex h-9 shrink-0 cursor-pointer items-center justify-center gap-2 rounded-lg border border-input bg-background px-4 text-sm font-medium shadow-xs/5 hover:bg-accent/50" %}
+{% set select_classes = "w-full rounded-lg border border-input bg-background px-3 py-2 text-sm shadow-xs outline-none focus-visible:ring-2 focus-visible:ring-ring dark:bg-input/32" %}
+
+{% set item_type_labels = {"task": "Task", "note": "Note", "milestone": "Milestone"} %}
+{% set item_type_variant = {"task": "default", "note": "secondary", "milestone": "outline"} %}
+{% set task_status_labels = dict(task_statuses) %}
+{% set task_status_variant = {"pending": "outline", "in_progress": "info", "done": "success", "blocked": "error", "cancelled": "secondary"} %}
+{% set task_priority_labels = dict(task_priorities) %}
+{% set note_visibility_labels = dict(note_visibilities) %}
+
+{# One card in the Investigation Timeline list - the time label sits above
+   the card (matching the wireframe), the card body varies by item.type,
+   and Edit is the item's only action (per spec - no Start/Done/Delete/etc). #}
+{% macro timeline_item_card(item) %}
+<div>
+    <p class="mb-1.5 text-xs font-medium text-muted-foreground">{{ item.timeline_time.strftime("%I:%M %p") }}</p>
+    {% call card() %}
+        {% call card_panel(class="space-y-2") %}
+            <div class="flex items-start justify-between gap-3">
+                <div class="min-w-0 space-y-1">
+                    {{ badge(item_type_labels.get(item.type, item.type), variant=item_type_variant.get(item.type, "outline")) }}
+                    <p class="text-sm font-semibold">{{ item.title }}</p>
+                </div>
+                <button type="button" data-slot="dialog-trigger" data-target="#edit-timeline-item-dialog" aria-controls="edit-timeline-item-dialog"
+                    @click="openEditDialog({{ item.id|tojson|forceescape }})" class="shrink-0 text-xs font-medium text-primary hover:underline">Edit</button>
+            </div>
+
+            {% if item.type == "task" %}
+                <div class="flex flex-wrap items-center gap-1.5">
+                    {{ badge(task_status_labels.get(item.status, item.status), variant=task_status_variant.get(item.status, "outline"), size="sm") }}
+                    {% if item.priority %}<span class="text-xs text-muted-foreground">Priority: {{ task_priority_labels.get(item.priority, item.priority) }}</span>{% endif %}
+                </div>
+                {% if item.assigned_to_name %}<p class="text-sm text-muted-foreground">Assigned to: {{ item.assigned_to_name }}</p>{% endif %}
+                {% if item.due_date %}<p class="text-sm text-muted-foreground">Due: {{ item.due_date.strftime("%b %d, %Y") }}</p>{% endif %}
+                {% if item.linked_evidence_filename %}<p class="text-sm text-muted-foreground">Linked Evidence: {{ item.linked_evidence_filename }}</p>{% endif %}
+                {% if item.linked_result_label %}<p class="text-sm text-muted-foreground">Linked Result: {{ item.linked_result_label }}</p>{% endif %}
+                {% if item.description %}<p class="text-sm text-muted-foreground">Note: {{ item.description }}</p>{% endif %}
+            {% elif item.type == "note" %}
+                {% if item.description %}<p class="text-sm text-muted-foreground">{{ item.description }}</p>{% endif %}
+                <p class="text-xs text-muted-foreground">Visibility: {{ note_visibility_labels.get(item.visibility, item.visibility) }}</p>
+            {% else %}
+                {% if item.description %}<p class="text-sm text-muted-foreground">{{ item.description }}</p>{% endif %}
+            {% endif %}
+
+            <p class="text-xs text-muted-foreground">Created by: {{ item.created_by_name or "—" }}</p>
+        {% endcall %}
+    {% endcall %}
+</div>
+{% endmacro %}
+
+{% block body %}
+<div x-data="timelinePage({{ items_json_by_id|tojson|forceescape }}, {{ case.id|tojson|forceescape }})" x-cloak>
+{{ sidebar(active="timeline", visible_keys=visible_keys) }}
+
+<div class="flex flex-col md:pl-60">
+    {{ topbar(case.title) }}
+    <main class="flex-1 p-4 md:p-6">
+        {{ breadcrumb_trail([("Dashboard", "/"), ("Timeline Center", url_for('timeline.center_view')), (case.title, None)]) }}
+
+        {{ flash("error", error) }}
+
+        <div class="space-y-6 p-2">
+            <div class="space-y-1">
+                <p class="text-lg font-semibold">{{ case.case_number }} · {{ case.title }}</p>
+                <p class="text-sm text-muted-foreground">{{ severity_label }} · {{ status_label }} · Assigned: {{ assigned_to_label }}</p>
+            </div>
+
+            <div class="flex flex-wrap gap-2">
+                <button type="button" data-slot="dialog-trigger" data-target="#add-task-dialog" aria-controls="add-task-dialog" class="{{ trigger_classes }}">Add Task</button>
+                <button type="button" data-slot="dialog-trigger" data-target="#add-note-dialog" aria-controls="add-note-dialog" class="{{ trigger_classes }}">Add Note</button>
+                <button type="button" data-slot="dialog-trigger" data-target="#add-milestone-dialog" aria-controls="add-milestone-dialog" class="{{ trigger_classes }}">Add Milestone</button>
+            </div>
+
+            <div class="space-y-4 border-t border-border pt-6">
+                <div>
+                    <h2 class="text-sm font-semibold">Investigation Timeline</h2>
+                    <p class="text-sm text-muted-foreground">Manually maintain investigation tasks, notes, and milestones.</p>
+                </div>
+
+                {% if not items %}
+                <p class="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">No timeline items yet - use Add Task, Add Note, or Add Milestone above.</p>
+                {% else %}
+                <div class="max-w-2xl space-y-4">
+                    {% for item in items %}{{ timeline_item_card(item) }}{% endfor %}
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </main>
+</div>
+
+{# ── Add Task ──────────────────────────────────────────────────────────── #}
+{% call dialog(attrs={"id": "add-task-dialog"}) %}
+    {% call dialog_header() %}{{ dialog_title("Add Task") }}{% endcall %}
+    <form method="post" action="{{ url_for('timeline.create_item_view', case_id=case.id) }}">
+        {{ csrf_field() }}
+        <input type="hidden" name="type" value="task">
+        {% call field_group() %}
+            {% call field() %}
+                {{ field_label("Task Title", for_id="task-title") }}
+                {{ input(name="title", required=True, attrs={"id": "task-title"}) }}
+            {% endcall %}
+            {% call field() %}
+                {{ field_label("Description", for_id="task-description") }}
+                {{ textarea(name="description", attrs={"id": "task-description"}) }}
+            {% endcall %}
+            <div class="grid gap-4 sm:grid-cols-2">
+                {% call field() %}
+                    {{ field_label("Status") }}
+                    {{ select_simple("status", task_statuses, value="pending", key="add-task-status") }}
+                {% endcall %}
+                {% call field() %}
+                    {{ field_label("Priority") }}
+                    {{ select_simple("priority", task_priorities, value="medium", key="add-task-priority") }}
+                {% endcall %}
+            </div>
+            {% call field() %}
+                {{ field_label("Assigned To", for_id="task-assigned") }}
+                <select name="assigned_to" id="task-assigned" class="{{ select_classes }}">
+                    <option value="">Unassigned</option>
+                    {% for a in assignees %}<option value="{{ a.id }}">{{ a.name }}</option>{% endfor %}
+                </select>
+            {% endcall %}
+            <div class="grid gap-4 sm:grid-cols-2">
+                {% call field() %}
+                    {{ field_label("Due Date", for_id="task-due") }}
+                    {{ input(type="date", name="due_date", attrs={"id": "task-due"}) }}
+                {% endcall %}
+                {% call field() %}
+                    {{ field_label("Timeline Time", for_id="task-time") }}
+                    {{ input(type="datetime-local", name="timeline_time", value=now, attrs={"id": "task-time"}) }}
+                {% endcall %}
+            </div>
+            {% call field() %}
+                {{ field_label("Link Evidence", for_id="task-evidence") }}
+                <select name="linked_evidence_id" id="task-evidence" class="{{ select_classes }}">
+                    <option value="">No evidence linked</option>
+                    {% for e in evidence %}<option value="{{ e.id }}">{{ e.filename }}</option>{% endfor %}
+                </select>
+            {% endcall %}
+            {% call field() %}
+                {{ field_label("Link Result", for_id="task-result") }}
+                {{ input(name="linked_result_label", placeholder="Optional - e.g. YARA Scan", attrs={"id": "task-result"}) }}
+            {% endcall %}
+        {% endcall %}
+        {% call dialog_footer(class="mt-4") %}
+            {% call dialog_close(class=cancel_classes) %}Cancel{% endcall %}
+            {% call button(type="submit") %}Create{% endcall %}
+        {% endcall %}
+    </form>
+{% endcall %}
+
+{# ── Add Note ──────────────────────────────────────────────────────────── #}
+{% call dialog(attrs={"id": "add-note-dialog"}) %}
+    {% call dialog_header() %}{{ dialog_title("Add Note") }}{% endcall %}
+    <form method="post" action="{{ url_for('timeline.create_item_view', case_id=case.id) }}">
+        {{ csrf_field() }}
+        <input type="hidden" name="type" value="note">
+        {% call field_group() %}
+            {% call field() %}
+                {{ field_label("Note Title", for_id="note-title") }}
+                {{ input(name="title", required=True, attrs={"id": "note-title"}) }}
+            {% endcall %}
+            {% call field() %}
+                {{ field_label("Note", for_id="note-body") }}
+                {{ textarea(name="description", attrs={"id": "note-body"}) }}
+            {% endcall %}
+            <div class="grid gap-4 sm:grid-cols-2">
+                {% call field() %}
+                    {{ field_label("Timeline Time", for_id="note-time") }}
+                    {{ input(type="datetime-local", name="timeline_time", value=now, attrs={"id": "note-time"}) }}
+                {% endcall %}
+                {% call field() %}
+                    {{ field_label("Visibility") }}
+                    {{ select_simple("visibility", note_visibilities, value="case_shared", key="add-note-visibility") }}
+                {% endcall %}
+            </div>
+        {% endcall %}
+        {% call dialog_footer(class="mt-4") %}
+            {% call dialog_close(class=cancel_classes) %}Cancel{% endcall %}
+            {% call button(type="submit") %}Create{% endcall %}
+        {% endcall %}
+    </form>
+{% endcall %}
+
+{# ── Add Milestone ─────────────────────────────────────────────────────── #}
+{% call dialog(attrs={"id": "add-milestone-dialog"}) %}
+    {% call dialog_header() %}{{ dialog_title("Add Milestone") }}{% endcall %}
+    <form method="post" action="{{ url_for('timeline.create_item_view', case_id=case.id) }}">
+        {{ csrf_field() }}
+        <input type="hidden" name="type" value="milestone">
+        {% call field_group() %}
+            {% call field() %}
+                {{ field_label("Milestone Title", for_id="milestone-title") }}
+                {{ input(name="title", required=True, attrs={"id": "milestone-title"}) }}
+            {% endcall %}
+            {% call field() %}
+                {{ field_label("Description", for_id="milestone-description") }}
+                {{ textarea(name="description", attrs={"id": "milestone-description"}) }}
+            {% endcall %}
+            {% call field() %}
+                {{ field_label("Timeline Time", for_id="milestone-time") }}
+                {{ input(type="datetime-local", name="timeline_time", value=now, attrs={"id": "milestone-time"}) }}
+            {% endcall %}
+        {% endcall %}
+        {% call dialog_footer(class="mt-4") %}
+            {% call dialog_close(class=cancel_classes) %}Cancel{% endcall %}
+            {% call button(type="submit") %}Create{% endcall %}
+        {% endcall %}
+    </form>
+{% endcall %}
+
+{# ── Edit (one shared dialog, fields shown per item.type) ───────────────── #}
+{% call dialog(attrs={"id": "edit-timeline-item-dialog"}) %}
+    {% call dialog_header() %}
+        {{ dialog_title(attrs={"x-text": "editingItem ? ('Edit ' + (editingItem.type === 'task' ? 'Task' : editingItem.type === 'note' ? 'Note' : 'Milestone')) : 'Edit'"}) }}
+    {% endcall %}
+    <template x-if="editingItem">
+        <form method="post" :action="editFormAction()">
+            {{ csrf_field() }}
+            {% call field_group() %}
+                {% call field() %}
+                    {{ field_label("Title") }}
+                    {{ input(name="title", required=True, attrs={"x-model": "editingItem.title"}) }}
+                {% endcall %}
+                {% call field() %}
+                    {{ field_label("Description") }}
+                    {{ textarea(name="description", attrs={"x-model": "editingItem.description"}) }}
+                {% endcall %}
+
+                <template x-if="editingItem.type === 'task'">
+                    <div class="space-y-4">
+                        <div class="grid gap-4 sm:grid-cols-2">
+                            <div class="space-y-1.5">
+                                <label class="text-xs font-medium text-muted-foreground">Status</label>
+                                <select name="status" x-model="editingItem.status" class="{{ select_classes }}">
+                                    {% for value, label in task_statuses %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+                                </select>
+                            </div>
+                            <div class="space-y-1.5">
+                                <label class="text-xs font-medium text-muted-foreground">Priority</label>
+                                <select name="priority" x-model="editingItem.priority" class="{{ select_classes }}">
+                                    {% for value, label in task_priorities %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+                                </select>
+                            </div>
+                        </div>
+                        <div class="space-y-1.5">
+                            <label class="text-xs font-medium text-muted-foreground">Assigned To</label>
+                            <select name="assigned_to" x-model="editingItem.assigned_to" class="{{ select_classes }}">
+                                <option value="">Unassigned</option>
+                                {% for a in assignees %}<option value="{{ a.id }}">{{ a.name }}</option>{% endfor %}
+                            </select>
+                        </div>
+                        <div class="grid gap-4 sm:grid-cols-2">
+                            <div class="space-y-1.5">
+                                <label class="text-xs font-medium text-muted-foreground">Due Date</label>
+                                {{ input(type="date", name="due_date", attrs={"x-model": "editingItem.due_date"}) }}
+                            </div>
+                            <div class="space-y-1.5">
+                                <label class="text-xs font-medium text-muted-foreground">Timeline Time</label>
+                                {{ input(type="datetime-local", name="timeline_time", attrs={"x-model": "editingItem.timeline_time"}) }}
+                            </div>
+                        </div>
+                        <div class="space-y-1.5">
+                            <label class="text-xs font-medium text-muted-foreground">Link Evidence</label>
+                            <select name="linked_evidence_id" x-model="editingItem.linked_evidence_id" class="{{ select_classes }}">
+                                <option value="">No evidence linked</option>
+                                {% for e in evidence %}<option value="{{ e.id }}">{{ e.filename }}</option>{% endfor %}
+                            </select>
+                        </div>
+                        <div class="space-y-1.5">
+                            <label class="text-xs font-medium text-muted-foreground">Link Result</label>
+                            {{ input(name="linked_result_label", placeholder="Optional result label", attrs={"x-model": "editingItem.linked_result_label"}) }}
+                        </div>
+                    </div>
+                </template>
+
+                <template x-if="editingItem.type === 'note'">
+                    <div class="grid gap-4 sm:grid-cols-2">
+                        <div class="space-y-1.5">
+                            <label class="text-xs font-medium text-muted-foreground">Timeline Time</label>
+                            {{ input(type="datetime-local", name="timeline_time", attrs={"x-model": "editingItem.timeline_time"}) }}
+                        </div>
+                        <div class="space-y-1.5">
+                            <label class="text-xs font-medium text-muted-foreground">Visibility</label>
+                            <select name="visibility" x-model="editingItem.visibility" class="{{ select_classes }}">
+                                {% for value, label in note_visibilities %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+                            </select>
+                        </div>
+                    </div>
+                </template>
+
+                <template x-if="editingItem.type === 'milestone'">
+                    <div class="space-y-1.5">
+                        <label class="text-xs font-medium text-muted-foreground">Timeline Time</label>
+                        {{ input(type="datetime-local", name="timeline_time", attrs={"x-model": "editingItem.timeline_time"}) }}
+                    </div>
+                </template>
+            {% endcall %}
+            {% call dialog_footer(class="mt-4") %}
+                {% call dialog_close(class=cancel_classes) %}Cancel{% endcall %}
+                {% call button(type="submit") %}Save changes{% endcall %}
+            {% endcall %}
+        </form>
+    </template>
+{% endcall %}
+</div>
+{% endblock %}

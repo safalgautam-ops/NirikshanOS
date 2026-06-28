@@ -34,6 +34,7 @@ from app.features.onboarding.routes import onboarding_bp
 from app.features.organizations.routes import organizations_bp
 from app.features.rbac.routes import rbac_bp
 from app.features.staff.routes import staff_bp
+from app.features.timeline.routes import timeline_bp
 from app.features.users.routes import users_bp
 
 
@@ -140,6 +141,7 @@ def create_app() -> Quart:
     app.register_blueprint(staff_bp)
     app.register_blueprint(cases_bp)
     app.register_blueprint(evidence_bp)
+    app.register_blueprint(timeline_bp)
 
     @app.before_serving
     async def startup() -> None:
