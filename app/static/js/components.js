@@ -2163,6 +2163,48 @@ document.addEventListener("alpine:init", () => {
     );
   }
 
+  // The Analyze dialog groups compatible modules by execution "tier" rather
+  // than by evidence-type category - pcap/email/memory categories map 1:1
+  // onto their own tier (the wireframe's Network/Email/Memory Modules
+  // groups), while every other category gets split by risk/isolation into
+  // Basic Triage Bundle (fast, no-isolation, batchable into one container),
+  // Standard Modules, or Advanced Modules. Derived from fields every module
+  // already has rather than hand-tagging ~100 module objects with a new key.
+  const MODULE_TIER_LABELS = {
+    basic_triage: "Basic Triage Bundle",
+    standard: "Standard Modules",
+    advanced: "Advanced Modules",
+    network: "Network Modules",
+    email: "Email Modules",
+    memory: "Memory Modules",
+  };
+  const MODULE_TIER_ORDER = Object.keys(MODULE_TIER_LABELS);
+
+  function moduleTierOf(module) {
+    if (module.category === "pcap") return "network";
+    if (module.category === "email") return "email";
+    if (module.category === "memory") return "memory";
+    if (module.category === "generic") return "basic_triage";
+    if (module.riskLevel === "High" || (module.isolationLevel && module.isolationLevel !== "None"))
+      return "advanced";
+    return "standard";
+  }
+
+  // Mock subscription gating: which plan a module requires is derived the
+  // same way - advanced-tier modules need the top plan, basic triage is
+  // free for everyone, everything else needs at least Analyst unless it's
+  // explicitly low-risk. No per-module "requiredPlan" field to maintain.
+  const PLAN_ORDER = ["Free", "Analyst", "Advanced"];
+  function requiredPlanOf(module) {
+    const tier = moduleTierOf(module);
+    if (tier === "advanced") return "Advanced";
+    if (tier === "basic_triage") return "Free";
+    return module.riskLevel === "Low" ? "Free" : "Analyst";
+  }
+  function isModuleLocked(module, userPlan) {
+    return PLAN_ORDER.indexOf(requiredPlanOf(module)) > PLAN_ORDER.indexOf(userPlan);
+  }
+
   function mockOutputFor(module, evidenceName) {
     return (
       "Mock " +
@@ -2175,30 +2217,246 @@ document.addEventListener("alpine:init", () => {
     );
   }
 
+  // Result Canvas deep output - findings/IOCs/artifacts/raw stdout+stderr,
+  // derived from the module's existing category/tool/outputType fields
+  // (same "derive, don't hand-tag" approach as moduleTierOf/requiredPlanOf)
+  // rather than authoring per-module mock content for ~104 modules.
+  const ARTIFACT_CATEGORIES = ["pcap", "memory", "disk", "image", "archive", "binary"];
+  function mockDeepOutputFor(module, evidenceName) {
+    const findings = [
+      module.name + " completed against " + evidenceName + " with no errors.",
+      "Output classified as " + module.outputType + " via " + module.tool + ".",
+    ];
+    let iocs;
+    if (module.category === "pcap") {
+      iocs = [
+        { type: "ip", value: "203.0.113.45" },
+        { type: "domain", value: "malicious-update.net" },
+      ];
+    } else if (module.category === "email") {
+      iocs = [
+        { type: "domain", value: "phish-relay.example" },
+        { type: "url", value: "http://phish-relay.example/login" },
+      ];
+    } else {
+      iocs = [{ type: "hash", value: "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08" }];
+    }
+    const artifacts = ARTIFACT_CATEGORIES.includes(module.category)
+      ? [{ name: evidenceName + "_extracted." + module.outputType.toLowerCase(), type: module.outputType }]
+      : [];
+    const rawOutput = {
+      stdout: [
+        "[" + module.tool + "] starting analysis of " + evidenceName,
+        "[" + module.tool + "] module: " + module.name,
+        "[" + module.tool + "] output type: " + module.outputType,
+        "[" + module.tool + "] completed successfully.",
+      ],
+      stderr: [],
+    };
+    return { findings, iocs, artifacts, rawOutput };
+  }
+
+  // Severity/confidence for findings, IOCs, and timeline events are derived
+  // from the module that produced them (riskLevel / isolationLevel already
+  // exist on every module) rather than asked for by hand each time - same
+  // "derive, don't hand-tag" approach as moduleTierOf/requiredPlanOf above.
+  function severityOfModule(module) {
+    return (module && module.riskLevel) || "Medium";
+  }
+  function confidenceOfModule(module) {
+    return module && module.isolationLevel && module.isolationLevel !== "None" ? "High" : "Medium";
+  }
+
+  function formatTimelineTimestamp(ms) {
+    const d = new Date(ms);
+    const pad = (n) => String(n).padStart(2, "0");
+    return (
+      d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()) + " " + pad(d.getHours()) + ":" + pad(d.getMinutes()) + ":" + pad(d.getSeconds())
+    );
+  }
+
+  const DEFAULT_REPORT_MARKDOWN = `# Executive Summary
+
+Write the investigation summary here.
+
+## Key Findings
+
+Saved findings will appear here after the analyst inserts or creates findings from analysis results.
+
+## IOCs
+
+Saved indicators of compromise will appear here after the analyst inserts saved IOCs.
+
+## Incident Timeline
+
+Selected timeline events will appear here.
+
+## Recommendations
+
+Write recommended actions here.
+
+## Appendix
+
+Add supporting evidence references, screenshots, artifacts, and raw output references here.`;
+
+  // Minimal Markdown -> HTML renderer for the Report Preview dialog - only
+  // covers what the report editor actually produces (headings, bold,
+  // links/images, tables, paragraphs with hard line breaks). Not a full
+  // CommonMark implementation on purpose: a real parser/library would be
+  // the only way to go further, and nothing the report generates needs it.
+  function escapeHtml(s) {
+    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+  function inlineMd(s) {
+    let out = escapeHtml(s);
+    out = out.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+    out = out.replace(/!\[([^\]]*)\]\((\S+?)\)/g, '<img src="$2" alt="$1">');
+    out = out.replace(/\[([^\]]*)\]\((\S+?)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+    return out;
+  }
+  function renderMarkdownToHtml(md) {
+    const lines = (md || "").split("\n");
+    let html = "";
+    let paragraph = [];
+    const flushParagraph = () => {
+      if (!paragraph.length) return;
+      html +=
+        "<p>" +
+        paragraph
+          .map((l, idx) => inlineMd(l.replace(/ {2}$/, "")) + (idx < paragraph.length - 1 ? (l.endsWith("  ") ? "<br>" : " ") : ""))
+          .join("") +
+        "</p>";
+      paragraph = [];
+    };
+    let i = 0;
+    while (i < lines.length) {
+      const line = lines[i];
+      if (/^###\s+/.test(line)) {
+        flushParagraph();
+        html += "<h3>" + inlineMd(line.replace(/^###\s+/, "")) + "</h3>";
+        i++;
+        continue;
+      }
+      if (/^##\s+/.test(line)) {
+        flushParagraph();
+        html += "<h2>" + inlineMd(line.replace(/^##\s+/, "")) + "</h2>";
+        i++;
+        continue;
+      }
+      if (/^#\s+/.test(line)) {
+        flushParagraph();
+        html += "<h1>" + inlineMd(line.replace(/^#\s+/, "")) + "</h1>";
+        i++;
+        continue;
+      }
+      if (line.trim().startsWith("|")) {
+        flushParagraph();
+        const tableLines = [];
+        while (i < lines.length && lines[i].trim().startsWith("|")) {
+          tableLines.push(lines[i]);
+          i++;
+        }
+        const rows = tableLines.map((l) =>
+          l.trim().replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => c.trim()),
+        );
+        const isSeparatorRow = (cells) => cells.every((c) => /^-+$/.test(c));
+        let bodyRows = rows;
+        let headRow = null;
+        if (rows.length > 1 && isSeparatorRow(rows[1])) {
+          headRow = rows[0];
+          bodyRows = rows.slice(2);
+        }
+        html += "<table>";
+        if (headRow) html += "<thead><tr>" + headRow.map((c) => "<th>" + inlineMd(c) + "</th>").join("") + "</tr></thead>";
+        html += "<tbody>" + bodyRows.map((r) => "<tr>" + r.map((c) => "<td>" + inlineMd(c) + "</td>").join("") + "</tr>").join("") + "</tbody>";
+        html += "</table>";
+        continue;
+      }
+      if (line.trim() === "") {
+        flushParagraph();
+        i++;
+        continue;
+      }
+      paragraph.push(line);
+      i++;
+    }
+    flushParagraph();
+    return html;
+  }
+
   /* this component manages the Analyze tab's planner and job queue */
-  Alpine.data("analyzeWorkspace", (evidenceItems) => ({
+  Alpine.data("analyzeWorkspace", (evidenceItems, userPlan, caseId, caseTitle, currentUserName) => ({
     /*
     this analyze page needs to remember some things while the user is using it
     and those things are called "state" variables
     */
     moduleMap: MODULE_MAP,
     evidenceTypeLabels: EVIDENCE_TYPE_LABELS,
-    moduleCategoryLabels: MODULE_CATEGORY_LABELS,
+    moduleTierLabels: MODULE_TIER_LABELS,
+    userPlan: userPlan || "Free", // mock subscription tier gating which modules are locked
     evidence: evidenceItems || [], // for remembering the evidence items (files) inside Alpine (state)
-    evidenceFilter: "all", // for remembering the evidence filter (all, generic, binary, etc.)
-    evidenceQuery: "", // for remembering the evidence query (search term). if typed photo, page shows only files whose name include "photo"
-    moduleFilter: "all", // for remembering the module filter (all, generic, binary, etc.)
-    moduleQuery: "", // for remembering the module query (search term)
-    selectedEvidence: [], // for remembering the selected evidence items (files)
-    selectedModule: null, // for remembering the selected module
-    targetEvidenceIds: [], // for remembering the target evidence items (files)
-    moduleOptions: {}, // for remembering the module options
-    plan: [], // for remembering the jobs the user has prepared but not started yet (add to plan)
-    queue: [], // for remembering the queue (started jobs)
-    results: [], // for remembering the completed anlysis results
-    savedFindingIds: [], // for remembering the saved finding IDs (so we can show them in the results: savedFindingsIds=["job1"])
-    savedIocIds: [], // for remembering the saved IOC IDs (so we can show them in the results: savedIocIds=["job2"])
-    viewingResult: null, // for remembering which result is currently opened in the details dialog/modal.
+    caseId: caseId || null,
+    currentUserName: currentUserName || "Analyst",
+
+    // Analyze dialog state - scoped to exactly one evidence file at a time,
+    // opened via openAnalyzeDialog() from that file's card (see
+    // evidence-upload.js's per-card Analyze button).
+    analyzingEvidence: null,
+    moduleQuery: "",
+    tierFilter: "all",
+    checkedModuleIds: [], // modules checked for this run
+    selectedModule: null, // which checked module's config the right panel shows
+    moduleOptionsByModule: {}, // { [moduleId]: { [fieldKey]: value } } - one config per module, not shared
+    lockedModule: null, // module clicked while above the user's plan, for the upgrade dialog
+
+    queue: [], // job groups across every analyze run: { id, tier, tierLabel, evidenceId, evidenceName, tasks }
+    activeProgressJobIds: [], // which queue job ids the Analysis Progress dialog is currently showing
+    results: [], // completed (and failed) module outputs: { id, evidenceId, moduleId, ..., failed?, findings, iocs, artifacts, rawOutput }
+
+    // Results tab (case-wide index) filters.
+    resultSearch: "",
+    resultsFilterStatus: "all",
+    resultsFilterType: "all",
+    resultsFilterModule: "all",
+
+    // Result Canvas - the per-evidence deep-dive dialog opened from a
+    // Results tab row's "Open Canvas"/"View Jobs" action.
+    canvasEvidenceId: null,
+    canvasEvidenceName: "",
+    canvasSelectedModuleId: null,
+    canvasTab: "overview", // "overview" | "raw" - Raw Output never renders until chosen
+    canvasNoteDraft: "",
+    notesByKey: {}, // { "<evidenceId>:<moduleId>": noteText }
+    savedIndicatorKeys: [], // dedup "type:value" already added via Add Indicator
+    // Saved-but-not-yet-inserted items for the Report tab's Insert dialog -
+    // shapes match the Report Tab spec's mock data structures exactly.
+    indicators: [], // [{ id, caseId, type, value, severity, confidence, sourceEvidence, sourceModule, includedInReport }]
+    caseFindings: [], // [{ id, caseId, title, severity, confidence, sourceEvidence, sourceModule, description, includedInReport }]
+    timelineEvents: [], // [{ id, caseId, eventTime, title, eventType, source, confidence, includedInReport }]
+    canvasFlash: "", // brief confirmation text under the Actions panel
+
+    // ── Report tab: the markdown report itself ───────────────────────────
+    report: {
+      id: "report_001",
+      caseId: caseId || null,
+      title: (caseTitle ? caseTitle + " " : "") + "Investigation Report",
+      visibility: "personal_draft", // "personal_draft" | "case_shared"
+      status: "draft", // draft | in_review | changes_requested | approved | final | exported
+      version: "0.1",
+      createdBy: currentUserName || "Analyst",
+      updatedBy: currentUserName || "Analyst",
+      markdownContent: DEFAULT_REPORT_MARKDOWN,
+      includedFindingIds: [],
+      includedIocIds: [],
+      includedTimelineEventIds: [],
+    },
+    reportFlash: "", // brief confirmation text near the report action row
+
+    init() {
+      // Single shared ticker advancing every queued/running task across
+      // every job - cheap no-op when nothing's queued, see _tickProgress.
+      setInterval(() => this._tickProgress(), 500);
+    },
 
     evidenceTypeOf(item) {
       const ext = (item.filename || "").toLowerCase().split(".").pop();
@@ -2209,173 +2467,153 @@ document.addEventListener("alpine:init", () => {
       return this.evidenceTypeLabels[this.evidenceTypeOf(item)];
     },
 
-    filteredEvidence() {
-      const q = this.evidenceQuery.trim().toLowerCase();
-      return this.evidence.filter((item) => {
-        if (q && !item.filename.toLowerCase().includes(q)) return false;
-        if (
-          this.evidenceFilter === "all" ||
-          this.evidenceFilter === "unanalyzed"
-        )
-          return true;
-        return this.evidenceTypeOf(item) === this.evidenceFilter;
-      });
+    // Delegates to evidence-upload.js's global formatter - exposed as a
+    // component method (not called directly from the template) because
+    // Alpine's expression evaluator runs expressions through a `with()`
+    // block over its reactive proxy, which doesn't reliably fall through
+    // to plain global functions.
+    formatBytes(bytes) {
+      return evidenceFormatBytes(bytes);
     },
 
-    // Evidence filter pills are driven by whatever types are actually
-    // present in this case's evidence, not a fixed guess at what a case
-    // "usually" has.
-    availableEvidenceTypes() {
-      const types = new Set(
-        this.evidence.map((item) => this.evidenceTypeOf(item)),
-      );
-      return Array.from(types)
-        .sort()
-        .map((t) => [t, this.evidenceTypeLabels[t]]);
+    // Opens the per-file Analyze dialog for one evidence item. Called from
+    // a plain DOM event dispatched by the vanilla-JS evidence card (those
+    // cards aren't Alpine-rendered), so it upserts the item into `evidence`
+    // first in case it wasn't in the page's initial server-rendered list
+    // (e.g. it finished uploading after page load).
+    openAnalyzeDialog(item) {
+      const idx = this.evidence.findIndex((e) => e.id === item.id);
+      if (idx === -1) this.evidence.push(item);
+      else this.evidence[idx] = item;
+      this.analyzingEvidence = item;
+      this.moduleQuery = "";
+      this.tierFilter = "all";
+      this.checkedModuleIds = [];
+      this.selectedModule = null;
+      const dialog = document.getElementById("analyze-evidence-dialog");
+      if (dialog) {
+        dialog.dataset.state = "open";
+        if (!dialog.open) dialog.showModal();
+      }
     },
 
-    selectedFiles() {
-      return this.selectedEvidence
-        .map((id) => this.evidence.find((e) => e.id === id))
-        .filter(Boolean);
+    closeAnalyzeDialog() {
+      const dialog = document.getElementById("analyze-evidence-dialog");
+      if (dialog) {
+        dialog.dataset.state = "closed";
+        if (dialog.open) dialog.close();
+      }
     },
 
-    // Groups a list of already-compatible modules by category, in a fixed
-    // display order, applying the category pill + search box on top.
-    groupModules(modules) {
+    compatibleModules() {
+      if (!this.analyzingEvidence) return [];
+      const type = this.evidenceTypeOf(this.analyzingEvidence);
+      return MODULE_REGISTRY.filter((m) => isModuleCompatible(m, type));
+    },
+
+    // Only tiers that actually contain a compatible module are shown, per
+    // spec - a memory dump never shows an empty "Email Modules" group.
+    compatibleModuleGroups() {
       const q = this.moduleQuery.trim().toLowerCase();
-      const filtered = modules.filter((m) => {
-        if (this.moduleFilter !== "all" && m.category !== this.moduleFilter)
+      const filtered = this.compatibleModules().filter((m) => {
+        if (this.tierFilter !== "all" && moduleTierOf(m) !== this.tierFilter)
           return false;
         if (q && !m.name.toLowerCase().includes(q)) return false;
         return true;
       });
       const groups = [];
-      MODULE_CATEGORY_ORDER.forEach((cat) => {
-        const mods = filtered.filter((m) => m.category === cat);
+      MODULE_TIER_ORDER.forEach((tier) => {
+        const mods = filtered.filter((m) => moduleTierOf(m) === tier);
         if (mods.length)
-          groups.push({
-            category: cat,
-            label: MODULE_CATEGORY_LABELS[cat],
-            modules: mods,
-          });
+          groups.push({ tier, label: MODULE_TIER_LABELS[tier], modules: mods });
       });
       return groups;
     },
 
-    modulesForType(evidenceType) {
-      return MODULE_REGISTRY.filter((m) => isModuleCompatible(m, evidenceType));
+    availableTiers() {
+      const tiers = new Set(this.compatibleModules().map((m) => moduleTierOf(m)));
+      return MODULE_TIER_ORDER.filter((t) => tiers.has(t));
     },
 
-    // Union of every compatible module across the current selection - used
-    // only to compute which category pills are worth showing.
-    allCompatibleModules() {
-      const seen = new Set();
-      const result = [];
-      this.selectedFiles().forEach((f) => {
-        this.modulesForType(this.evidenceTypeOf(f)).forEach((m) => {
-          if (!seen.has(m.id)) {
-            seen.add(m.id);
-            result.push(m);
-          }
-        });
-      });
-      return result;
+    isModuleLocked(moduleId) {
+      return isModuleLocked(this.moduleMap[moduleId], this.userPlan);
     },
 
-    availableCategories() {
-      const cats = new Set(this.allCompatibleModules().map((m) => m.category));
-      return MODULE_CATEGORY_ORDER.filter((c) => cats.has(c));
+    requiredPlanOf(moduleId) {
+      return requiredPlanOf(this.moduleMap[moduleId]);
     },
 
-    // Drives requirements 2-4: one file -> one module list; several files of
-    // the same type -> the same module list, applied to all of them; several
-    // files of different types -> one module list per file.
-    compatibleView() {
-      const files = this.selectedFiles();
-      if (!files.length) return { mode: "empty" };
-      const types = new Set(files.map((f) => this.evidenceTypeOf(f)));
-      if (types.size <= 1) {
-        const evidenceType = this.evidenceTypeOf(files[0]);
-        return {
-          mode: "shared",
-          evidenceType,
-          evidenceLabel: this.evidenceTypeLabels[evidenceType],
-          fileCount: files.length,
-          groups: this.groupModules(this.modulesForType(evidenceType)),
-        };
+    // Basic Triage Bundle modules are batched into one shared container job
+    // (see startAnalysis) - everything else runs as its own job.
+    isBatchable(moduleId) {
+      return moduleTierOf(this.moduleMap[moduleId]) === "basic_triage";
+    },
+
+    openUpgradeDialog(moduleId) {
+      this.lockedModule = this.moduleMap[moduleId];
+      const dialog = document.getElementById("upgrade-plan-dialog");
+      if (dialog) {
+        dialog.dataset.state = "open";
+        if (!dialog.open) dialog.showModal();
       }
-      return {
-        mode: "byFile",
-        files: files.map((f) => {
-          const evidenceType = this.evidenceTypeOf(f);
-          return {
-            evidenceId: f.id,
-            evidenceName: f.filename,
-            evidenceType,
-            evidenceLabel: this.evidenceTypeLabels[evidenceType],
-            groups: this.groupModules(this.modulesForType(evidenceType)),
-          };
-        }),
-      };
     },
 
-    toggleEvidence(id) {
-      const idx = this.selectedEvidence.indexOf(id);
-      if (idx === -1) this.selectedEvidence.push(id);
-      else this.selectedEvidence.splice(idx, 1);
-    },
-
-    isEvidenceSelected(id) {
-      return this.selectedEvidence.includes(id);
-    },
-
-    selectAllEvidence() {
-      this.selectedEvidence = this.filteredEvidence().map((item) => item.id);
-    },
-
-    // evidenceIds is omitted when clicking a module from the "shared" view
-    // (every selected file shares one type) and set to a single file's id
-    // when clicking from the "byFile" view, so "Add to Plan" only targets
-    // the file(s) that module is actually compatible with.
-    selectModule(moduleId, evidenceIds) {
-      this.selectedModule = moduleId;
-      this.targetEvidenceIds =
-        evidenceIds && evidenceIds.length
-          ? evidenceIds.slice()
-          : this.selectedEvidence.slice();
-      this.resetOptions();
-    },
-
-    targetFiles() {
-      return this.targetEvidenceIds
-        .map((id) => this.evidence.find((e) => e.id === id))
-        .filter(Boolean);
-    },
-
-    resetOptions() {
-      if (!this.selectedModule) return;
-      const mod = this.moduleMap[this.selectedModule];
+    ensureOptions(moduleId) {
+      if (this.moduleOptionsByModule[moduleId]) return;
+      const mod = this.moduleMap[moduleId];
       const opts = {};
       mod.fields.forEach((f) => {
         opts[f.key] = Array.isArray(f.default) ? [...f.default] : f.default;
       });
-      this.moduleOptions = opts;
+      this.moduleOptionsByModule[moduleId] = opts;
     },
 
-    toggleChecklistValue(fieldKey, value) {
-      const list = this.moduleOptions[fieldKey] || [];
+    // Checking a module both stages it for this run and shows its config on
+    // the right - unchecking it falls back to whatever else is still
+    // checked (or clears the config panel if nothing is).
+    toggleModuleChecked(moduleId) {
+      if (this.isModuleLocked(moduleId)) {
+        this.openUpgradeDialog(moduleId);
+        return;
+      }
+      const idx = this.checkedModuleIds.indexOf(moduleId);
+      if (idx === -1) {
+        this.checkedModuleIds.push(moduleId);
+        this.selectModuleForConfig(moduleId);
+      } else {
+        this.checkedModuleIds.splice(idx, 1);
+        if (this.selectedModule === moduleId)
+          this.selectedModule = this.checkedModuleIds[0] || null;
+      }
+    },
+
+    isModuleChecked(moduleId) {
+      return this.checkedModuleIds.includes(moduleId);
+    },
+
+    selectModuleForConfig(moduleId) {
+      if (this.isModuleLocked(moduleId)) {
+        this.openUpgradeDialog(moduleId);
+        return;
+      }
+      this.selectedModule = moduleId;
+      this.ensureOptions(moduleId);
+    },
+
+    toggleChecklistValue(moduleId, fieldKey, value) {
+      const list = this.moduleOptionsByModule[moduleId][fieldKey] || [];
       const idx = list.indexOf(value);
       if (idx === -1) list.push(value);
       else list.splice(idx, 1);
-      this.moduleOptions[fieldKey] = list;
+      this.moduleOptionsByModule[moduleId][fieldKey] = list;
     },
 
-    optionsSummary() {
-      const mod = this.moduleMap[this.selectedModule];
+    optionsSummaryFor(moduleId) {
+      const mod = this.moduleMap[moduleId];
+      const opts = this.moduleOptionsByModule[moduleId] || {};
       return mod.fields
         .map((f) => {
-          const v = this.moduleOptions[f.key];
+          const v = opts[f.key];
           const val = Array.isArray(v)
             ? v.join("/")
             : typeof v === "boolean"
@@ -2388,151 +2626,719 @@ document.addEventListener("alpine:init", () => {
         .join(", ");
     },
 
-    addToPlan() {
-      const ids = this.targetEvidenceIds.length
-        ? this.targetEvidenceIds
-        : this.selectedEvidence;
-      if (!ids.length || !this.selectedModule) return;
-      const mod = this.moduleMap[this.selectedModule];
-      const summary = this.optionsSummary();
-      const optionsSnapshot = JSON.parse(JSON.stringify(this.moduleOptions));
-      ids.forEach((id) => {
-        const item = this.evidence.find((e) => e.id === id);
-        if (!item) return;
-        // Re-staging the same file+module replaces the earlier entry rather
-        // than stacking a duplicate job.
-        this.plan = this.plan.filter(
-          (j) => !(j.evidenceId === id && j.moduleId === mod.id),
-        );
-        this.plan.push({
-          id: id + ":" + mod.id + ":" + Date.now(),
-          evidenceId: id,
-          evidenceName: item.filename,
-          evidenceType: this.evidenceTypeOf(item),
-          moduleId: mod.id,
-          moduleName: mod.name,
-          tool: mod.tool,
-          selectedOptions: optionsSnapshot,
-          summary,
-          outputType: mod.outputType,
-          risk: mod.riskLevel,
-          isolation: mod.isolationLevel,
-        });
-      });
+    // Bottom-of-dialog plan summary, computed live from whatever's checked -
+    // no separate "Add to Plan" step before this.
+    planSummary() {
+      const mods = this.checkedModuleIds.map((id) => this.moduleMap[id]).filter(Boolean);
+      const tiers = new Set(mods.map((m) => moduleTierOf(m)));
+      return {
+        moduleCount: mods.length,
+        taskCount: mods.length,
+        containerRuns: tiers.size,
+        estimatedMinutes: mods.length === 0 ? 0 : Math.max(2, mods.length * 2),
+      };
     },
 
-    removeFromPlan(jobId) {
-      this.plan = this.plan.filter((j) => j.id !== jobId);
-    },
-
-    clearPlan() {
-      this.plan = [];
-    },
-
-    groupedPlan() {
-      const groups = [];
-      this.plan.forEach((job) => {
-        let group = groups.find((g) => g.evidenceName === job.evidenceName);
-        if (!group) {
-          group = { evidenceName: job.evidenceName, jobs: [] };
-          groups.push(group);
-        }
-        group.jobs.push(job);
-      });
-      return groups;
-    },
-
-    get estimatedMinutes() {
-      return this.plan.length === 0 ? 0 : Math.max(2, this.plan.length * 3);
-    },
-
-    get riskLabel() {
-      if (!this.plan.length) return "—";
-      if (this.plan.some((j) => j.risk === "High")) return "High";
-      if (this.plan.some((j) => j.risk === "Medium")) return "Medium";
-      return "Low";
-    },
-
-    // Mock "execution": every staged job instantly completes and gets a
-    // fabricated output dropped into Results - there's no real runner.
+    // "Next": groups the checked modules into one job per tier (every Basic
+    // Triage Bundle module shares one container/job; everything else gets
+    // its own job) and queues them, then switches straight to the Analysis
+    // Progress dialog - there's no separate "review plan" step once modules
+    // are checked here.
     startAnalysis() {
-      if (!this.plan.length) return;
-      const startedAt = Date.now();
-      this.plan.forEach((job) => {
-        this.queue = this.queue.filter((q) => q.id !== job.id);
-        this.queue.push({ ...job, status: "Completed", progress: 100 });
-        this.results = this.results.filter((r) => r.id !== job.id);
-        this.results.push({
-          ...job,
-          completedAt: startedAt,
-          output: mockOutputFor(this.moduleMap[job.moduleId], job.evidenceName),
+      if (!this.checkedModuleIds.length || !this.analyzingEvidence) return;
+      const evidence = this.analyzingEvidence;
+      const mods = this.checkedModuleIds.map((id) => this.moduleMap[id]).filter(Boolean);
+      const byTier = {};
+      mods.forEach((m) => {
+        const tier = moduleTierOf(m);
+        (byTier[tier] = byTier[tier] || []).push(m);
+      });
+
+      const newJobIds = [];
+      MODULE_TIER_ORDER.forEach((tier) => {
+        if (!byTier[tier]) return;
+        const jobId = evidence.id + ":" + tier + ":" + Date.now();
+        newJobIds.push(jobId);
+        this.queue.push({
+          id: jobId,
+          tier,
+          tierLabel: MODULE_TIER_LABELS[tier],
+          evidenceId: evidence.id,
+          evidenceName: evidence.filename,
+          tasks: byTier[tier].map((m) => ({
+            id: jobId + ":" + m.id,
+            moduleId: m.id,
+            moduleName: m.name,
+            tool: m.tool,
+            outputType: m.outputType,
+            risk: m.riskLevel,
+            isolation: m.isolationLevel,
+            summary: this.optionsSummaryFor(m.id),
+            status: "Queued",
+            progress: 0,
+          })),
         });
       });
 
-      const reviewDialog = document.getElementById("review-analysis-plan");
+      this.activeProgressJobIds = newJobIds;
+      this.closeAnalyzeDialog();
       const queueDialog = document.getElementById("current-job-queue");
-      if (reviewDialog) {
-        reviewDialog.dataset.state = "closed";
-        if (reviewDialog.open) reviewDialog.close();
-      }
       if (queueDialog) {
         queueDialog.dataset.state = "open";
         if (!queueDialog.open) queueDialog.showModal();
       }
     },
 
-    groupedResults() {
-      const groups = [];
-      this.results.forEach((r) => {
-        let group = groups.find((g) => g.evidenceName === r.evidenceName);
-        if (!group) {
-          group = { evidenceName: r.evidenceName, results: [] };
-          groups.push(group);
+    // Jobs the Analysis Progress dialog currently displays - the most
+    // recently started run, matching the wireframe's single "Evidence: …"
+    // header rather than every run ever queued.
+    progressJobs() {
+      return this.queue.filter((j) => this.activeProgressJobIds.includes(j.id));
+    },
+
+    // Drives every queued/running task across every job: each job runs its
+    // tasks sequentially (it's "one container"), advancing whichever task
+    // is active by a fixed chunk each tick until it completes and drops a
+    // mock result into Results - this is what makes Queued/Running/
+    // Completed coexist instead of every job mock-finishing instantly.
+    _tickProgress() {
+      let changed = false;
+      this.queue.forEach((job) => {
+        const task =
+          job.tasks.find((t) => t.status === "Running") ||
+          job.tasks.find((t) => t.status === "Queued");
+        if (!task) return;
+        if (task.status === "Queued") task.status = "Running";
+        task.progress = Math.min(100, task.progress + 20);
+        changed = true;
+        if (task.progress >= 100) {
+          task.status = "Completed";
+          const mod = this.moduleMap[task.moduleId];
+          const deep = mockDeepOutputFor(mod, job.evidenceName);
+          this.results = this.results.filter((r) => r.id !== task.id);
+          this.results.push({
+            id: task.id,
+            evidenceId: job.evidenceId,
+            evidenceName: job.evidenceName,
+            moduleId: task.moduleId,
+            moduleName: task.moduleName,
+            tool: task.tool,
+            outputType: task.outputType,
+            risk: task.risk,
+            isolation: task.isolation,
+            summary: task.summary,
+            completedAt: Date.now(),
+            output: mockOutputFor(mod, job.evidenceName),
+            findings: deep.findings,
+            iocs: deep.iocs,
+            artifacts: deep.artifacts,
+            rawOutput: deep.rawOutput,
+          });
         }
-        group.results.push(r);
+      });
+      if (changed) this.queue = [...this.queue];
+    },
+
+    // Cancelling a queued/running task marks it Failed instead of deleting
+    // it outright - a cancelled job should leave a visible trace (the
+    // Results tab's Failed count, the Result Canvas's ⚠ status) rather than
+    // silently vanishing. Re-Analyze from the canvas is how you retry it.
+    cancelTask(jobId, taskId) {
+      const job = this.queue.find((j) => j.id === jobId);
+      if (!job) return;
+      const task = job.tasks.find((t) => t.id === taskId);
+      if (!task) return;
+      task.status = "Failed";
+      this.results = this.results.filter((r) => r.id !== task.id);
+      this.results.push({
+        id: task.id,
+        evidenceId: job.evidenceId,
+        evidenceName: job.evidenceName,
+        moduleId: task.moduleId,
+        moduleName: task.moduleName,
+        tool: task.tool,
+        outputType: task.outputType,
+        risk: task.risk,
+        isolation: task.isolation,
+        summary: task.summary,
+        completedAt: Date.now(),
+        failed: true,
+        output: "Analysis cancelled before completion.",
+        findings: [],
+        iocs: [],
+        artifacts: [],
+        rawOutput: { stdout: [], stderr: ["[" + task.tool + "] analysis cancelled by analyst."] },
+      });
+      this.queue = [...this.queue];
+    },
+
+    // True removal, regardless of status - the only way a task/result
+    // disappears from the queue and Results entirely.
+    deleteTaskRow(jobId, taskId) {
+      const job = this.queue.find((j) => j.id === jobId);
+      if (job) {
+        job.tasks = job.tasks.filter((t) => t.id !== taskId);
+        if (!job.tasks.length) this.queue = this.queue.filter((j) => j.id !== jobId);
+      }
+      this.results = this.results.filter((r) => r.id !== taskId);
+    },
+
+    // Opens the Result Canvas for whichever evidence the Analysis Progress
+    // dialog is currently showing.
+    openResultCanvas() {
+      const jobs = this.progressJobs();
+      if (!jobs.length) return;
+      const queueDialog = document.getElementById("current-job-queue");
+      if (queueDialog) {
+        queueDialog.dataset.state = "closed";
+        if (queueDialog.open) queueDialog.close();
+      }
+      this.openResultCanvasFor(jobs[0].evidenceId);
+    },
+
+    // ── Results tab: case-wide index, one row per evidence file ─────────
+
+    // One summary row per evidence id that has any analysis activity at
+    // all (never run = not listed - there's nothing to index yet).
+    resultRowsRaw() {
+      const byEvidence = {};
+      const ensure = (id, name) =>
+        byEvidence[id] ||
+        (byEvidence[id] = { evidenceId: id, evidenceName: name, completed: 0, running: 0, failed: 0, moduleIds: new Set() });
+      this.results.forEach((r) => {
+        const g = ensure(r.evidenceId, r.evidenceName);
+        g.moduleIds.add(r.moduleId);
+        if (r.failed) g.failed += 1;
+        else g.completed += 1;
+      });
+      this.queue.forEach((job) => {
+        job.tasks.forEach((t) => {
+          if (t.status === "Failed") return; // already counted via results above
+          const g = ensure(job.evidenceId, job.evidenceName);
+          g.moduleIds.add(t.moduleId);
+          if (t.status === "Running" || t.status === "Queued") g.running += 1;
+        });
+      });
+      return Object.values(byEvidence);
+    },
+
+    resultRows() {
+      const q = this.resultSearch.trim().toLowerCase();
+      return this.resultRowsRaw()
+        .filter((row) => {
+          if (q && !row.evidenceName.toLowerCase().includes(q)) return false;
+          const item = this.evidence.find((e) => e.id === row.evidenceId);
+          const type = item ? this.evidenceTypeOf(item) : null;
+          if (this.resultsFilterType !== "all" && type !== this.resultsFilterType) return false;
+          if (this.resultsFilterModule !== "all" && !row.moduleIds.has(this.resultsFilterModule)) return false;
+          if (this.resultsFilterStatus === "completed" && !row.completed) return false;
+          if (this.resultsFilterStatus === "running" && !row.running) return false;
+          if (this.resultsFilterStatus === "failed" && !row.failed) return false;
+          return true;
+        })
+        .map((row) => {
+          const item = this.evidence.find((e) => e.id === row.evidenceId);
+          return {
+            ...row,
+            evidenceTypeLabel: item ? this.evidenceTypeLabelOf(item) : "—",
+            actionLabel: row.completed > 0 || row.failed > 0 ? "Open Canvas" : "View Jobs",
+          };
+        });
+    },
+
+    availableResultTypes() {
+      const types = new Set();
+      this.resultRowsRaw().forEach((row) => {
+        const item = this.evidence.find((e) => e.id === row.evidenceId);
+        if (item) types.add(this.evidenceTypeOf(item));
+      });
+      return Array.from(types).map((t) => ({ value: t, label: this.evidenceTypeLabels[t] || t }));
+    },
+
+    availableResultModules() {
+      const ids = new Set();
+      this.resultRowsRaw().forEach((row) => row.moduleIds.forEach((id) => ids.add(id)));
+      return Array.from(ids)
+        .map((id) => this.moduleMap[id])
+        .filter(Boolean)
+        .sort((a, b) => a.name.localeCompare(b.name));
+    },
+
+    openJobsForEvidence(evidenceId) {
+      this.activeProgressJobIds = this.queue.filter((j) => j.evidenceId === evidenceId).map((j) => j.id);
+      const dialog = document.getElementById("current-job-queue");
+      if (dialog) {
+        dialog.dataset.state = "open";
+        if (!dialog.open) dialog.showModal();
+      }
+    },
+
+    // ── Result Canvas: deep-dive into one evidence file ──────────────────
+
+    openResultCanvasFor(evidenceId) {
+      const item = this.evidence.find((e) => e.id === evidenceId);
+      const row = this.resultRowsRaw().find((r) => r.evidenceId === evidenceId);
+      this.canvasEvidenceId = evidenceId;
+      this.canvasEvidenceName = item ? item.filename : row ? row.evidenceName : "";
+      const outputs = this.canvasModuleOutputs();
+      const preferred = outputs.find((o) => o.status === "completed" || o.status === "failed") || outputs[0] || null;
+      this.selectCanvasModule(preferred ? preferred.moduleId : null);
+      const dialog = document.getElementById("result-canvas-dialog");
+      if (dialog) {
+        dialog.dataset.state = "open";
+        if (!dialog.open) dialog.showModal();
+      }
+    },
+
+    closeResultCanvas() {
+      const dialog = document.getElementById("result-canvas-dialog");
+      if (dialog) {
+        dialog.dataset.state = "closed";
+        if (dialog.open) dialog.close();
+      }
+    },
+
+    // Every module compatible with this evidence's type, including ones
+    // never run (status "not_run") - the left "Module Outputs" column shows
+    // the full picture, not just modules that happened to execute.
+    canvasModuleOutputs() {
+      if (!this.canvasEvidenceId) return [];
+      const item = this.evidence.find((e) => e.id === this.canvasEvidenceId);
+      const type = item ? this.evidenceTypeOf(item) : null;
+      const compatible = type ? MODULE_REGISTRY.filter((m) => isModuleCompatible(m, type)) : [];
+
+      const taskByModule = {};
+      this.queue.forEach((job) => {
+        if (job.evidenceId !== this.canvasEvidenceId) return;
+        job.tasks.forEach((t) => {
+          taskByModule[t.moduleId] = t;
+        });
+      });
+      const resultByModule = {};
+      this.results.forEach((r) => {
+        if (r.evidenceId === this.canvasEvidenceId) resultByModule[r.moduleId] = r;
+      });
+
+      const statusOrder = { running: 0, queued: 1, failed: 2, completed: 3, not_run: 4 };
+      return compatible
+        .map((m) => {
+          const result = resultByModule[m.id];
+          const task = taskByModule[m.id];
+          let status = "not_run";
+          let progress = 0;
+          if (result) {
+            status = result.failed ? "failed" : "completed";
+            progress = 100;
+          } else if (task) {
+            status = task.status === "Running" ? "running" : "queued";
+            progress = task.progress;
+          }
+          return { moduleId: m.id, moduleName: m.name, tool: m.tool, tier: moduleTierOf(m), status, progress };
+        })
+        .sort((a, b) => statusOrder[a.status] - statusOrder[b.status] || a.moduleName.localeCompare(b.moduleName));
+    },
+
+    canvasModuleGroups() {
+      const outputs = this.canvasModuleOutputs();
+      const groups = [];
+      MODULE_TIER_ORDER.forEach((tier) => {
+        const mods = outputs.filter((o) => o.tier === tier);
+        if (mods.length) groups.push({ tier, label: MODULE_TIER_LABELS[tier], modules: mods });
       });
       return groups;
     },
 
-    isFindingSaved(resultId) {
-      return this.savedFindingIds.includes(resultId);
+    // Switching modules always resets the viewer to Overview - Raw Output
+    // is per-module and shouldn't carry over to whatever's selected next.
+    selectCanvasModule(moduleId) {
+      this.canvasSelectedModuleId = moduleId;
+      this.canvasTab = "overview";
+      this.canvasNoteDraft = moduleId ? this.notesByKey[this.canvasNoteKeyFor(moduleId)] || "" : "";
     },
 
-    saveToReport(resultId) {
-      if (!this.savedFindingIds.includes(resultId))
-        this.savedFindingIds.push(resultId);
+    canvasNoteKeyFor(moduleId) {
+      return this.canvasEvidenceId + ":" + moduleId;
     },
 
-    removeFromReport(resultId) {
-      this.savedFindingIds = this.savedFindingIds.filter(
-        (id) => id !== resultId,
+    saveCanvasNote() {
+      if (!this.canvasSelectedModuleId) return;
+      this.notesByKey[this.canvasNoteKeyFor(this.canvasSelectedModuleId)] = this.canvasNoteDraft;
+      this.flashCanvas("Note saved.");
+    },
+
+    // The Output Viewer's single source of truth - Overview, Raw Output,
+    // and every Actions-panel button all read from this.
+    canvasSelectedOutput() {
+      if (!this.canvasSelectedModuleId) return null;
+      const meta = this.canvasModuleOutputs().find((o) => o.moduleId === this.canvasSelectedModuleId);
+      if (!meta) return null;
+      const result = this.results.find(
+        (r) => r.evidenceId === this.canvasEvidenceId && r.moduleId === this.canvasSelectedModuleId,
       );
+      return {
+        moduleId: meta.moduleId,
+        moduleName: meta.moduleName,
+        tool: meta.tool,
+        status: meta.status,
+        progress: meta.progress,
+        summary: result ? result.output : null,
+        findings: result ? result.findings : [],
+        iocs: result ? result.iocs : [],
+        artifacts: result ? result.artifacts : [],
+        rawOutput: result ? result.rawOutput : { stdout: [], stderr: [] },
+      };
     },
 
-    savedFindings() {
-      return this.results.filter((r) => this.savedFindingIds.includes(r.id));
+    copyRawOutput() {
+      const output = this.canvasSelectedOutput();
+      if (!output) return;
+      const text = ["STDOUT", ...output.rawOutput.stdout, "", "STDERR", ...output.rawOutput.stderr].join("\n");
+      navigator.clipboard?.writeText(text);
+      this.flashCanvas("Copied to clipboard.");
     },
 
-    isSavedAsIoc(resultId) {
-      return this.savedIocIds.includes(resultId);
-    },
-
-    saveAsIoc(resultId) {
-      if (!this.savedIocIds.includes(resultId)) this.savedIocIds.push(resultId);
-    },
-
-    viewResult(result) {
-      this.viewingResult = result;
-    },
-
-    exportResult(result) {
-      const blob = new Blob([JSON.stringify(result, null, 2)], {
-        type: "application/json",
-      });
+    downloadRawOutput() {
+      const output = this.canvasSelectedOutput();
+      if (!output) return;
+      const text = ["STDOUT", ...output.rawOutput.stdout, "", "STDERR", ...output.rawOutput.stderr].join("\n");
+      const blob = new Blob([text], { type: "text/plain" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = result.evidenceName + "-" + result.moduleId + ".json";
+      a.download = this.canvasEvidenceName + "-" + output.moduleId + "-raw.txt";
+      a.click();
+      URL.revokeObjectURL(url);
+    },
+
+    // Re-queues the currently selected module for this evidence as a fresh
+    // job - drops any prior task/result for that exact module first so it
+    // shows as freshly Queued rather than coexisting with the old one.
+    reAnalyzeCurrentModule() {
+      if (!this.canvasSelectedModuleId || !this.canvasEvidenceId) return;
+      const mod = this.moduleMap[this.canvasSelectedModuleId];
+      if (!mod) return;
+      const item = this.evidence.find((e) => e.id === this.canvasEvidenceId);
+      const evidenceName = this.canvasEvidenceName || (item && item.filename) || "";
+
+      this.queue.forEach((job) => {
+        if (job.evidenceId === this.canvasEvidenceId) job.tasks = job.tasks.filter((t) => t.moduleId !== mod.id);
+      });
+      this.queue = this.queue.filter((j) => j.tasks.length);
+      this.results = this.results.filter((r) => !(r.evidenceId === this.canvasEvidenceId && r.moduleId === mod.id));
+
+      this.ensureOptions(mod.id);
+      const tier = moduleTierOf(mod);
+      const jobId = this.canvasEvidenceId + ":" + tier + ":" + Date.now();
+      this.queue.push({
+        id: jobId,
+        tier,
+        tierLabel: MODULE_TIER_LABELS[tier],
+        evidenceId: this.canvasEvidenceId,
+        evidenceName,
+        tasks: [
+          {
+            id: jobId + ":" + mod.id,
+            moduleId: mod.id,
+            moduleName: mod.name,
+            tool: mod.tool,
+            outputType: mod.outputType,
+            risk: mod.riskLevel,
+            isolation: mod.isolationLevel,
+            summary: this.optionsSummaryFor(mod.id),
+            status: "Queued",
+            progress: 0,
+          },
+        ],
+      });
+      this.flashCanvas("Re-Analyze queued.");
+    },
+
+    exportCanvasEvidence() {
+      const data = this.results.filter((r) => r.evidenceId === this.canvasEvidenceId);
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = (this.canvasEvidenceName || "evidence") + "-results.json";
+      a.click();
+      URL.revokeObjectURL(url);
+    },
+
+    flashCanvas(message) {
+      this.canvasFlash = message;
+      clearTimeout(this._canvasFlashTimer);
+      this._canvasFlashTimer = setTimeout(() => {
+        this.canvasFlash = "";
+      }, 2000);
+    },
+
+    // ── Analyst Notes / Actions panel ────────────────────────────────────
+
+    indicatorsAddedForCurrent() {
+      const output = this.canvasSelectedOutput();
+      if (!output || !output.iocs.length) return false;
+      return output.iocs.every((ioc) => this.savedIndicatorKeys.includes(ioc.type + ":" + ioc.value));
+    },
+
+    addIndicator() {
+      const output = this.canvasSelectedOutput();
+      if (!output || !output.iocs.length) return;
+      const mod = this.moduleMap[output.moduleId];
+      output.iocs.forEach((ioc) => {
+        const key = ioc.type + ":" + ioc.value;
+        if (this.savedIndicatorKeys.includes(key)) return;
+        this.savedIndicatorKeys.push(key);
+        this.indicators.push({
+          id: this.canvasEvidenceId + ":" + output.moduleId + ":" + ioc.type + ":" + Date.now(),
+          caseId: this.caseId,
+          type: ioc.type,
+          value: ioc.value,
+          severity: severityOfModule(mod),
+          confidence: confidenceOfModule(mod),
+          sourceEvidence: this.canvasEvidenceName,
+          sourceModule: output.moduleName,
+          includedInReport: false,
+        });
+      });
+      this.flashCanvas("Indicator added.");
+    },
+
+    createFinding() {
+      const output = this.canvasSelectedOutput();
+      if (!output) return;
+      const mod = this.moduleMap[output.moduleId];
+      const note = this.canvasNoteDraft.trim();
+      const description = note || output.findings.join(" ") || output.summary || "";
+      if (!description) return;
+      const title = note ? note.split("\n")[0].slice(0, 80) : output.findings[0] || output.moduleName + " finding";
+      this.caseFindings.push({
+        id: this.canvasEvidenceId + ":" + output.moduleId + ":" + Date.now(),
+        caseId: this.caseId,
+        title,
+        severity: severityOfModule(mod),
+        confidence: confidenceOfModule(mod),
+        sourceEvidence: this.canvasEvidenceName,
+        sourceModule: output.moduleName,
+        description,
+        includedInReport: false,
+      });
+      this.flashCanvas("Finding created.");
+    },
+
+    addToTimeline() {
+      const output = this.canvasSelectedOutput();
+      if (!output) return;
+      const mod = this.moduleMap[output.moduleId];
+      const eventType = { network: "Network Event", email: "Email Event", memory: "Memory Event" }[mod ? moduleTierOf(mod) : ""] || "Analysis Event";
+      this.timelineEvents.push({
+        id: this.canvasEvidenceId + ":" + output.moduleId + ":" + Date.now(),
+        caseId: this.caseId,
+        eventTime: formatTimelineTimestamp(Date.now()),
+        title: output.moduleName + " completed on " + this.canvasEvidenceName,
+        eventType,
+        source: this.canvasEvidenceName + " → " + output.moduleName,
+        confidence: confidenceOfModule(mod),
+        includedInReport: false,
+      });
+      this.flashCanvas("Added to timeline.");
+    },
+
+    // The Result Canvas's "Add to Report" fast path: builds a finding from
+    // the current completed result's own summary and inserts it straight
+    // into the report draft, skipping the Insert dialog entirely. This is
+    // distinct from Create Finding, which lets the analyst write their own
+    // title/description first and queues it for a deliberate Insert later.
+    addCurrentToReport() {
+      const output = this.canvasSelectedOutput();
+      if (!output || output.status !== "completed") return;
+      const mod = this.moduleMap[output.moduleId];
+      const finding = {
+        id: this.canvasEvidenceId + ":" + output.moduleId + ":" + Date.now(),
+        caseId: this.caseId,
+        title: output.moduleName + " result",
+        severity: severityOfModule(mod),
+        confidence: confidenceOfModule(mod),
+        sourceEvidence: this.canvasEvidenceName,
+        sourceModule: output.moduleName,
+        description: output.summary,
+        includedInReport: true,
+      };
+      this.caseFindings.push(finding);
+      this.insertFindingMarkdown(finding);
+      this.report.includedFindingIds.push(finding.id);
+      this.flashCanvas("Added to report.");
+    },
+
+    // ── Report tab: the markdown report itself ───────────────────────────
+
+    flashReport(message) {
+      this.reportFlash = message;
+      clearTimeout(this._reportFlashTimer);
+      this._reportFlashTimer = setTimeout(() => {
+        this.reportFlash = "";
+      }, 2000);
+    },
+
+    saveDraft() {
+      this.report.updatedBy = this.currentUserName;
+      this.flashReport("Draft saved.");
+    },
+
+    pendingFindings() {
+      return this.caseFindings.filter((f) => !f.includedInReport);
+    },
+    pendingIocs() {
+      return this.indicators.filter((i) => !i.includedInReport);
+    },
+    pendingTimelineEvents() {
+      return this.timelineEvents.filter((e) => !e.includedInReport);
+    },
+    pendingInsertCount() {
+      return this.pendingFindings().length + this.pendingIocs().length + this.pendingTimelineEvents().length;
+    },
+
+    // Inserts `block` at the bottom of the section under `headerText` (just
+    // above whatever "## " heading comes next, or at the document's end if
+    // this is the last section) - so repeated inserts stack in order rather
+    // than piling up right under the heading every time.
+    appendToSection(headerText, block) {
+      const lines = this.report.markdownContent.split("\n");
+      const headerIdx = lines.findIndex((l) => l.trim() === headerText);
+      if (headerIdx === -1) {
+        this.report.markdownContent += "\n" + block + "\n";
+        return;
+      }
+      let insertAt = lines.length;
+      for (let i = headerIdx + 1; i < lines.length; i++) {
+        if (lines[i].startsWith("## ")) {
+          insertAt = i;
+          break;
+        }
+      }
+      const before = lines.slice(0, insertAt);
+      while (before.length && before[before.length - 1].trim() === "") before.pop();
+      this.report.markdownContent = [...before, "", ...block.split("\n"), "", ...lines.slice(insertAt)].join("\n");
+    },
+
+    // Same section-scoped insertion as appendToSection, but for a Markdown
+    // table row: creates the header+separator+row the first time something
+    // is inserted into that section, and just appends a row after that.
+    insertTableRow(headerText, columns, row) {
+      const lines = this.report.markdownContent.split("\n");
+      const headerIdx = lines.findIndex((l) => l.trim() === headerText);
+      if (headerIdx === -1) {
+        this.report.markdownContent += "\n" + row + "\n";
+        return;
+      }
+      let sectionEnd = lines.length;
+      for (let i = headerIdx + 1; i < lines.length; i++) {
+        if (lines[i].startsWith("## ")) {
+          sectionEnd = i;
+          break;
+        }
+      }
+      const isSeparatorRow = (line) =>
+        line.trim().replace(/^\||\|$/g, "").split("|").every((c) => /^-+$/.test(c.trim()));
+      let tableHeaderIdx = -1;
+      for (let i = headerIdx + 1; i < sectionEnd - 1; i++) {
+        if (lines[i].trim().startsWith("|") && isSeparatorRow(lines[i + 1])) {
+          tableHeaderIdx = i;
+          break;
+        }
+      }
+      if (tableHeaderIdx === -1) {
+        const before = lines.slice(0, sectionEnd);
+        while (before.length && before[before.length - 1].trim() === "") before.pop();
+        const tableHeader = "| " + columns.join(" | ") + " |";
+        const separator = "|" + columns.map(() => "---").join("|") + "|";
+        this.report.markdownContent = [...before, "", tableHeader, separator, row, "", ...lines.slice(sectionEnd)].join("\n");
+      } else {
+        let tableEnd = tableHeaderIdx + 2;
+        while (tableEnd < sectionEnd && lines[tableEnd].trim().startsWith("|")) tableEnd++;
+        this.report.markdownContent = [...lines.slice(0, tableEnd), row, ...lines.slice(tableEnd)].join("\n");
+      }
+    },
+
+    insertFindingMarkdown(finding) {
+      const block =
+        "### " + finding.title + "\n\n" +
+        "**Severity:** " + finding.severity + "  \n" +
+        "**Confidence:** " + finding.confidence + "  \n" +
+        "**Source Evidence:** " + finding.sourceEvidence + "  \n" +
+        "**Source Module:** " + finding.sourceModule + "  \n\n" +
+        finding.description;
+      this.appendToSection("## Key Findings", block);
+    },
+
+    insertFindingIntoReport(findingId) {
+      const f = this.caseFindings.find((x) => x.id === findingId);
+      if (!f || f.includedInReport) return;
+      this.insertFindingMarkdown(f);
+      f.includedInReport = true;
+      this.report.includedFindingIds.push(f.id);
+      this.flashReport("Finding inserted into report.");
+    },
+
+    insertIocIntoReport(iocId) {
+      const ioc = this.indicators.find((x) => x.id === iocId);
+      if (!ioc || ioc.includedInReport) return;
+      const row = "| " + ioc.type + " | " + ioc.value + " | " + ioc.severity + " | " + ioc.confidence + " | " + ioc.sourceEvidence + " → " + ioc.sourceModule + " |";
+      this.insertTableRow("## IOCs", ["Type", "Value", "Severity", "Confidence", "Source"], row);
+      ioc.includedInReport = true;
+      this.report.includedIocIds.push(ioc.id);
+      this.flashReport("IOC inserted into report.");
+    },
+
+    insertTimelineIntoReport(eventId) {
+      const ev = this.timelineEvents.find((x) => x.id === eventId);
+      if (!ev || ev.includedInReport) return;
+      const row = "| " + ev.eventTime + " | " + ev.title + " | " + ev.eventType + " | " + ev.source + " |";
+      this.insertTableRow("## Incident Timeline", ["Time", "Event", "Type", "Source"], row);
+      ev.includedInReport = true;
+      this.report.includedTimelineEventIds.push(ev.id);
+      this.flashReport("Timeline event inserted into report.");
+    },
+
+    // The vendored Alpine build is the CSP-safe variant, which disables the
+    // x-html directive entirely - so the preview is rendered by directly
+    // setting innerHTML on a $ref from here instead of a template binding.
+    openReportPreview() {
+      if (this.$refs.reportPreviewBody) {
+        this.$refs.reportPreviewBody.innerHTML = renderMarkdownToHtml(this.report.markdownContent);
+      }
+      const dialog = document.getElementById("report-preview-dialog");
+      if (dialog) {
+        dialog.dataset.state = "open";
+        if (!dialog.open) dialog.showModal();
+      }
+    },
+
+    reportPrintDocument() {
+      const body = renderMarkdownToHtml(this.report.markdownContent);
+      return (
+        "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><title>" + this.report.title + "</title>" +
+        "<style>body{font-family:Calibri,Arial,sans-serif;color:#111;line-height:1.5;padding:2rem;max-width:800px;margin:0 auto;}" +
+        "h1{font-size:1.6rem;margin-top:0;}h2{font-size:1.25rem;margin-top:1.5rem;border-bottom:1px solid #ddd;padding-bottom:.25rem;}h3{font-size:1.05rem;margin-top:1.25rem;}" +
+        "table{border-collapse:collapse;width:100%;margin:.75rem 0;}td,th{border:1px solid #ccc;padding:.4rem .6rem;text-align:left;font-size:.9rem;}</style>" +
+        "</head><body><h1>" + this.report.title + "</h1>" + body + "</body></html>"
+      );
+    },
+
+    exportReportPdf() {
+      const win = window.open("", "_blank");
+      if (!win) return;
+      win.document.write(this.reportPrintDocument());
+      win.document.close();
+      win.focus();
+      win.print();
+    },
+
+    exportReportDocx() {
+      const blob = new Blob(["﻿", this.reportPrintDocument()], { type: "application/msword" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = (this.report.title || "report").replace(/[^a-z0-9-_]+/gi, "_") + ".doc";
       a.click();
       URL.revokeObjectURL(url);
     },

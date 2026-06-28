@@ -550,6 +550,31 @@ function initEvidenceUpload({ caseId, csrfToken }) {
         </div>
       </div>
     `;
+    const actions = card.querySelector('[data-cell="actions"]');
+    // Analyzing needs a completed, hashed file - there's nothing to run
+    // modules against while a file is still uploading.
+    if (item.status === "completed") {
+      const analyze = actionButton("Analyze", {});
+      analyze.innerHTML = iconPlay();
+      analyze.addEventListener("click", () => {
+        // Cards are built here in plain JS, not Alpine - dispatching a
+        // DOM event is how the shared analyzeWorkspace component (mounted
+        // once at the page root, see cases/detail.html) finds out about a
+        // click on a card it doesn't own.
+        window.dispatchEvent(
+          new CustomEvent("analyze-evidence", {
+            detail: {
+              id: item.id,
+              filename: item.filename,
+              mime_type: item.mime_type,
+              size_bytes: item.size_bytes,
+              sha256: item.sha256,
+            },
+          }),
+        );
+      });
+      actions.appendChild(analyze);
+    }
     const del = actionButton("Delete", { class: "hover:text-destructive" });
     del.innerHTML = iconTrash();
     del.addEventListener("click", async () => {
@@ -561,7 +586,7 @@ function initEvidenceUpload({ caseId, csrfToken }) {
       });
       refreshPersistedEvidence();
     });
-    card.querySelector('[data-cell="actions"]').appendChild(del);
+    actions.appendChild(del);
     return card;
   }
 

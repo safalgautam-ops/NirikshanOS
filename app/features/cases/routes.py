@@ -177,16 +177,20 @@ async def detail_view(case_id: str):
             "filename": e["filename"],
             "mime_type": e["mime_type"],
             "size_bytes": e["size_bytes"],
+            "sha256": e["sha256"],
         }
         for e in completed_evidence
     ]
     creator = await get_user_by_id(case["created_by"])
     creator_name = creator["name"] if creator else "—"
+    current_user = await get_user_by_id(g.user_id)
+    current_user_name = current_user["name"] if current_user else "Analyst"
     visible_keys = await get_visible_nav_keys(g.user_id)
     return await render_template(
         "cases/detail.html",
         case=case,
         creator_name=creator_name,
+        current_user_name=current_user_name,
         members=members,
         member_rows=await _member_rows(case, members, creator, org_id),
         evidence=evidence,

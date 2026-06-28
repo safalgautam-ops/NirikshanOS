@@ -38,7 +38,7 @@ instead of being a tenant member through their own platform identity (see
 onboarding/routes.py's blueprint guard, which enforces this server-side too). #}
 {% macro sidebar(active="dashboard", visible_keys=None) %}
 {% set org_items = [ ("org_staff", "Staff", "/onboarding/staff"), ("org_role", "Roles", "/onboarding/roles") ] %}
-{% set app_items = [ ("case", "Case", "/cases/") ] %}
+{% set app_items = [ ("case", "Case", "/cases/"), ("timeline", "Timeline", "/timeline") ] %}
 {% set admin_items = [ ("admin_users", "Users", "/admin/users"), ("admin_organizations", "Organizations", "/admin/organizations"), ("admin_roles", "Roles", "/admin/roles"), ("admin_staff", "Staff", "/admin/staff") ] %}
 {% set visible_admin_items = admin_items|selectattr("0", "in", visible_keys)|list if visible_keys is not none else admin_items %}
 {% set visible_org_items = org_items|selectattr("0", "in", g.org_nav_keys)|list if g.org_nav_keys is not none else org_items %}
