@@ -2134,7 +2134,13 @@ document.addEventListener("alpine:init", () => {
     },
   ];
 
-  const MODULE_REGISTRY = [
+  // Temporary frontend fallback only.
+  // Real modules must come from backend /cases/:caseId/evidence/:evidenceId/modules API.
+  // This used to be this app's source of truth for which modules exist;
+  // that authority now lives in app/features/analysis/module_registry.py
+  // on the backend. Keep this around only until the Analyze UI is wired to
+  // fetch from that endpoint instead of reading this array directly.
+  const DEV_MOCK_MODULE_REGISTRY = [
     ...GENERIC_MODULES,
     ...BINARY_MODULES,
     ...PCAP_MODULES,
@@ -2150,7 +2156,7 @@ document.addEventListener("alpine:init", () => {
     ...LOGS_MODULES,
   ];
   const MODULE_MAP = {};
-  MODULE_REGISTRY.forEach((m) => {
+  DEV_MOCK_MODULE_REGISTRY.forEach((m) => {
     MODULE_MAP[m.id] = m;
   });
 
@@ -2594,7 +2600,7 @@ Add supporting evidence references, screenshots, artifacts, and raw output refer
       compatibleModules() {
         if (!this.analyzingEvidence) return [];
         const type = this.evidenceTypeOf(this.analyzingEvidence);
-        return MODULE_REGISTRY.filter((m) => isModuleCompatible(m, type));
+        return DEV_MOCK_MODULE_REGISTRY.filter((m) => isModuleCompatible(m, type));
       },
 
       // Only tiers that actually contain a compatible module are shown, per
@@ -3048,7 +3054,7 @@ Add supporting evidence references, screenshots, artifacts, and raw output refer
         const item = this.evidence.find((e) => e.id === this.canvasEvidenceId);
         const type = item ? this.evidenceTypeOf(item) : null;
         const compatible = type
-          ? MODULE_REGISTRY.filter((m) => isModuleCompatible(m, type))
+          ? DEV_MOCK_MODULE_REGISTRY.filter((m) => isModuleCompatible(m, type))
           : [];
 
         const taskByModule = {};

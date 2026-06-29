@@ -26,6 +26,7 @@ from app.core.security.permissions import get_visible_nav_keys
 from app.core.security.sessions import apply_session_loader, login_required
 from app.core.templating import cn, html_attrs, read_input_css_for_browser_runtime
 from app.extensions import close_redis, get_redis, init_redis
+from app.features.analysis.routes import analysis_bp
 from app.features.auth.repository import get_user_by_id
 from app.features.auth.routes import auth_bp
 from app.features.cases.routes import cases_bp
@@ -141,6 +142,7 @@ def create_app() -> Quart:
     app.register_blueprint(staff_bp)
     app.register_blueprint(cases_bp)
     app.register_blueprint(evidence_bp)
+    app.register_blueprint(analysis_bp)
     app.register_blueprint(timeline_bp)
 
     @app.before_serving

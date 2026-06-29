@@ -208,3 +208,7 @@ async def cancel_or_delete(evidence_id: str) -> dict:
 
 async def list_case_evidence(case_id: str):
     return await repository.list_case_evidence(case_id)
+
+
+async def get_evidence(evidence_id: str):
+    return await repository.get_evidence(evidence_id)
