@@ -13,6 +13,7 @@ CASE_DELETE = OrgPermission("case", "delete", "Cases", "Delete cases")
 
 EVIDENCE_UPLOAD = OrgPermission("evidence", "upload", "Cases", "Upload evidence to a case")
 EVIDENCE_DELETE = OrgPermission("evidence", "delete", "Cases", "Delete evidence from a case")
+EVIDENCE_ANALYZE = OrgPermission("evidence", "analyze", "Cases", "Run analysis modules against evidence")
 
 register_org_permissions(
     CASE_CREATE,
@@ -20,4 +21,5 @@ register_org_permissions(
     CASE_DELETE,
     EVIDENCE_UPLOAD,
     EVIDENCE_DELETE,
+    EVIDENCE_ANALYZE,
 )
