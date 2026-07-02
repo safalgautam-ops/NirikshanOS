@@ -10,7 +10,7 @@ status='queued'. Dispatching to a real queue is a later step.
 
 from __future__ import annotations
 
-from app.features.analysis import repository
+from app.features.analysis import queue_service, repository
 from app.features.analysis.planner import AnalysisJobPlan
 
 
@@ -57,6 +57,8 @@ async def create_jobs_from_plan(
                 module_name=module.name,
                 options_json=options,
             )
+        # Push the job_id into the correct Redis queue so workers can pick it up.
+        await queue_service.enqueue_job(job_id, job_plan.queue_name)
         job_ids.append(job_id)
 
     return job_ids

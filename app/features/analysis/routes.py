@@ -136,8 +136,8 @@ async def analyze_evidence_view(case_id: str, evidence_id: str):
     # Group into the minimal set of jobs.
     plan = create_analysis_plan(selected_modules)
 
-    # Persist jobs + tasks.
-    job_ids = await job_service.create_jobs_from_plan(
+    # Persist jobs + tasks (dedup: skips modules already queued/running).
+    result = await job_service.create_jobs_from_plan(
         case_id=case_id,
         evidence_id=evidence_id,
         org_id=org_id,
@@ -146,9 +146,9 @@ async def analyze_evidence_view(case_id: str, evidence_id: str):
         module_options=module_options or None,
     )
 
-    # Build the response — one entry per created job.
+    # Build the response — one entry per newly created job.
     jobs_response = []
-    for job_id, job_plan in zip(job_ids, plan):
+    for job_id, job_plan in zip(result.job_ids, plan):
         jobs_response.append({
             "job_id": job_id,
             "job_type": job_plan.job_type,
@@ -160,4 +160,5 @@ async def analyze_evidence_view(case_id: str, evidence_id: str):
         "evidence_id": evidence_id,
         "evidence_type": evidence_type,
         "jobs": jobs_response,
+        "skipped_modules": result.skipped_modules,
     }), 201

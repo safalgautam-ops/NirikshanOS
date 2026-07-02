@@ -80,6 +80,29 @@ async def list_jobs_for_evidence(evidence_id: str) -> list[dict]:
     )
 
 
+async def get_active_module_ids_for_evidence(evidence_id: str) -> set[str]:
+    """Return module_ids that are currently queued or running for this evidence.
+
+    Used by job_service to skip re-queuing a module that's already in flight.
+    Completed/failed modules are not included — those are eligible for re-run.
+    """
+    active_jobs = await (
+        db.table("analysis_jobs")
+        .where("evidence_id", evidence_id)
+        .where_in("status", ["queued", "running"])
+        .all()
+    )
+    if not active_jobs:
+        return set()
+    job_ids = [j["id"] for j in active_jobs]
+    tasks = await (
+        db.table("analysis_tasks")
+        .where_in("job_id", job_ids)
+        .all()
+    )
+    return {t["module_id"] for t in tasks}
+
+
 async def list_tasks_for_job(job_id: str) -> list[dict]:
     return await (
         db.table("analysis_tasks")
