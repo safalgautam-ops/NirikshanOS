@@ -4,14 +4,23 @@ This is the write side of the analysis feature. It takes the structured
 job plan from planner.create_analysis_plan and turns each AnalysisJobPlan
 into one analysis_jobs row + N analysis_tasks rows (one per module).
 
-No Docker, no Redis, no workers are touched here. All rows land with
-status='queued'. Dispatching to a real queue is a later step.
+Deduplication rule:
+  - If a module is already queued/running for the same evidence → skip it.
+  - If a module previously completed/failed → allow re-run (new rows created).
 """
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
+
 from app.features.analysis import queue_service, repository
 from app.features.analysis.planner import AnalysisJobPlan
+
+
+@dataclass
+class CreateJobsResult:
+    job_ids: list[str] = field(default_factory=list)
+    skipped_modules: list[str] = field(default_factory=list)
 
 
 async def create_jobs_from_plan(
@@ -22,21 +31,26 @@ async def create_jobs_from_plan(
     created_by: str,
     plan: list[AnalysisJobPlan],
     module_options: dict[str, dict] | None = None,
-) -> list[str]:
-    """Persist every job plan as DB rows and return the new job IDs.
+) -> CreateJobsResult:
+    """Persist new job plans as DB rows, skipping modules already in flight.
 
-    For each AnalysisJobPlan:
-      - Creates one analysis_jobs row.
-      - Creates one analysis_tasks row per module inside that job.
-      - Stores per-module options in options_json if provided.
-
-    `module_options` maps module_id → options dict, e.g.:
-      {"generic.strings_extraction": {"min_length": 8}}
-    Modules with no entry in the dict get options_json = NULL.
+    Modules already queued/running for this evidence are filtered out before
+    any DB write. Plans that become empty after filtering are dropped entirely.
+    Modules that previously completed or failed are NOT filtered — they get
+    fresh rows (re-run semantics).
     """
-    job_ids: list[str] = []
+    active_module_ids = await repository.get_active_module_ids_for_evidence(evidence_id)
+
+    result = CreateJobsResult()
 
     for job_plan in plan:
+        new_modules = [m for m in job_plan.modules if m.id not in active_module_ids]
+        already_active = [m.id for m in job_plan.modules if m.id in active_module_ids]
+        result.skipped_modules.extend(already_active)
+
+        if not new_modules:
+            continue
+
         job_id = await repository.create_job(
             case_id=case_id,
             evidence_id=evidence_id,
@@ -49,7 +63,7 @@ async def create_jobs_from_plan(
             batch_group=job_plan.batch_group,
             batchable=job_plan.batchable,
         )
-        for module in job_plan.modules:
+        for module in new_modules:
             options = (module_options or {}).get(module.id)
             await repository.create_task(
                 job_id=job_id,
@@ -57,11 +71,10 @@ async def create_jobs_from_plan(
                 module_name=module.name,
                 options_json=options,
             )
-        # Push the job_id into the correct Redis queue so workers can pick it up.
         await queue_service.enqueue_job(job_id, job_plan.queue_name)
-        job_ids.append(job_id)
+        result.job_ids.append(job_id)
 
-    return job_ids
+    return result
 
 
 async def get_job_with_tasks(job_id: str) -> dict | None:
