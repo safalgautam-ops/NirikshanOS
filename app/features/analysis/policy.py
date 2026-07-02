@@ -123,6 +123,11 @@ async def check_can_run(
         # No quota table exists yet. When added, replace with:
         #   remaining = await get_remaining_quota(org_id)
         #   if remaining <= 0: ...
+        # IMPORTANT: real quota check should happen AFTER the planner runs,
+        # not here per-module. Batching changes how many fast/standard/heavy/
+        # sandbox jobs are actually consumed — 6 batchable modules may cost
+        # only 1 fast_queue slot, not 6. Policy pre-flight only validates
+        # permission and module access; quota is a post-plan concern.
         _quota_violation = _check_quota_stub(org_id, module_id)
         if _quota_violation:
             violations.append(_quota_violation)

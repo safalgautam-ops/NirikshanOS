@@ -54,9 +54,13 @@ def apply_csrf_protection(app: Quart) -> None:
         # enforcement only for state-changing requests (POST, PUT, PATCH, DELETE)
         if request.method not in SAFE_METHODS:
             form = await request.form
-            submitted = form.get(
-                CSRF_FIELD, ""
-            )  # token from the hidden field in the form
+            # Form submissions send the token in a hidden field.
+            # JSON API calls (Content-Type: application/json) send it in
+            # the X-CSRF-Token request header instead.
+            submitted = (
+                form.get(CSRF_FIELD, "")
+                or request.headers.get("X-CSRF-Token", "")
+            )
             cookie_token = request.cookies.get(
                 CSRF_COOKIE
             )  # token from the cookie sent by the browser
