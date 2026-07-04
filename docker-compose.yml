@@ -19,6 +19,9 @@ services:
     # Mirrors the local checkout into the container for live editing.
     volumes:
       - .:/app
+      # Job workspaces — read-only for the web container (serves raw output to the UI).
+      # Must be the same absolute path as on the host so get_task_output_view can find files.
+      - ${JOBS_DIR:-/storage/jobs}:${JOBS_DIR:-/storage/jobs}:ro
     env_file:
       - .env
     # Waits for MySQL/Redis/MinIO to report healthy, not just "started",
@@ -40,6 +43,13 @@ services:
     command: python -m workers.worker_main
     volumes:
       - .:/app
+      # Docker socket — lets docker_runner.py call `docker run` from inside the container.
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Job workspaces — both sides of the bind mount must use the same absolute path.
+      # When the worker calls `docker run -v $JOBS_DIR/job_id/...`, Docker resolves
+      # that path on the HOST filesystem. If the container path differs from the host
+      # path, the bind mount passed to the inner container will point nowhere.
+      - ${JOBS_DIR:-/storage/jobs}:${JOBS_DIR:-/storage/jobs}
     env_file:
       - .env
     depends_on:
