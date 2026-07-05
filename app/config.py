@@ -67,6 +67,10 @@ class Config:
 
     APP_URL = os.environ.get("APP_URL", "http://localhost:8000")
 
+    # Local directory where docker_runner creates per-job workspaces.
+    # Must be on a volume accessible to both the worker and the Docker daemon.
+    JOBS_DIR = os.environ.get("JOBS_DIR", "/storage/jobs")
+
     RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
     RESEND_FROM_EMAIL = os.environ.get(
         "RESEND_FROM_EMAIL", "NirikshanOS <noreply@example.com>"

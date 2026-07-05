@@ -76,7 +76,7 @@ async def list_jobs_for_evidence(evidence_id: str) -> list[dict]:
         db.table("analysis_jobs")
         .where("evidence_id", evidence_id)
         .order_by("created_at", "desc")
-        .all()
+        .all(allow_full_table=True)
     )
 
 
@@ -90,7 +90,7 @@ async def get_active_module_ids_for_evidence(evidence_id: str) -> set[str]:
         db.table("analysis_jobs")
         .where("evidence_id", evidence_id)
         .where_in("status", ["queued", "running"])
-        .all()
+        .all(allow_full_table=True)
     )
     if not active_jobs:
         return set()
@@ -98,9 +98,13 @@ async def get_active_module_ids_for_evidence(evidence_id: str) -> set[str]:
     tasks = await (
         db.table("analysis_tasks")
         .where_in("job_id", job_ids)
-        .all()
+        .all(allow_full_table=True)
     )
     return {t["module_id"] for t in tasks}
+
+
+async def get_task(task_id: str) -> dict | None:
+    return await db.table("analysis_tasks").where("id", task_id).first()
 
 
 async def list_tasks_for_job(job_id: str) -> list[dict]:
@@ -108,7 +112,52 @@ async def list_tasks_for_job(job_id: str) -> list[dict]:
         db.table("analysis_tasks")
         .where("job_id", job_id)
         .order_by("created_at", "asc")
-        .all()
+        .all(allow_full_table=True)
+    )
+
+
+async def save_result(
+    *,
+    job_id: str,
+    task_id: str,
+    case_id: str,
+    evidence_id: str,
+    module_id: str,
+    summary_json: dict | None,
+    normalized_json: dict | None,
+    stdout_path: str | None,
+    stderr_path: str | None,
+    artifact_path: str | None,
+) -> str:
+    result_id = new_id()
+    await db.table("analysis_results").create(
+        {
+            "id": result_id,
+            "job_id": job_id,
+            "task_id": task_id,
+            "case_id": case_id,
+            "evidence_id": evidence_id,
+            "module_id": module_id,
+            "summary_json": json.dumps(summary_json) if summary_json is not None else None,
+            "normalized_json": json.dumps(normalized_json) if normalized_json is not None else None,
+            "stdout_path": stdout_path,
+            "stderr_path": stderr_path,
+            "artifact_path": artifact_path,
+        }
+    )
+    return result_id
+
+
+async def get_result_for_task(task_id: str) -> dict | None:
+    return await db.table("analysis_results").where("task_id", task_id).first()
+
+
+async def get_results_for_evidence(evidence_id: str) -> list[dict]:
+    return await (
+        db.table("analysis_results")
+        .where("evidence_id", evidence_id)
+        .order_by("created_at", "asc")
+        .all(allow_full_table=True)
     )
 
 

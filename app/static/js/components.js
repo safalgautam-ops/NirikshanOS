@@ -282,7 +282,7 @@ document.addEventListener("alpine:init", () => {
 
   const GENERIC_MODULES = [
     {
-      id: "file_identification",
+      id: "generic.file_identification",
       name: "File Identification",
       category: "generic",
       tool: "file / libmagic",
@@ -295,7 +295,7 @@ document.addEventListener("alpine:init", () => {
       fields: outputFormatField(["Text", "JSON"], "JSON"),
     },
     {
-      id: "hash_calculation",
+      id: "generic.hash_calculation",
       name: "Hash Calculation",
       category: "generic",
       tool: "hashdeep / sha256sum",
@@ -347,7 +347,7 @@ document.addEventListener("alpine:init", () => {
       ],
     },
     {
-      id: "strings_extraction",
+      id: "generic.strings_extraction",
       name: "Strings Extraction",
       category: "generic",
       tool: "strings / FLOSS",
@@ -2216,75 +2216,6 @@ document.addEventListener("alpine:init", () => {
     );
   }
 
-  function mockOutputFor(module, evidenceName) {
-    return (
-      "Mock " +
-      module.outputType.toLowerCase() +
-      " generated for " +
-      evidenceName +
-      " via " +
-      module.tool +
-      "."
-    );
-  }
-
-  // Result Canvas deep output - findings/IOCs/artifacts/raw stdout+stderr,
-  // derived from the module's existing category/tool/outputType fields
-  // (same "derive, don't hand-tag" approach as moduleTierOf/requiredPlanOf)
-  // rather than authoring per-module mock content for ~104 modules.
-  const ARTIFACT_CATEGORIES = [
-    "pcap",
-    "memory",
-    "disk",
-    "image",
-    "archive",
-    "binary",
-  ];
-  function mockDeepOutputFor(module, evidenceName) {
-    const findings = [
-      module.name + " completed against " + evidenceName + " with no errors.",
-      "Output classified as " + module.outputType + " via " + module.tool + ".",
-    ];
-    let iocs;
-    if (module.category === "pcap") {
-      iocs = [
-        { type: "ip", value: "203.0.113.45" },
-        { type: "domain", value: "malicious-update.net" },
-      ];
-    } else if (module.category === "email") {
-      iocs = [
-        { type: "domain", value: "phish-relay.example" },
-        { type: "url", value: "http://phish-relay.example/login" },
-      ];
-    } else {
-      iocs = [
-        {
-          type: "hash",
-          value:
-            "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
-        },
-      ];
-    }
-    const artifacts = ARTIFACT_CATEGORIES.includes(module.category)
-      ? [
-          {
-            name:
-              evidenceName + "_extracted." + module.outputType.toLowerCase(),
-            type: module.outputType,
-          },
-        ]
-      : [];
-    const rawOutput = {
-      stdout: [
-        "[" + module.tool + "] starting analysis of " + evidenceName,
-        "[" + module.tool + "] module: " + module.name,
-        "[" + module.tool + "] output type: " + module.outputType,
-        "[" + module.tool + "] completed successfully.",
-      ],
-      stderr: [],
-    };
-    return { findings, iocs, artifacts, rawOutput };
-  }
 
   // Severity/confidence for findings, IOCs, and timeline events are derived
   // from the module that produced them (riskLevel / isolationLevel already
@@ -2474,10 +2405,46 @@ Add supporting evidence references, screenshots, artifacts, and raw output refer
     return html;
   }
 
+  // Map backend status strings (lowercase) to the Title-case strings the
+  // progress dialog template checks (e.g. task.status === 'Running').
+  function _toFrontendStatus(backendStatus) {
+    return (
+      { queued: "Queued", running: "Running", completed: "Completed", failed: "Failed", cancelled: "Failed" }[backendStatus] || "Queued"
+    );
+  }
+
+  function _statusToProgress(frontendStatus) {
+    if (frontendStatus === "Completed" || frontendStatus === "Failed") return 100;
+    if (frontendStatus === "Running") return 50;
+    return 0;
+  }
+
+  async function _fetchTaskOutput(taskId) {
+    try {
+      const resp = await fetch(`/analysis/tasks/${taskId}/output`);
+      if (!resp.ok) return { stdout: [], stderr: [] };
+      const data = await resp.json();
+      return {
+        stdout: (data.stdout || "").split("\n").filter(Boolean),
+        stderr: (data.stderr || "").split("\n").filter(Boolean),
+      };
+    } catch {
+      return { stdout: [], stderr: [] };
+    }
+  }
+
+  function _formatSummary(summary) {
+    if (!summary || typeof summary !== "object") return summary || "";
+    return Object.entries(summary)
+      .filter(([, v]) => v !== null && v !== undefined && v !== "")
+      .map(([k, v]) => `${k.replace(/_/g, " ")}: ${v}`)
+      .join("\n");
+  }
+
   /* this component manages the Analyze tab's planner and job queue */
   Alpine.data(
     "analyzeWorkspace",
-    (evidenceItems, userPlan, caseId, caseTitle, currentUserName) => ({
+    (evidenceItems, userPlan, caseId, caseTitle, currentUserName, csrfToken) => ({
       /*
     this analyze page needs to remember some things while the user is using it
     and those things are called "state" variables
@@ -2489,6 +2456,7 @@ Add supporting evidence references, screenshots, artifacts, and raw output refer
       evidence: evidenceItems || [], // for remembering the evidence items (files) inside Alpine (state)
       caseId: caseId || null,
       currentUserName: currentUserName || "Analyst",
+      csrfToken: csrfToken || "",
 
       // Analyze dialog state - scoped to exactly one evidence file at a time,
       // opened via openAnalyzeDialog() from that file's card (see
@@ -2544,11 +2512,9 @@ Add supporting evidence references, screenshots, artifacts, and raw output refer
       },
       reportFlash: "", // brief confirmation text near the report action row
 
-      init() {
-        // Single shared ticker advancing every queued/running task across
-        // every job - cheap no-op when nothing's queued, see _tickProgress.
-        setInterval(() => this._tickProgress(), 500);
-      },
+      _pollKey: null,
+
+      init() {},
 
       evidenceTypeOf(item) {
         const ext = (item.filename || "").toLowerCase().split(".").pop();
@@ -2740,46 +2706,71 @@ Add supporting evidence references, screenshots, artifacts, and raw output refer
         };
       },
 
-      // "Next": groups the checked modules into one job per tier (every Basic
-      // Triage Bundle module shares one container/job; everything else gets
-      // its own job) and queues them, then switches straight to the Analysis
-      // Progress dialog - there's no separate "review plan" step once modules
-      // are checked here.
-      startAnalysis() {
+      // Submits checked modules to the backend, builds queue from real job/task
+      // IDs, opens the Analysis Progress dialog, and starts polling for status.
+      async startAnalysis() {
         if (!this.checkedModuleIds.length || !this.analyzingEvidence) return;
         const evidence = this.analyzingEvidence;
-        const mods = this.checkedModuleIds
-          .map((id) => this.moduleMap[id])
-          .filter(Boolean);
-        const byTier = {};
-        mods.forEach((m) => {
-          const tier = moduleTierOf(m);
-          (byTier[tier] = byTier[tier] || []).push(m);
+
+        const moduleOptions = {};
+        this.checkedModuleIds.forEach((id) => {
+          if (this.moduleOptionsByModule[id])
+            moduleOptions[id] = this.moduleOptionsByModule[id];
         });
 
+        let data;
+        try {
+          const resp = await fetch(
+            `/cases/${this.caseId}/evidence/${evidence.id}/analyze`,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "X-CSRF-Token": this.csrfToken,
+              },
+              body: JSON.stringify({
+                module_ids: this.checkedModuleIds,
+                module_options: moduleOptions,
+              }),
+            },
+          );
+          if (!resp.ok) {
+            const err = await resp.json().catch(() => ({}));
+            const msg = err.error || `Analysis request failed (${resp.status})`;
+            alert(msg);
+            return;
+          }
+          data = await resp.json();
+        } catch (e) {
+          console.error("[analyze] network error", e);
+          return;
+        }
+
+        // Build queue entries from the real server-assigned job and task IDs.
         const newJobIds = [];
-        MODULE_TIER_ORDER.forEach((tier) => {
-          if (!byTier[tier]) return;
-          const jobId = evidence.id + ":" + tier + ":" + Date.now();
-          newJobIds.push(jobId);
+        (data.jobs || []).forEach((serverJob) => {
+          newJobIds.push(serverJob.job_id);
           this.queue.push({
-            id: jobId,
-            tier,
-            tierLabel: MODULE_TIER_LABELS[tier],
+            id: serverJob.job_id,
             evidenceId: evidence.id,
             evidenceName: evidence.filename,
-            tasks: byTier[tier].map((m) => ({
-              id: jobId + ":" + m.id,
-              moduleId: m.id,
-              moduleName: m.name,
-              tool: m.tool,
-              outputType: m.outputType,
-              risk: m.riskLevel,
-              isolation: m.isolationLevel,
-              summary: this.optionsSummaryFor(m.id),
-              status: "Queued",
-              progress: 0,
-            })),
+            tasks: (serverJob.tasks || []).map((t) => {
+              const mod = this.moduleMap[t.module_id] || {};
+              return {
+                id: t.task_id,
+                moduleId: t.module_id,
+                moduleName: t.module_name,
+                tool: mod.tool || "",
+                outputType: mod.outputType || "",
+                risk: mod.riskLevel || "",
+                isolation: mod.isolationLevel || "",
+                summary: this.moduleOptionsByModule[t.module_id]
+                  ? this.optionsSummaryFor(t.module_id)
+                  : "",
+                status: "Queued",
+                progress: 0,
+              };
+            }),
           });
         });
 
@@ -2790,6 +2781,7 @@ Add supporting evidence references, screenshots, artifacts, and raw output refer
           queueDialog.dataset.state = "open";
           if (!queueDialog.open) queueDialog.showModal();
         }
+        this._startPolling();
       },
 
       // Jobs the Analysis Progress dialog currently displays - the most
@@ -2801,46 +2793,110 @@ Add supporting evidence references, screenshots, artifacts, and raw output refer
         );
       },
 
-      // Drives every queued/running task across every job: each job runs its
-      // tasks sequentially (it's "one container"), advancing whichever task
-      // is active by a fixed chunk each tick until it completes and drops a
-      // mock result into Results - this is what makes Queued/Running/
-      // Completed coexist instead of every job mock-finishing instantly.
-      _tickProgress() {
-        let changed = false;
-        this.queue.forEach((job) => {
-          const task =
-            job.tasks.find((t) => t.status === "Running") ||
-            job.tasks.find((t) => t.status === "Queued");
-          if (!task) return;
-          if (task.status === "Queued") task.status = "Running";
-          task.progress = Math.min(100, task.progress + 20);
-          changed = true;
-          if (task.progress >= 100) {
-            task.status = "Completed";
-            const mod = this.moduleMap[task.moduleId];
-            const deep = mockDeepOutputFor(mod, job.evidenceName);
-            this.results = this.results.filter((r) => r.id !== task.id);
-            this.results.push({
-              id: task.id,
-              evidenceId: job.evidenceId,
-              evidenceName: job.evidenceName,
-              moduleId: task.moduleId,
-              moduleName: task.moduleName,
-              tool: task.tool,
-              outputType: task.outputType,
-              risk: task.risk,
-              isolation: task.isolation,
-              summary: task.summary,
-              completedAt: Date.now(),
-              output: mockOutputFor(mod, job.evidenceName),
-              findings: deep.findings,
-              iocs: deep.iocs,
-              artifacts: deep.artifacts,
-              rawOutput: deep.rawOutput,
-            });
+      _startPolling() {
+        if (this._pollKey !== null) return;
+        this._pollKey = setInterval(() => this._doPoll(), 2000);
+      },
+
+      _stopPolling() {
+        if (this._pollKey !== null) {
+          clearInterval(this._pollKey);
+          this._pollKey = null;
+        }
+      },
+
+      async _doPoll() {
+        const activeJobs = this.queue.filter((j) =>
+          j.tasks.some(
+            (t) => t.status === "Queued" || t.status === "Running",
+          ),
+        );
+        if (!activeJobs.length) {
+          this._stopPolling();
+          return;
+        }
+        const evidenceIds = [...new Set(activeJobs.map((j) => j.evidenceId))];
+        for (const evidenceId of evidenceIds) {
+          try {
+            const resp = await fetch(
+              `/cases/${this.caseId}/evidence/${evidenceId}/jobs`,
+            );
+            if (!resp.ok) continue;
+            const data = await resp.json();
+            await this._applyPollData(data.jobs || []);
+          } catch (e) {
+            console.error("[poll] error fetching job status", e);
           }
-        });
+        }
+      },
+
+      async _applyPollData(serverJobs) {
+        let changed = false;
+        for (const serverJob of serverJobs) {
+          const queueJob = this.queue.find((j) => j.id === serverJob.id);
+          if (!queueJob) continue;
+          for (const serverTask of serverJob.tasks) {
+            const queueTask = queueJob.tasks.find(
+              (t) => t.id === serverTask.id,
+            );
+            if (!queueTask) continue;
+            const prev = queueTask.status;
+            const next = _toFrontendStatus(serverTask.status);
+            if (prev === next) continue;
+
+            queueTask.status = next;
+            queueTask.progress = _statusToProgress(next);
+            changed = true;
+
+            if (next === "Completed" && prev !== "Completed") {
+              const output = await _fetchTaskOutput(serverTask.id);
+              this.results = this.results.filter((r) => r.id !== serverTask.id);
+              this.results.push({
+                id: serverTask.id,
+                evidenceId: queueJob.evidenceId,
+                evidenceName: queueJob.evidenceName,
+                moduleId: queueTask.moduleId,
+                moduleName: queueTask.moduleName,
+                tool: queueTask.tool,
+                outputType: queueTask.outputType,
+                risk: queueTask.risk,
+                isolation: queueTask.isolation,
+                summary: queueTask.summary,
+                completedAt: Date.now(),
+                findings: [],
+                iocs: [],
+                artifacts: [],
+                rawOutput: output,
+              });
+            } else if (next === "Failed" && prev !== "Failed") {
+              this.results = this.results.filter((r) => r.id !== serverTask.id);
+              this.results.push({
+                id: serverTask.id,
+                evidenceId: queueJob.evidenceId,
+                evidenceName: queueJob.evidenceName,
+                moduleId: queueTask.moduleId,
+                moduleName: queueTask.moduleName,
+                tool: queueTask.tool,
+                outputType: queueTask.outputType,
+                risk: queueTask.risk,
+                isolation: queueTask.isolation,
+                summary: queueTask.summary,
+                completedAt: Date.now(),
+                failed: true,
+                findings: [],
+                iocs: [],
+                artifacts: [],
+                rawOutput: {
+                  stdout: [],
+                  stderr: [
+                    serverTask.error_message ||
+                      "Analysis failed — check worker logs.",
+                  ],
+                },
+              });
+            }
+          }
+        }
         if (changed) this.queue = [...this.queue];
       },
 
@@ -3012,7 +3068,7 @@ Add supporting evidence references, screenshots, artifacts, and raw output refer
 
       // ── Result Canvas: deep-dive into one evidence file ──────────────────
 
-      openResultCanvasFor(evidenceId) {
+      async openResultCanvasFor(evidenceId) {
         const item = this.evidence.find((e) => e.id === evidenceId);
         const row = this.resultRowsRaw().find(
           (r) => r.evidenceId === evidenceId,
@@ -3023,6 +3079,11 @@ Add supporting evidence references, screenshots, artifacts, and raw output refer
           : row
             ? row.evidenceName
             : "";
+
+        // Load real parsed results from DB before opening so the viewer
+        // shows data even when the canvas is opened after a previous session's analysis.
+        await this._loadResultsFromBackend(evidenceId);
+
         const outputs = this.canvasModuleOutputs();
         const preferred =
           outputs.find(
@@ -3161,12 +3222,74 @@ Add supporting evidence references, screenshots, artifacts, and raw output refer
           tool: meta.tool,
           status: meta.status,
           progress: meta.progress,
-          summary: result ? result.output : null,
+          summary: result ? (result.parsedOutput || result.output || "") : "",
           findings: result ? result.findings : [],
           iocs: result ? result.iocs : [],
           artifacts: result ? result.artifacts : [],
           rawOutput: result ? result.rawOutput : { stdout: [], stderr: [] },
         };
+      },
+
+      async _loadResultsFromBackend(evidenceId) {
+        try {
+          const resp = await fetch(
+            `/cases/${this.caseId}/evidence/${evidenceId}/results`,
+          );
+          if (!resp.ok) return;
+          const data = await resp.json();
+          // Jobs arrive newest-first. First time we see a moduleId wins —
+          // that's the result from the most recent analysis run for that module.
+          const seenModules = new Set();
+          for (const job of data.jobs || []) {
+            for (const task of job.tasks || []) {
+              if (!task.result) continue;
+              if (seenModules.has(task.module_id)) continue;
+              seenModules.add(task.module_id);
+
+              const rawOutput = task.result.raw_output || {};
+              const parsedOutput = _formatSummary(task.result.summary);
+              const iocs = task.result.iocs || [];
+              const findings = task.result.findings || [];
+              const artifacts = task.result.artifacts || [];
+
+              // Remove any stale entry for this evidence+module before inserting
+              // the canonical one (avoids moduleId-collision duplicates).
+              this.results = this.results.filter(
+                (r) =>
+                  !(
+                    r.evidenceId === evidenceId &&
+                    r.moduleId === task.module_id
+                  ),
+              );
+
+              const raw = rawOutput.stdout_path
+                ? await _fetchTaskOutput(task.task_id)
+                : { stdout: [], stderr: [] };
+
+              this.results.push({
+                id: task.task_id,
+                evidenceId,
+                evidenceName: data.evidence ? data.evidence.filename : "",
+                moduleId: task.module_id,
+                moduleName: task.module_name,
+                tool: "",
+                outputType: "",
+                risk: "",
+                isolation: "",
+                summary: "",
+                parsedOutput,
+                completedAt: Date.now(),
+                failed: task.status === "failed",
+                findings,
+                iocs,
+                artifacts,
+                rawOutput: raw,
+              });
+            }
+          }
+        } catch (e) {
+          console.error("[canvas] failed to load results from backend", e);
+        }
       },
 
       copyRawOutput() {

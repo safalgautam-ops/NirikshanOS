@@ -86,7 +86,7 @@
    that happen to share a name. Second arg is a mock subscription tier
    (Free/Analyst/Advanced) - there's no real billing feature yet, this just
    demonstrates the locked-module UI (see requiredPlanOf in components.js). #}
-<div x-data="analyzeWorkspace({{ analyze_evidence|tojson|forceescape }}, &quot;Analyst&quot;, {{ case.id|tojson|forceescape }}, {{ case.title|tojson|forceescape }}, {{ current_user_name|tojson|forceescape }})" x-on:analyze-evidence.window="openAnalyzeDialog($event.detail)" x-cloak>
+<div x-data="analyzeWorkspace({{ analyze_evidence|tojson|forceescape }}, &quot;Analyst&quot;, {{ case.id|tojson|forceescape }}, {{ case.title|tojson|forceescape }}, {{ current_user_name|tojson|forceescape }}, &quot;{{ csrf_token() }}&quot;)" x-on:analyze-evidence.window="openAnalyzeDialog($event.detail)" x-cloak>
 {{ sidebar(active="case", visible_keys=visible_keys) }}
 
 <div class="flex flex-col md:pl-60">

@@ -17,11 +17,14 @@ field as usual.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from quart import Blueprint, abort, g, jsonify, request
 
+from app.config import Config
 from app.core.security.org_permissions import get_user_org_membership, is_org_owner
 from app.core.security.sessions import login_required
-from app.features.analysis import job_service
+from app.features.analysis import job_service, repository, result_service
 from app.features.analysis.planner import create_analysis_plan
 from app.features.analysis.policy import check_can_run
 from app.features.analysis.service import (
@@ -146,13 +149,22 @@ async def analyze_evidence_view(case_id: str, evidence_id: str):
         module_options=module_options or None,
     )
 
-    # Build the response — one entry per newly created job.
+    # Build the response — one entry per newly created job, including task IDs
+    # so the frontend can match poll results to the queue entries it built.
     jobs_response = []
     for job_id, job_plan in zip(result.job_ids, plan):
+        tasks = await repository.list_tasks_for_job(job_id)
         jobs_response.append({
             "job_id": job_id,
             "job_type": job_plan.job_type,
-            "module_ids": job_plan.module_ids,
+            "tasks": [
+                {
+                    "task_id": t["id"],
+                    "module_id": t["module_id"],
+                    "module_name": t["module_name"],
+                }
+                for t in tasks
+            ],
         })
 
     return jsonify({
@@ -162,3 +174,102 @@ async def analyze_evidence_view(case_id: str, evidence_id: str):
         "jobs": jobs_response,
         "skipped_modules": result.skipped_modules,
     }), 201
+
+
+def _serialize_dt(dt) -> str | None:
+    return dt.isoformat() if dt else None
+
+
+@analysis_bp.route("/cases/<case_id>/evidence/<evidence_id>/jobs")
+@login_required
+async def list_evidence_jobs_view(case_id: str, evidence_id: str):
+    """Return all jobs + tasks for one evidence file, with live statuses.
+
+    Polled by the frontend every 2 s while any job is in queued/running state.
+    """
+    await _require_visible_case(case_id)
+    evidence = await get_evidence(evidence_id)
+    if not evidence or evidence["case_id"] != case_id:
+        abort(404)
+
+    jobs = await repository.list_jobs_for_evidence(evidence_id)
+    result = []
+    for job in jobs:
+        tasks = await repository.list_tasks_for_job(job["id"])
+        result.append({
+            "id": job["id"],
+            "status": job["status"],
+            "job_type": job["job_type"],
+            "error_message": job.get("error_message"),
+            "created_at": _serialize_dt(job.get("created_at")),
+            "started_at": _serialize_dt(job.get("started_at")),
+            "finished_at": _serialize_dt(job.get("finished_at")),
+            "tasks": [
+                {
+                    "id": t["id"],
+                    "module_id": t["module_id"],
+                    "module_name": t["module_name"],
+                    "status": t["status"],
+                    "error_message": t.get("error_message"),
+                    "started_at": _serialize_dt(t.get("started_at")),
+                    "finished_at": _serialize_dt(t.get("finished_at")),
+                }
+                for t in tasks
+            ],
+        })
+
+    return jsonify({"jobs": result})
+
+
+@analysis_bp.route("/cases/<case_id>/evidence/<evidence_id>/results")
+@login_required
+async def get_evidence_results_view(case_id: str, evidence_id: str):
+    """Return parsed results for every completed task on one evidence file.
+
+    Backed by the analysis_results table written by the worker after parsing.
+    Returns an empty jobs list (not 404) when no jobs have been run yet.
+    """
+    await _require_visible_case(case_id)
+    evidence = await get_evidence(evidence_id)
+    if not evidence or evidence["case_id"] != case_id:
+        abort(404)
+
+    jobs = await job_service.list_jobs_for_evidence(evidence_id)
+    payload = await result_service.get_results_for_evidence(evidence_id, evidence, jobs)
+    return jsonify(payload)
+
+
+@analysis_bp.route("/analysis/tasks/<task_id>/output")
+@login_required
+async def get_task_output_view(task_id: str):
+    """Return the raw stdout + stderr produced by the analyzer container for one task.
+
+    Reads files from the job workspace on disk. Returns empty strings if the
+    output files don't exist yet (task still running) or the job workspace was
+    cleaned up.
+    """
+    task = await repository.get_task(task_id)
+    if not task:
+        abort(404)
+
+    job = await repository.get_job(task["job_id"])
+    if not job:
+        abort(404)
+
+    # Authorization: the caller must be able to see the case this task belongs to.
+    await _require_visible_case(job["case_id"])
+
+    safe_module = task["module_id"].replace(".", "_").replace("/", "_")
+    output_dir = Path(Config.JOBS_DIR) / task["job_id"] / "output"
+    stdout_file = output_dir / f"{safe_module}.txt"
+    stderr_file = output_dir / f"{safe_module}.stderr.txt"
+
+    stdout = stdout_file.read_text(errors="replace") if stdout_file.exists() else ""
+    stderr = stderr_file.read_text(errors="replace") if stderr_file.exists() else ""
+
+    return jsonify({
+        "task_id": task_id,
+        "module_id": task["module_id"],
+        "stdout": stdout,
+        "stderr": stderr,
+    })

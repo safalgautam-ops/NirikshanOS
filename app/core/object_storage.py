@@ -252,6 +252,27 @@ async def abort_multipart_upload(bucket: str, key: str, upload_id: str) -> None:
         await client.abort_multipart_upload(Bucket=bucket, Key=key, UploadId=upload_id)
 
 
+async def download_object(bucket: str, key: str, local_path: str) -> None:
+    """Download an object from MinIO to a local file path.
+
+    Used by the worker to fetch evidence onto the host filesystem before
+    passing it to docker_runner as a bind mount. The download streams in
+    chunks so multi-GB forensic files don't load into memory all at once.
+    """
+    from pathlib import Path
+    dest = Path(local_path)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    async with get_client() as client:
+        response = await client.get_object(Bucket=bucket, Key=key)
+        stream = response["Body"]
+        with dest.open("wb") as f:
+            while True:
+                chunk = await stream.read(8 * 1024 * 1024)  # 8 MB chunks
+                if not chunk:
+                    break
+                f.write(chunk)
+
+
 async def stream_object(bucket: str, key: str, chunk_size: int = 4 * 1024 * 1024):
     """Async generator yielding the object's bytes in chunks - used by the
     post-upload background hashing task (see evidence/service.py) to
