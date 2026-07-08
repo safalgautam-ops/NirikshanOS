@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import re
 
+PARSER_NAME = "hash_calculation_parser"
+
 # Matches "SHA256: abc...", "MD5: abc...", "SHA-1: abc...", etc.
 _KV_RE = re.compile(
     r"^(sha[-_]?(?:256|512|1|384)|md5|sha)\s*[=:]\s*([a-f0-9]{16,})",

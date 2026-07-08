@@ -159,6 +159,7 @@ def serialize_module(module: AnalysisModule) -> dict:
         "supported_types": module.supported_types,
         "required_plan": module.required_plan,
         "queue_name": module.queue_name,
+        "container_tier": module.container_tier,
         "batchable": module.batchable,
         "batch_group": module.batch_group,
         "timeout_seconds": module.timeout_seconds,

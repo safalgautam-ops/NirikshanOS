@@ -12,6 +12,8 @@ from __future__ import annotations
 import json
 import re
 
+PARSER_NAME = "yara_scan_parser"
+
 # Plain-text yara output: "RuleName /input/evidence"
 # Lines starting with "0x" are string-match detail lines — we skip those.
 _PLAIN_RULE_RE = re.compile(r"^([A-Za-z0-9_]+)\s+\S+$")

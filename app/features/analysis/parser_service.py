@@ -9,8 +9,12 @@ Usage:
         exit_code    = run_result.exit_code,
     )
 
-The parser_name comes directly from module_registry.AnalysisModule.parser_name,
-which is auto-generated as "{module_id.split('.')[-1]}_parser".
+Parsers are discovered automatically at import time by scanning the parsers/
+directory. Each parser module must export:
+  PARSER_NAME: str   — the key used by module_registry (e.g. "file_identification_parser")
+  parse(stdout, stderr, exit_code) -> dict
+
+Adding a new parser requires only creating the file — no registry edit.
 
 If no parser is registered for a given parser_name, parse_module_output
 returns a ParsedResult with an empty summary and a note — it never raises.
@@ -18,28 +22,33 @@ returns a ParsedResult with an empty summary and a note — it never raises.
 
 from __future__ import annotations
 
+import importlib.util
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
-from app.features.analysis.parsers import (
-    file_info_parser,
-    hashing_parser,
-    strings_parser,
-    yara_parser,
-)
-
-# Signature every parser module must expose.
 ParserFn = Callable[[str, str, int], dict]
 
-# Maps parser_name (from module_registry) → parse function.
-# Add a new entry here whenever a new parser module is created.
-_REGISTRY: dict[str, ParserFn] = {
-    "file_identification_parser": file_info_parser.parse,
-    "hash_calculation_parser":    hashing_parser.parse,
-    "strings_extraction_parser":  strings_parser.parse,
-    "yara_scan_parser":           yara_parser.parse,
-}
+_PARSERS_DIR = Path(__file__).parent / "parsers"
+
+
+def _discover_parsers() -> dict[str, ParserFn]:
+    registry: dict[str, ParserFn] = {}
+    for path in sorted(_PARSERS_DIR.iterdir()):
+        if path.name.startswith("_") or path.suffix != ".py":
+            continue
+        try:
+            spec = importlib.util.spec_from_file_location(path.stem, path)
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            if hasattr(mod, "PARSER_NAME") and hasattr(mod, "parse"):
+                registry[mod.PARSER_NAME] = mod.parse
+        except Exception:
+            pass
+    return registry
+
+
+_REGISTRY: dict[str, ParserFn] = _discover_parsers()
 
 
 @dataclass
@@ -81,7 +90,6 @@ def parse_module_output(
 
     stdout = _read(stdout_path)
 
-    # If the tool exited non-zero and produced no stdout, don't try to parse.
     if exit_code != 0 and not stdout.strip():
         base.summary = {
             "error":  f"Tool exited with code {exit_code}",
@@ -90,11 +98,11 @@ def parse_module_output(
         return base
 
     try:
-        result        = parser_fn(stdout, stderr or "", exit_code)
-        base.summary  = result.get("summary",  {})
-        base.iocs     = result.get("iocs",     [])
-        base.findings = result.get("findings", [])
-        base.artifacts = result.get("artifacts", [])
+        result         = parser_fn(stdout, stderr or "", exit_code)
+        base.summary   = result.get("summary",   {})
+        base.iocs      = result.get("iocs",       [])
+        base.findings  = result.get("findings",   [])
+        base.artifacts = result.get("artifacts",  [])
     except Exception as exc:
         base.summary = {"error": f"Parser raised: {exc}"}
 

@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import re
 
+PARSER_NAME = "strings_extraction_parser"
+
 _URL_RE   = re.compile(r"https?://[^\s<>\"'{}|\\^`\[\]]{4,}", re.IGNORECASE)
 _IP_RE    = re.compile(r"\b(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\b")
 _EMAIL_RE = re.compile(r"\b[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}\b")

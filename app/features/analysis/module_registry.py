@@ -38,6 +38,9 @@ ModuleTier = Literal[
     "email",
     "memory",
 ]
+# Container tier is what plan enforcement gates on — not individual module IDs.
+# free → basic only; analyst → basic + standard; advanced → all tiers.
+ContainerTier = Literal["basic", "standard", "advanced", "sandbox"]
 
 # Evidence type buckets a module can declare compatibility with.
 # "unknown" is its own bucket (file couldn't be classified at all) and "*"
@@ -118,6 +121,7 @@ class AnalysisModule:
     required_plan: Plan
     queue_name: QueueName
     runtime_image: str
+    container_tier: ContainerTier
     batchable: bool
     batch_group: str | None
     timeout_seconds: int
@@ -188,6 +192,20 @@ _RUNTIME_IMAGE_BY_CATEGORY = {
 }
 
 
+_ADVANCED_IMAGES = frozenset({"dfir/volatility-tools", "dfir/disk-tools"})
+
+
+def _derive_container_tier(runtime_image: str, isolation_level: IsolationLevel) -> ContainerTier:
+    if isolation_level in ("sandboxed", "vm"):
+        return "sandbox"
+    image_base = runtime_image.rsplit(":", 1)[0]
+    if image_base in _ADVANCED_IMAGES:
+        return "advanced"
+    if image_base == "dfir/basic-tools":
+        return "basic"
+    return "standard"
+
+
 def _derive_tier(category: str, risk_level: RiskLevel, isolation_level: IsolationLevel) -> ModuleTier:
     if category == "pcap":
         return "network"
@@ -252,6 +270,7 @@ def _module(
     resolved_batch_group = batch_group
     if resolved_batch_group is None and resolved_batchable:
         resolved_batch_group = _BATCH_GROUP_BY_CATEGORY.get(category)
+    resolved_image = runtime_image or _RUNTIME_IMAGE_BY_CATEGORY.get(category, "dfir/basic-tools:1.0")
     return AnalysisModule(
         id=id,
         name=name,
@@ -262,7 +281,8 @@ def _module(
         supported_types=supported_types,
         required_plan=resolved_plan,
         queue_name=queue_name,
-        runtime_image=runtime_image or _RUNTIME_IMAGE_BY_CATEGORY.get(category, "dfir/basic-tools:1.0"),
+        runtime_image=resolved_image,
+        container_tier=_derive_container_tier(resolved_image, isolation_level),
         batchable=resolved_batchable,
         batch_group=resolved_batch_group,
         timeout_seconds=timeout_seconds,

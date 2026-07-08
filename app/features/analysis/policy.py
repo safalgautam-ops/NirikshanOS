@@ -140,7 +140,20 @@ async def check_can_run(
 # Stubs for plan + quota — always pass until those systems are built
 # ---------------------------------------------------------------------------
 
-_PLAN_ORDER: list[str] = ["free", "analyst", "advanced"]
+# When a plan table exists, replace _check_plan_stub with:
+#
+#   org_plan = await get_org_plan(org_id)        # "free" | "analyst" | "advanced"
+#   allowed  = _PLAN_ALLOWED_TIERS[org_plan]
+#   if module.container_tier not in allowed:
+#       return PolicyViolation(module_id=module_id, reason=f"...")
+#
+# This gates by container_tier (basic/standard/advanced/sandbox), not by
+# individual module ID — adding a new module requires no policy code change.
+_PLAN_ALLOWED_TIERS: dict[str, frozenset[str]] = {
+    "free":     frozenset({"basic"}),
+    "analyst":  frozenset({"basic", "standard"}),
+    "advanced": frozenset({"basic", "standard", "advanced", "sandbox"}),
+}
 
 
 def _check_plan_stub(org_id: str, module_id: str, required_plan: str) -> PolicyViolation | None:

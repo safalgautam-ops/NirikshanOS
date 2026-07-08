@@ -1,0 +1,12 @@
+id: generic.strings_extraction
+argv:
+  - strings
+  - "-n"
+  - {opt: min_length}
+  - /input/evidence
+options:
+  min_length:
+    type: int
+    default: 6
+    min: 4
+    max: 100

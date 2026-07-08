@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import json
 
+PARSER_NAME = "file_identification_parser"
+
 
 def parse(stdout: str, stderr: str, exit_code: int) -> dict:
     summary: dict = {
