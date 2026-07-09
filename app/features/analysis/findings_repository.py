@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+
 try:
     from asyncmy.errors import IntegrityError as _IntegrityError
 except ImportError:
@@ -9,6 +11,10 @@ except ImportError:
 
 from app.core.db.orm import db
 from app.core.utils.ids import new_id
+
+
+def _indicator_hash(case_id: str, ioc_type: str, value: str) -> str:
+    return hashlib.sha256(f"{case_id}|{ioc_type}|{value}".encode()).hexdigest()
 
 
 # ── Findings ─────────────────────────────────────────────────────────────────
@@ -73,11 +79,10 @@ async def create_indicator(
     authoritative dedup guard; the pre-check is a fast-path only. An IntegrityError
     from a race is treated the same as finding an existing row.
     """
+    value_hash = _indicator_hash(case_id, ioc_type, value)
     existing = await (
         db.table("case_indicators")
-        .where("case_id", case_id)
-        .where("ioc_type", ioc_type)
-        .where("value", value)
+        .where("value_hash", value_hash)
         .first()
     )
     if existing:
@@ -92,6 +97,7 @@ async def create_indicator(
             "author_id": author_id,
             "ioc_type": ioc_type,
             "value": value,
+            "value_hash": value_hash,
             "severity": severity,
             "confidence": confidence,
             "source_evidence": source_evidence,

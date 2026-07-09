@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS `case_findings` (
   `confidence`     varchar(20)   NOT NULL DEFAULT 'medium',
   `source_evidence` varchar(255) NULL,
   `source_module`  varchar(255)  NULL,
-  `created_at`     timestamp     NOT NULL DEFAULT (now()),
+  `created_at`     timestamp     NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   CONSTRAINT `cf_case_fk`     FOREIGN KEY (`case_id`)     REFERENCES `cases`(`id`)    ON DELETE CASCADE,
   CONSTRAINT `cf_evidence_fk` FOREIGN KEY (`evidence_id`) REFERENCES `evidence`(`id`) ON DELETE SET NULL,
@@ -28,16 +28,15 @@ CREATE TABLE IF NOT EXISTS `case_indicators` (
   `author_id`      char(36)      NOT NULL,
   `ioc_type`       varchar(50)   NOT NULL,
   `value`          varchar(2048) NOT NULL,
-  -- SHA2(CONCAT(case_id, '|', ioc_type, '|', value), 256) stored so the
-  -- UNIQUE key is a fixed-width column rather than a variable prefix index.
-  -- Prefix indexes on long varchar columns produce false duplicate matches
-  -- when two values share a common prefix longer than the index width.
-  `value_hash`     char(64)      GENERATED ALWAYS AS (SHA2(CONCAT(`case_id`,'|',`ioc_type`,'|',`value`),256)) STORED NOT NULL,
+  -- SHA2(case_id|ioc_type|value) pre-computed by the app layer so the UNIQUE
+  -- key is a fixed-width column. MySQL prevents FK on columns read by a STORED
+  -- GENERATED column, so the hash is written explicitly on every INSERT.
+  `value_hash`     char(64)      NOT NULL,
   `severity`       varchar(20)   NOT NULL DEFAULT 'medium',
   `confidence`     varchar(20)   NOT NULL DEFAULT 'medium',
   `source_evidence` varchar(255) NULL,
   `source_module`  varchar(255)  NULL,
-  `created_at`     timestamp     NOT NULL DEFAULT (now()),
+  `created_at`     timestamp     NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   UNIQUE KEY `ci_dedup` (`value_hash`),
   CONSTRAINT `ci_case_fk`     FOREIGN KEY (`case_id`)     REFERENCES `cases`(`id`)    ON DELETE CASCADE,

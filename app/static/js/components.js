@@ -2498,6 +2498,11 @@ Add supporting evidence references, screenshots, artifacts, and raw output refer
       timelineEvents: [], // [{ id, caseId, eventTime, title, eventType, source, confidence, includedInReport }]
       canvasFlash: "", // brief confirmation text under the Actions panel
 
+      // ── Notes tab: shared case scratchpad ───────────────────────────────
+      noteContent: "",
+      noteFlash: "",
+      _noteFlashTimer: null,
+
       // ── Report tab: the markdown report itself ───────────────────────────
       report: {
         id: "report_001",
@@ -2517,7 +2522,21 @@ Add supporting evidence references, screenshots, artifacts, and raw output refer
 
       _pollKey: null,
 
-      init() {},
+      init() {
+        this._analyzeHandler = (e) => this.openAnalyzeDialog(e.detail);
+        window.addEventListener("analyze-evidence", this._analyzeHandler);
+        if (this.caseId) {
+          this.evidence.forEach((ev) => this._loadResultsFromBackend(ev.id));
+          this._loadFindingsFromBackend();
+          this._loadIndicatorsFromBackend();
+          this._loadReportFromBackend();
+          this._loadNoteFromBackend();
+        }
+      },
+
+      destroy() {
+        window.removeEventListener("analyze-evidence", this._analyzeHandler);
+      },
 
       evidenceTypeOf(item) {
         const ext = (item.filename || "").toLowerCase().split(".").pop();
@@ -3643,9 +3662,93 @@ Add supporting evidence references, screenshots, artifacts, and raw output refer
         }, 2000);
       },
 
-      saveDraft() {
+      async saveDraft() {
         this.report.updatedBy = this.currentUserName;
-        this.flashReport("Draft saved.");
+        const resp = await fetch(`/cases/${this.caseId}/report`, {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            "X-CSRF-Token": this.csrfToken,
+          },
+          body: JSON.stringify({
+            content: this.report.markdownContent,
+            title: this.report.title,
+          }),
+        }).catch(() => null);
+        this.flashReport(resp && resp.ok ? "Draft saved." : "Save failed.");
+      },
+
+      async _loadReportFromBackend() {
+        try {
+          const resp = await fetch(`/cases/${this.caseId}/report`);
+          if (!resp.ok) return;
+          const data = await resp.json();
+          if (data.content) {
+            this.report.markdownContent = data.content;
+            if (data.title) this.report.title = data.title;
+          }
+        } catch (_) {}
+      },
+
+      async _loadFindingsFromBackend() {
+        try {
+          const resp = await fetch(`/cases/${this.caseId}/findings`);
+          if (!resp.ok) return;
+          const data = await resp.json();
+          this.caseFindings = (data.findings || []).map((f) => ({
+            id: f.id,
+            caseId: this.caseId,
+            title: f.title,
+            description: f.description,
+            severity: f.severity,
+            confidence: f.confidence,
+            sourceEvidence: f.source_evidence || "",
+            sourceModule: f.source_module || "",
+            includedInReport: false,
+          }));
+        } catch (_) {}
+      },
+
+      async _loadIndicatorsFromBackend() {
+        try {
+          const resp = await fetch(`/cases/${this.caseId}/indicators`);
+          if (!resp.ok) return;
+          const data = await resp.json();
+          this.indicators = (data.indicators || []).map((i) => ({
+            id: i.id,
+            caseId: this.caseId,
+            type: i.type,
+            value: i.value,
+            severity: i.severity,
+            confidence: i.confidence,
+            sourceEvidence: i.source_evidence || "",
+            sourceModule: i.source_module || "",
+            includedInReport: false,
+          }));
+        } catch (_) {}
+      },
+
+      async _loadNoteFromBackend() {
+        try {
+          const resp = await fetch(`/cases/${this.caseId}/note`);
+          if (!resp.ok) return;
+          const data = await resp.json();
+          if (data.content) this.noteContent = data.content;
+        } catch (_) {}
+      },
+
+      async saveNote() {
+        const resp = await fetch(`/cases/${this.caseId}/note`, {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            "X-CSRF-Token": this.csrfToken,
+          },
+          body: JSON.stringify({ content: this.noteContent }),
+        }).catch(() => null);
+        clearTimeout(this._noteFlashTimer);
+        this.noteFlash = resp && resp.ok ? "Saved." : "Save failed.";
+        this._noteFlashTimer = setTimeout(() => { this.noteFlash = ""; }, 2000);
       },
 
       pendingFindings() {
