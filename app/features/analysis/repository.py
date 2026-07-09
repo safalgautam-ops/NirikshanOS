@@ -193,3 +193,21 @@ async def update_task_status(
     if error_message is not None:
         data["error_message"] = error_message
     await db.table("analysis_tasks").where("id", task_id).patch(data)
+
+
+async def cancel_job(job_id: str) -> None:
+    """Mark all queued/running tasks cancelled, then mark the job cancelled."""
+    now = _now()
+    tasks = await (
+        db.table("analysis_tasks")
+        .where("job_id", job_id)
+        .where_in("status", ["queued", "running"])
+        .all(allow_full_table=True)
+    )
+    for task in tasks:
+        await db.table("analysis_tasks").where("id", task["id"]).patch(
+            {"status": "cancelled", "finished_at": now}
+        )
+    await db.table("analysis_jobs").where("id", job_id).patch(
+        {"status": "cancelled", "finished_at": now}
+    )

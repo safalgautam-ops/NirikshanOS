@@ -195,6 +195,7 @@ async def detail_view(case_id: str):
         member_rows=await _member_rows(case, members, creator, org_id),
         evidence=evidence,
         analyze_evidence=analyze_evidence,
+        user_plan="free",  # Phase 6 replaces this with a real org plan DB lookup
         activity_log=await audit_service.get_case_activity_log(case_id),
         classification_label=dict(CLASSIFICATIONS).get(case["classification"], case["classification"] or "—"),
         severity_label=dict(SEVERITIES).get(case["severity"], case["severity"]),

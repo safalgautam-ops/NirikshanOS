@@ -273,3 +273,22 @@ async def get_task_output_view(task_id: str):
         "stdout": stdout,
         "stderr": stderr,
     })
+
+
+@analysis_bp.route("/analysis/jobs/<job_id>/cancel", methods=["POST"])
+@login_required
+async def cancel_job_view(job_id: str):
+    """Cancel a queued or running job and all its tasks.
+
+    Idempotent: already-terminal jobs (completed/failed/cancelled) return 200
+    without touching the DB. The frontend updates its local state optimistically;
+    this route makes the DB and worker consistent with that.
+    """
+    job = await repository.get_job(job_id)
+    if not job:
+        abort(404)
+    await _require_visible_case(job["case_id"])
+    if job["status"] not in ("queued", "running"):
+        return jsonify({"job_id": job_id, "status": job["status"]}), 200
+    await repository.cancel_job(job_id)
+    return jsonify({"job_id": job_id, "status": "cancelled"}), 200

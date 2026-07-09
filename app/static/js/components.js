@@ -2155,17 +2155,18 @@ document.addEventListener("alpine:init", () => {
     ...MOBILE_MODULES,
     ...LOGS_MODULES,
   ];
+  // Populated lazily from the /modules API as the user opens Analyze dialogs.
+  // Keys are module IDs; values are the serialized module dicts from the backend.
   const MODULE_MAP = {};
-  DEV_MOCK_MODULE_REGISTRY.forEach((m) => {
-    MODULE_MAP[m.id] = m;
-  });
 
   function isModuleCompatible(module, evidenceType) {
-    // "generic" category modules (hashing, strings, YARA, etc.) apply to
-    // every evidence type, including files we couldn't classify at all.
+    // The backend already filters by evidence type before returning the module
+    // list, so client-side filtering is only needed for canvasModuleOutputs()
+    // which uses the full cached list. "generic" category modules run against
+    // everything; everything else must list the evidence type explicitly.
     return (
       module.category === "generic" ||
-      (module.supportedTypes || []).includes(evidenceType)
+      (module.supported_types || []).includes(evidenceType)
     );
   }
 
@@ -2187,32 +2188,31 @@ document.addEventListener("alpine:init", () => {
   const MODULE_TIER_ORDER = Object.keys(MODULE_TIER_LABELS);
 
   function moduleTierOf(module) {
+    // API response carries `tier` directly from module_registry; fall back
+    // to category-based derivation for any legacy mock data still in the file.
+    if (module.tier) return module.tier;
     if (module.category === "pcap") return "network";
     if (module.category === "email") return "email";
     if (module.category === "memory") return "memory";
     if (module.category === "generic") return "basic_triage";
-    if (
-      module.riskLevel === "High" ||
-      (module.isolationLevel && module.isolationLevel !== "None")
-    )
-      return "advanced";
     return "standard";
   }
 
-  // Mock subscription gating: which plan a module requires is derived the
-  // same way - advanced-tier modules need the top plan, basic triage is
-  // free for everyone, everything else needs at least Analyst unless it's
-  // explicitly low-risk. No per-module "requiredPlan" field to maintain.
-  const PLAN_ORDER = ["Free", "Analyst", "Advanced"];
+  // Plan values are lowercase (free/analyst/advanced) to match the backend.
+  const PLAN_ORDER = ["free", "analyst", "advanced"];
   function requiredPlanOf(module) {
+    // API response carries `required_plan` directly; fall back to tier-based
+    // derivation for any legacy mock data still in the file.
+    if (module.required_plan) return module.required_plan;
     const tier = moduleTierOf(module);
-    if (tier === "advanced") return "Advanced";
-    if (tier === "basic_triage") return "Free";
-    return module.riskLevel === "Low" ? "Free" : "Analyst";
+    if (tier === "advanced") return "advanced";
+    if (tier === "basic_triage") return "free";
+    return "free";
   }
   function isModuleLocked(module, userPlan) {
+    const plan = (userPlan || "free").toLowerCase();
     return (
-      PLAN_ORDER.indexOf(requiredPlanOf(module)) > PLAN_ORDER.indexOf(userPlan)
+      PLAN_ORDER.indexOf(requiredPlanOf(module)) > PLAN_ORDER.indexOf(plan)
     );
   }
 
@@ -2452,7 +2452,10 @@ Add supporting evidence references, screenshots, artifacts, and raw output refer
       moduleMap: MODULE_MAP,
       evidenceTypeLabels: EVIDENCE_TYPE_LABELS,
       moduleTierLabels: MODULE_TIER_LABELS,
-      userPlan: userPlan || "Free", // mock subscription tier gating which modules are locked
+      userPlan: (userPlan || "free").toLowerCase(),
+      // Per-evidence module cache: evidenceId → array of module objects from API.
+      _modulesByEvidence: {},
+      modulesLoading: false,
       evidence: evidenceItems || [], // for remembering the evidence items (files) inside Alpine (state)
       caseId: caseId || null,
       currentUserName: currentUserName || "Analyst",
@@ -2548,10 +2551,32 @@ Add supporting evidence references, screenshots, artifacts, and raw output refer
         this.tierFilter = "all";
         this.checkedModuleIds = [];
         this.selectedModule = null;
+        this._fetchModulesForEvidence(item.id);
         const dialog = document.getElementById("analyze-evidence-dialog");
         if (dialog) {
           dialog.dataset.state = "open";
           if (!dialog.open) dialog.showModal();
+        }
+      },
+
+      async _fetchModulesForEvidence(evidenceId) {
+        if (this._modulesByEvidence[evidenceId]) return;
+        this.modulesLoading = true;
+        try {
+          const resp = await fetch(
+            `/cases/${this.caseId}/evidence/${evidenceId}/modules`,
+            { headers: { "X-CSRF-Token": this.csrfToken } },
+          );
+          if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+          const data = await resp.json();
+          const modules = data.modules || [];
+          // Populate the shared module map so isModuleLocked / requiredPlanOf work.
+          modules.forEach((m) => { MODULE_MAP[m.id] = m; });
+          this._modulesByEvidence[evidenceId] = modules;
+        } catch (_) {
+          this._modulesByEvidence[evidenceId] = [];
+        } finally {
+          this.modulesLoading = false;
         }
       },
 
@@ -2565,8 +2590,8 @@ Add supporting evidence references, screenshots, artifacts, and raw output refer
 
       compatibleModules() {
         if (!this.analyzingEvidence) return [];
-        const type = this.evidenceTypeOf(this.analyzingEvidence);
-        return DEV_MOCK_MODULE_REGISTRY.filter((m) => isModuleCompatible(m, type));
+        // Backend already filters by evidence type; return the cached result directly.
+        return this._modulesByEvidence[this.analyzingEvidence.id] || [];
       },
 
       // Only tiers that actually contain a compatible module are shown, per
@@ -2907,33 +2932,40 @@ Add supporting evidence references, screenshots, artifacts, and raw output refer
       cancelTask(jobId, taskId) {
         const job = this.queue.find((j) => j.id === jobId);
         if (!job) return;
-        const task = job.tasks.find((t) => t.id === taskId);
-        if (!task) return;
-        task.status = "Failed";
-        this.results = this.results.filter((r) => r.id !== task.id);
-        this.results.push({
-          id: task.id,
-          evidenceId: job.evidenceId,
-          evidenceName: job.evidenceName,
-          moduleId: task.moduleId,
-          moduleName: task.moduleName,
-          tool: task.tool,
-          outputType: task.outputType,
-          risk: task.risk,
-          isolation: task.isolation,
-          summary: task.summary,
-          completedAt: Date.now(),
-          failed: true,
-          output: "Analysis cancelled before completion.",
-          findings: [],
-          iocs: [],
-          artifacts: [],
-          rawOutput: {
-            stdout: [],
-            stderr: ["[" + task.tool + "] analysis cancelled by analyst."],
-          },
+        // Backend cancels at job level — mark every task in the job Failed,
+        // not just the clicked one.
+        job.tasks.forEach((task) => {
+          if (task.status === "Failed" || task.status === "Completed") return;
+          task.status = "Failed";
+          this.results = this.results.filter((r) => r.id !== task.id);
+          this.results.push({
+            id: task.id,
+            evidenceId: job.evidenceId,
+            evidenceName: job.evidenceName,
+            moduleId: task.moduleId,
+            moduleName: task.moduleName,
+            tool: task.tool,
+            outputType: task.outputType,
+            risk: task.risk,
+            isolation: task.isolation,
+            summary: task.summary,
+            completedAt: Date.now(),
+            failed: true,
+            output: "Analysis cancelled before completion.",
+            findings: [],
+            iocs: [],
+            artifacts: [],
+            rawOutput: {
+              stdout: [],
+              stderr: ["[" + task.tool + "] analysis cancelled by analyst."],
+            },
+          });
         });
         this.queue = [...this.queue];
+        fetch(`/analysis/jobs/${jobId}/cancel`, {
+          method: "POST",
+          headers: { "X-CSRF-Token": this.csrfToken },
+        }).catch(() => {});
       },
 
       // True removal, regardless of status - the only way a task/result
@@ -3080,6 +3112,8 @@ Add supporting evidence references, screenshots, artifacts, and raw output refer
             ? row.evidenceName
             : "";
 
+        // Ensure modules are loaded for this evidence (needed by canvasModuleOutputs).
+        await this._fetchModulesForEvidence(evidenceId);
         // Load real parsed results from DB before opening so the viewer
         // shows data even when the canvas is opened after a previous session's analysis.
         await this._loadResultsFromBackend(evidenceId);
@@ -3114,9 +3148,7 @@ Add supporting evidence references, screenshots, artifacts, and raw output refer
         if (!this.canvasEvidenceId) return [];
         const item = this.evidence.find((e) => e.id === this.canvasEvidenceId);
         const type = item ? this.evidenceTypeOf(item) : null;
-        const compatible = type
-          ? DEV_MOCK_MODULE_REGISTRY.filter((m) => isModuleCompatible(m, type))
-          : [];
+        const compatible = this._modulesByEvidence[this.canvasEvidenceId] || [];
 
         const taskByModule = {};
         this.queue.forEach((job) => {

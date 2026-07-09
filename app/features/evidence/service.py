@@ -151,9 +151,8 @@ async def _hash_evidence(evidence_id: str, s3_key: str, case_id: str, uploaded_b
     """Background sha256/md5 fill-in. The app never sees evidence's raw
     bytes during upload (presigned-PUT goes straight browser-to-MinIO), so
     the only way to hash it is to stream it back after the fact via
-    GetObject. This is a stopgap - workers/worker_main.py is still an idle
-    "Week 4" stub with no real job queue - good enough at today's scale,
-    not meant to be the permanent home for this work.
+    GetObject. This is a stopgap — hashing belongs in a dedicated worker
+    job eventually, not an in-process asyncio task.
 
     This is the one audit-log write that happens from service.py rather
     than routes.py: it runs in a detached background task with no HTTP
