@@ -1,0 +1,142 @@
+"""Admin routes for plans and org subscriptions."""
+from __future__ import annotations
+
+from quart import Blueprint, g, jsonify, redirect, render_template, request, url_for
+
+from app.core.db.orm import db
+from app.core.security.permissions import get_visible_nav_keys, require_permission
+from app.features.plans import repository, service
+from app.features.plans.permissions import PLAN_ASSIGN, PLAN_EDIT, PLAN_VIEW
+from app.features.plans.service import KNOWN_TIERS
+
+plans_bp = Blueprint("plans", __name__, url_prefix="/admin/plans")
+
+
+@plans_bp.route("/")
+@require_permission(PLAN_VIEW)
+async def list_view():
+    plans = await repository.list_plans()
+    visible_keys = await get_visible_nav_keys(g.user_id)
+    selected_id = request.args.get("p")
+    is_new = selected_id == "new"
+    selected = None
+    if selected_id and not is_new:
+        selected = await repository.get_plan(selected_id)
+    return await render_template(
+        "admin/plans/list.html",
+        plans=plans,
+        selected=selected,
+        is_new=is_new,
+        known_tiers=KNOWN_TIERS,
+        visible_keys=visible_keys,
+    )
+
+
+@plans_bp.route("/", methods=["POST"])
+@require_permission(PLAN_EDIT)
+async def create_view():
+    form = await request.form
+    plan_id = (form.get("id") or "").strip().lower().replace(" ", "_")
+    if not plan_id:
+        return redirect(url_for("plans.list_view") + "?p=new")
+    if await repository.get_plan(plan_id):
+        return redirect(url_for("plans.list_view") + f"?p=new&error=exists")
+    resources = {
+        "ram_gb":     int(form.get("ram_gb") or 2),
+        "vcpu":       int(form.get("vcpu") or 2),
+        "storage_gb": int(form.get("storage_gb") or 20),
+    }
+    await repository.create_plan(
+        plan_id=plan_id,
+        display_name=form.get("display_name") or plan_id,
+        description=form.get("description") or None,
+        price_monthly=float(form.get("price_monthly") or 0),
+        price_annual=float(form.get("price_annual") or 0),
+        resources=resources,
+        allowed_tiers=form.getlist("allowed_tiers"),
+        is_active=form.get("is_active") == "1",
+        sort_order=int(form.get("sort_order") or 0),
+    )
+    return redirect(url_for("plans.list_view") + f"?p={plan_id}")
+
+
+@plans_bp.route("/<plan_id>", methods=["PUT"])
+@require_permission(PLAN_EDIT)
+async def update_view(plan_id: str):
+    if not await repository.get_plan(plan_id):
+        return jsonify({"error": "Not found"}), 404
+    body = await request.get_json(silent=True) or {}
+    ram_gb = body.get("ram_gb")
+    vcpu = body.get("vcpu")
+    storage_gb = body.get("storage_gb")
+    resources = {
+        "ram_gb":     int(ram_gb) if ram_gb is not None else 2,
+        "vcpu":       int(vcpu) if vcpu is not None else 2,
+        "storage_gb": int(storage_gb) if storage_gb is not None else 20,
+    }
+    await repository.update_plan(
+        plan_id,
+        display_name=body.get("display_name") or plan_id,
+        description=body.get("description") or None,
+        price_monthly=float(body.get("price_monthly") or 0),
+        price_annual=float(body.get("price_annual") or 0),
+        resources=resources,
+        allowed_tiers=body.get("allowed_tiers") or [],
+        is_active=bool(body.get("is_active", True)),
+        sort_order=int(body.get("sort_order") or 0),
+    )
+    return jsonify({"ok": True})
+
+
+@plans_bp.route("/<plan_id>", methods=["DELETE"])
+@require_permission(PLAN_EDIT)
+async def delete_view(plan_id: str):
+    if not await repository.get_plan(plan_id):
+        return jsonify({"error": "Not found"}), 404
+    await repository.delete_plan(plan_id)
+    return jsonify({"ok": True})
+
+
+@plans_bp.route("/subscriptions")
+@require_permission(PLAN_ASSIGN)
+async def subscriptions_view():
+    subs = await repository.list_subscriptions()
+    plans = await repository.list_plans()
+    orgs = await db.table("organizations").order_by("name", "asc").all(allow_full_table=True)
+    visible_keys = await get_visible_nav_keys(g.user_id)
+    return await render_template(
+        "admin/plans/subscriptions.html",
+        subscriptions=subs,
+        plans=plans,
+        orgs=orgs,
+        visible_keys=visible_keys,
+    )
+
+
+@plans_bp.route("/subscriptions", methods=["POST"])
+@require_permission(PLAN_ASSIGN)
+async def assign_view():
+    form = await request.form
+    org_id = form.get("org_id") or ""
+    plan_id = form.get("plan_id") or ""
+    if not org_id or not plan_id:
+        return redirect(url_for("plans.subscriptions_view"))
+    await service.assign_plan(
+        org_id=org_id,
+        plan_id=plan_id,
+        billing_period=form.get("billing_period") or "monthly",
+        ends_at=form.get("ends_at") or None,
+        notes=form.get("notes") or None,
+        created_by=g.user_id,
+    )
+    return redirect(url_for("plans.subscriptions_view"))
+
+
+@plans_bp.route("/subscriptions/<sub_id>/cancel", methods=["POST"])
+@require_permission(PLAN_ASSIGN)
+async def cancel_sub_view(sub_id: str):
+    sub = await repository.get_subscription(sub_id)
+    if not sub:
+        return jsonify({"error": "Not found"}), 404
+    await service.cancel_subscription(sub_id, sub["org_id"])
+    return redirect(url_for("plans.subscriptions_view"))

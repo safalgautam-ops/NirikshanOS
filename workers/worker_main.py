@@ -59,27 +59,42 @@ async def _process_job(job_id: str) -> None:
         local_path=str(local_evidence),
     )
 
-    # Load each module's DB row once — used for yaml_definition, timeout, and parser_name.
+    # Load each module's DB row + files once.
     _module_defs: dict[str, dict] = {}
+    _module_files: dict[str, list[dict]] = {}
     for t in tasks:
         db_mod = await module_defs_repo.get_module(t["module_id"])
         if db_mod:
             _module_defs[t["module_id"]] = db_mod
+            _module_files[t["module_id"]] = await module_defs_repo.list_files(t["module_id"])
 
     # Build modules list for job_config.json.
-    # Embed execution_spec when the DB row has a yaml_definition so the container
-    # dispatches via loader.run_yaml_module() instead of its local Python handler.
-    modules_list = [
-        {
+    # Embed files array so the container loader can write them to disk and execute
+    # the entry point instead of falling back to a built-in Python handler.
+    modules_list = []
+    for t in tasks:
+        options: dict = {}
+        if t.get("options_json"):
+            try:
+                options = json.loads(t["options_json"])
+            except json.JSONDecodeError as exc:
+                print(f"[worker] malformed options_json for task {t['id']}: {exc}")
+        entry: dict = {
             "id":      t["module_id"],
             "name":    t["module_name"],
-            "options": json.loads(t["options_json"]) if t.get("options_json") else {},
-            **({"execution_spec": _module_defs[t["module_id"]]["yaml_definition"]}
-               if t["module_id"] in _module_defs and _module_defs[t["module_id"]].get("yaml_definition")
-               else {}),
+            "options": options,
         }
-        for t in tasks
-    ]
+        files = _module_files.get(t["module_id"], [])
+        if files:
+            entry["files"] = [
+                {
+                    "filename":       f["filename"],
+                    "content":        f["content"] or "",
+                    "is_entry_point": bool(f["is_entry_point"]),
+                }
+                for f in files
+            ]
+        modules_list.append(entry)
 
     timeout = max(
         (_module_defs[m["id"]]["timeout_seconds"] if m["id"] in _module_defs else 120

@@ -1,0 +1,425 @@
+{% extends "layouts/base.html" %}
+{% block title %}{{ module.display_name }} — IDE · NirikshanOS{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/codemirror@5/lib/codemirror.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/codemirror@5/theme/material-darker.min.css">
+<script src="https://cdn.jsdelivr.net/npm/codemirror@5/lib/codemirror.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/codemirror@5/mode/yaml/yaml.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/codemirror@5/mode/python/python.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/codemirror@5/mode/shell/shell.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/codemirror@5/mode/javascript/javascript.min.js"></script>
+{% endblock %}
+
+{% block body %}
+{#
+  Single outer x-data (ideEditor) owns all editor state: tabs, save, enable/disable, flash.
+  Nested x-data (fileTree) owns file list state and communicates via window events.
+#}
+<div class="flex flex-col" style="height:100dvh"
+     x-data="ideEditor({{ module.id | tojson }}, {{ module.options_schema | tojson }})"
+     x-init="init()"
+     @file-opened.window="loadFileContent($event.detail)">
+
+  {# ── Slim top bar ──────────────────────────────────────────────────────── #}
+  <header class="flex h-12 shrink-0 items-center border-b bg-background px-4 gap-3">
+
+    {# Back link — plain anchor, no Alpine needed #}
+    <a href="{{ url_for('admin_modules.list_view') }}"
+       class="inline-flex shrink-0 items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground">
+      <svg class="size-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M19 12H5"/><path d="m12 5-7 7 7 7"/>
+      </svg>
+      Modules
+    </a>
+
+    <span class="h-5 w-px bg-border shrink-0"></span>
+
+    {# Module identity #}
+    <div class="flex min-w-0 flex-1 items-center gap-2">
+      <span class="font-semibold text-sm truncate">{{ module.display_name }}</span>
+      <span class="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground font-mono hidden sm:inline">{{ module.id }}</span>
+      <span class="shrink-0 rounded px-1.5 py-0.5 text-[11px] font-medium
+        {% if module.source == 'custom' %}bg-primary/15 text-primary{% else %}bg-muted text-muted-foreground{% endif %}">
+        {{ module.source }}
+      </span>
+      <span class="shrink-0 text-xs text-muted-foreground hidden md:inline">
+        {{ module.category }} · {{ module.tier }}
+      </span>
+    </div>
+
+    {# Actions — reference outer ideEditor scope #}
+    <span x-show="flash" x-cloak x-text="flash" class="text-xs text-muted-foreground"></span>
+    <span x-show="isDirty && !flash" class="text-xs text-muted-foreground">Unsaved</span>
+
+    <button @click="toggleEnabled()"
+            class="inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs font-medium transition-colors
+              {% if module.is_enabled %}hover:bg-destructive/10 hover:text-destructive hover:border-destructive/40
+              {% else %}hover:bg-green-500/10 hover:text-green-600 hover:border-green-500/40{% endif %}">
+      {% if module.is_enabled %}Disable{% else %}Enable{% endif %}
+    </button>
+
+    <button @click="save()" :disabled="saving || (editorTab === 'code' && !activeFileId)"
+            class="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-40">
+      <span x-text="saving ? 'Saving…' : 'Save'"></span>
+    </button>
+
+  </header>
+
+  {# ── Two-panel body ────────────────────────────────────────────────────── #}
+  <div class="flex flex-1 min-h-0">
+
+    {# ── File tree (nested x-data — isolated scope) ──────────────────────── #}
+    <div class="flex w-52 shrink-0 flex-col border-r bg-sidebar/60 text-sidebar-foreground overflow-hidden"
+         x-data="fileTree({{ module.id | tojson }}, {{ files | tojson }})">
+
+      <div class="flex h-10 shrink-0 items-center justify-between border-b px-3">
+        <span class="text-xs font-semibold text-muted-foreground select-none">Files</span>
+        <button @click="promptNewFile()"
+                class="inline-flex size-6 items-center justify-center rounded-md hover:bg-sidebar-accent transition-colors"
+                title="New file">
+          <svg class="size-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <path d="M5 12h14"/><path d="M12 5v14"/>
+          </svg>
+        </button>
+      </div>
+
+      <div class="min-h-0 flex-1 overflow-y-auto py-1">
+        <template x-if="fileList.length === 0">
+          <p class="px-3 py-6 text-xs text-center text-muted-foreground">No files yet.<br>Click + to add one.</p>
+        </template>
+
+        <template x-for="f in fileList" :key="f.id">
+          <div class="group flex items-center gap-1.5 px-2 py-1.5 rounded-md mx-1 cursor-pointer transition-colors"
+               :class="activeFileId === f.id ? 'bg-sidebar-accent text-sidebar-accent-foreground' : 'text-sidebar-foreground hover:bg-sidebar-accent/60'"
+               @click="openFile(f.id)">
+
+            <span class="shrink-0 text-muted-foreground font-mono text-[10px] w-4 text-center select-none"
+                  x-text="fileIcon(f.filename)"></span>
+            <span class="flex-1 min-w-0 truncate text-xs font-mono" x-text="f.filename"></span>
+
+            <template x-if="f.is_entry_point">
+              <svg class="size-3 shrink-0 text-yellow-500" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+                <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+              </svg>
+            </template>
+
+            <div class="flex shrink-0 items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+              <template x-if="!f.is_entry_point">
+                <button @click.stop="setEntryPoint(f.id)"
+                        class="rounded p-0.5 hover:bg-yellow-500/20 hover:text-yellow-500"
+                        title="Set as entry point">
+                  <svg class="size-3" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+                  </svg>
+                </button>
+              </template>
+              <button @click.stop="deleteFile(f.id, f.filename)"
+                      class="rounded p-0.5 hover:bg-destructive/20 hover:text-destructive"
+                      title="Delete file">
+                <svg class="size-3" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/>
+                  <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+        </template>
+      </div>
+
+      <div x-show="showNewFile" x-cloak class="border-t p-2 space-y-1.5">
+        <input x-ref="newFilename"
+               x-model="newFilename"
+               placeholder="main.py"
+               @keydown.enter="createFile()"
+               @keydown.escape="showNewFile = false; newFilename = ''"
+               class="w-full rounded-md border bg-background px-2 py-1.5 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-ring">
+        <div class="flex gap-1">
+          <button @click="createFile()" class="flex-1 rounded-md bg-primary px-2 py-1 text-[11px] font-medium text-primary-foreground hover:bg-primary/90">Create</button>
+          <button @click="showNewFile = false; newFilename = ''" class="flex-1 rounded-md border px-2 py-1 text-[11px] hover:bg-accent">Cancel</button>
+        </div>
+        <p x-show="newFileError" class="text-[11px] text-destructive" x-text="newFileError"></p>
+      </div>
+
+    </div>
+
+    {# ── Editor area (inside outer ideEditor scope) ───────────────────────── #}
+    <div class="flex min-w-0 flex-1 flex-col overflow-hidden">
+
+      {# Tab strip #}
+      <div class="flex shrink-0 items-center border-b bg-muted/30 px-4 gap-4">
+        <button @click="editorTab = 'code'"
+                class="py-2 text-xs font-medium border-b-2 transition-colors"
+                :class="editorTab === 'code' ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground'">
+          Code
+        </button>
+        <button @click="editorTab = 'schema'"
+                class="py-2 text-xs font-medium border-b-2 transition-colors"
+                :class="editorTab === 'schema' ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground'">
+          Options Schema
+        </button>
+        <div class="ml-auto flex items-center gap-4 text-xs text-muted-foreground py-2">
+          <code class="rounded bg-muted px-1 font-mono text-[11px]">{{ module.runtime_image }}</code>
+          <span x-show="editorTab === 'code' && activeFilename" class="font-mono text-[11px]" x-text="activeFilename"></span>
+        </div>
+      </div>
+
+      {# Code editor #}
+      <div x-show="editorTab === 'code'" class="min-h-0 flex-1 overflow-hidden relative">
+        <div id="cm-wrapper" class="absolute inset-0 overflow-auto"></div>
+        <template x-if="!activeFileId">
+          <div class="absolute inset-0 flex flex-col items-center justify-center gap-2 text-center bg-background">
+            <svg class="size-10 text-muted-foreground/30" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/>
+              <polyline points="14 2 14 8 20 8"/>
+            </svg>
+            <p class="text-sm text-muted-foreground">Select a file to edit, or create one with the + button.</p>
+          </div>
+        </template>
+      </div>
+
+      {# Options schema editor #}
+      <div x-show="editorTab === 'schema'" class="min-h-0 flex-1 overflow-hidden flex flex-col">
+        <div class="shrink-0 border-b bg-muted/20 px-4 py-2 text-xs text-muted-foreground space-y-0.5">
+          <p class="font-medium text-foreground">Options Schema</p>
+          <p>JSON array of field definitions rendered in the Analyze dialog. Each field: <code class="rounded bg-muted px-1 font-mono">{"key","label","type","default","description"}</code>. Types: <code class="rounded bg-muted px-1 font-mono">text, number, checkbox, select, checklist</code>.</p>
+        </div>
+        <div class="min-h-0 flex-1 overflow-hidden relative">
+          <div id="cm-schema-wrapper" class="absolute inset-0 overflow-auto"></div>
+        </div>
+        <div x-show="schemaError" class="shrink-0 border-t bg-destructive/10 px-4 py-2 text-xs text-destructive" x-text="schemaError"></div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+function fileTree(moduleId, initialFiles) {
+  return {
+    moduleId,
+    fileList: initialFiles.map(f => ({ ...f, is_entry_point: !!f.is_entry_point })),
+    activeFileId: null,
+    showNewFile: false,
+    newFilename: '',
+    newFileError: '',
+    csrf: '',
+
+    init() {
+      const m = document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/);
+      this.csrf = m ? decodeURIComponent(m[1]) : '';
+      const entry = this.fileList.find(f => f.is_entry_point) || this.fileList[0];
+      if (entry) this.openFile(entry.id);
+    },
+
+    fileIcon(filename) {
+      const ext = (filename || '').split('.').pop().toLowerCase();
+      const icons = { py: 'py', yaml: '≋', yml: '≋', sh: '$', json: '{}', md: '#', txt: 'T', toml: '⊞', conf: '⚙', ini: '⚙' };
+      return icons[ext] || '·';
+    },
+
+    openFile(fileId) {
+      this.activeFileId = fileId;
+      const f = this.fileList.find(f => f.id === fileId);
+      window.dispatchEvent(new CustomEvent('file-opened', {
+        detail: { fileId, filename: f?.filename || '' },
+      }));
+    },
+
+    promptNewFile() {
+      this.showNewFile = true;
+      this.newFilename = '';
+      this.newFileError = '';
+      this.$nextTick(() => this.$refs.newFilename?.focus());
+    },
+
+    async createFile() {
+      this.newFileError = '';
+      const name = this.newFilename.trim();
+      if (!name) return;
+      const resp = await fetch(`/admin/modules/${this.moduleId}/files`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': this.csrf },
+        body: JSON.stringify({ filename: name }),
+      });
+      const data = await resp.json();
+      if (!resp.ok) { this.newFileError = data.error || 'Create failed.'; return; }
+      this.fileList.push({ id: data.id, filename: name, is_entry_point: data.is_entry_point });
+      this.showNewFile = false;
+      this.newFilename = '';
+      this.openFile(data.id);
+    },
+
+    async deleteFile(fileId, filename) {
+      if (!confirm(`Delete "${filename}"?`)) return;
+      const resp = await fetch(`/admin/modules/${this.moduleId}/files/${fileId}`, {
+        method: 'DELETE',
+        headers: { 'X-CSRF-Token': this.csrf },
+      });
+      if (!resp.ok) return;
+      this.fileList = this.fileList.filter(f => f.id !== fileId);
+      if (this.activeFileId === fileId) {
+        this.activeFileId = null;
+        window.dispatchEvent(new CustomEvent('file-opened', { detail: { fileId: null, filename: '' } }));
+      }
+    },
+
+    async setEntryPoint(fileId) {
+      const resp = await fetch(`/admin/modules/${this.moduleId}/files/${fileId}/set-entry`, {
+        method: 'POST',
+        headers: { 'X-CSRF-Token': this.csrf },
+      });
+      if (!resp.ok) return;
+      this.fileList = this.fileList.map(f => ({ ...f, is_entry_point: f.id === fileId }));
+    },
+  };
+}
+
+function ideEditor(moduleId, existingSchema) {
+  function modeForFilename(filename) {
+    const ext = (filename || '').split('.').pop().toLowerCase();
+    const map = { py: 'python', yaml: 'yaml', yml: 'yaml', sh: 'shell', json: 'javascript', js: 'javascript' };
+    return map[ext] || null;
+  }
+
+  const SCHEMA_PLACEHOLDER = JSON.stringify([
+    { key: 'example_flag', label: 'Example Flag', type: 'checkbox', default: false, description: 'A boolean option' },
+  ], null, 2);
+
+  return {
+    moduleId,
+    editor: null,
+    schemaEditor: null,
+    activeFileId: null,
+    activeFilename: '',
+    editorTab: 'code',
+    saving: false,
+    isDirty: false,
+    flash: '',
+    schemaError: '',
+    _flashTimer: null,
+    csrf: '',
+
+    init() {
+      const m = document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/);
+      this.csrf = m ? decodeURIComponent(m[1]) : '';
+
+      const wrapper = document.getElementById('cm-wrapper');
+      this.editor = CodeMirror(wrapper, {
+        value: '',
+        mode: null,
+        theme: 'material-darker',
+        lineNumbers: true,
+        lineWrapping: false,
+        indentUnit: 2,
+        tabSize: 2,
+        indentWithTabs: false,
+        extraKeys: { 'Ctrl-S': () => this.save(), 'Cmd-S': () => this.save() },
+      });
+      this.editor.setSize('100%', '100%');
+      this.editor.on('change', () => { if (this.activeFileId) this.isDirty = true; });
+
+      this.$nextTick(() => {
+        const sw = document.getElementById('cm-schema-wrapper');
+        if (!sw) return;
+        let initialSchema = SCHEMA_PLACEHOLDER;
+        if (existingSchema !== null && existingSchema !== undefined) {
+          try {
+            initialSchema = typeof existingSchema === 'string'
+              ? existingSchema
+              : JSON.stringify(existingSchema, null, 2);
+          } catch (_) {}
+        }
+        this.schemaEditor = CodeMirror(sw, {
+          value: initialSchema,
+          mode: 'javascript',
+          theme: 'material-darker',
+          lineNumbers: true,
+          lineWrapping: false,
+          indentUnit: 2,
+          tabSize: 2,
+          indentWithTabs: false,
+          extraKeys: { 'Ctrl-S': () => this.save(), 'Cmd-S': () => this.save() },
+        });
+        this.schemaEditor.setSize('100%', '100%');
+        this.schemaEditor.on('change', () => { this.isDirty = true; this.schemaError = ''; });
+      });
+    },
+
+    async loadFileContent({ fileId, filename }) {
+      this.activeFileId = fileId;
+      this.activeFilename = filename;
+      this.isDirty = false;
+      if (!fileId) { this.editor?.setValue(''); return; }
+      const resp = await fetch(`/admin/modules/${this.moduleId}/files/${fileId}`, {
+        headers: { 'X-CSRF-Token': this.csrf },
+      });
+      if (!resp.ok) return;
+      const data = await resp.json();
+      this.editor.setValue(data.content || '');
+      this.editor.setOption('mode', modeForFilename(filename));
+      this.editor.clearHistory();
+      this.isDirty = false;
+    },
+
+    async save() {
+      this.saving = true;
+      try {
+        if (this.editorTab === 'schema') {
+          await this._saveSchema();
+        } else {
+          await this._saveFile();
+        }
+      } finally {
+        this.saving = false;
+      }
+    },
+
+    async _saveFile() {
+      if (!this.activeFileId || !this.editor) return;
+      const resp = await fetch(`/admin/modules/${this.moduleId}/files/${this.activeFileId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': this.csrf },
+        body: JSON.stringify({ content: this.editor.getValue() }),
+      });
+      if (resp.ok) { this.isDirty = false; this._setFlash('Saved.'); }
+      else this._setFlash('Save failed.');
+    },
+
+    async _saveSchema() {
+      const raw = this.schemaEditor?.getValue() || '';
+      try {
+        const parsed = JSON.parse(raw);
+        if (!Array.isArray(parsed)) throw new Error('Schema must be a JSON array');
+        this.schemaError = '';
+      } catch (e) {
+        this.schemaError = e.message;
+        return;
+      }
+      const resp = await fetch(`/admin/modules/${this.moduleId}/options-schema`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': this.csrf },
+        body: JSON.stringify({ schema: raw }),
+      });
+      if (resp.ok) { this.isDirty = false; this._setFlash('Schema saved.'); }
+      else { const d = await resp.json().catch(() => ({})); this._setFlash(d.error || 'Save failed.'); }
+    },
+
+    async toggleEnabled() {
+      const resp = await fetch(`/admin/modules/${this.moduleId}/toggle`, {
+        method: 'POST',
+        headers: { 'X-CSRF-Token': this.csrf },
+      }).catch(() => null);
+      if (resp?.ok) window.location.reload();
+      else this._setFlash('Toggle failed.');
+    },
+
+    _setFlash(msg) {
+      clearTimeout(this._flashTimer);
+      this.flash = msg;
+      this._flashTimer = setTimeout(() => { this.flash = ''; }, 2500);
+    },
+  };
+}
+</script>
+{% endblock %}

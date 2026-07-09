@@ -24,6 +24,7 @@ NAV_KEYS: list[tuple[str, str]] = [
     ("admin_roles", "Roles"),
     ("admin_staff", "Staff"),
     ("admin_modules", "Modules"),
+    ("admin_plans", "Plans"),
 ]
 
 

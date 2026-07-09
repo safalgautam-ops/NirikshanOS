@@ -64,6 +64,15 @@ async def validate_selected_modules(module_ids: list[str], evidence_type: str) -
 def serialize_module(module: dict) -> dict:
     raw_st = module.get("supported_types")
     supported = json.loads(raw_st) if raw_st else ["*"]
+    raw_schema = module.get("options_schema")
+    fields: list[dict] = []
+    if raw_schema:
+        try:
+            parsed = json.loads(raw_schema) if isinstance(raw_schema, str) else raw_schema
+            if isinstance(parsed, list):
+                fields = parsed
+        except (json.JSONDecodeError, TypeError):
+            pass
     return {
         "id":               module["id"],
         "name":             module["display_name"],
@@ -79,9 +88,8 @@ def serialize_module(module: dict) -> dict:
         "batch_group":      module.get("batch_group"),
         "timeout_seconds":  module["timeout_seconds"],
         "parser_name":      module.get("parser_name") or "",
-        "has_yaml":         bool(module.get("yaml_definition")),
         "source":           module["source"],
-        "fields":           [],
+        "fields":           fields,
     }
 
 

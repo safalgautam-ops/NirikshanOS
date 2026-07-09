@@ -92,6 +92,7 @@ removes `.dark` if the user explicitly chose light. #}
             defer
             src="{{ url_for('static', filename='js/file-validate.js') }}"
         ></script>
+        {% block head %}{% endblock %}
     </head>
     <body class="min-h-screen bg-background text-foreground antialiased">
         {% block body %}{% endblock %}

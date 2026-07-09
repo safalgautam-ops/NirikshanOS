@@ -1,0 +1,449 @@
+{% extends "layouts/base.html" %}
+{% block title %}Plans - NirikshanOS{% endblock %}
+
+{% from "dashboard/components/sidebar.html" import sidebar %}
+{% from "dashboard/components/topbar.html" import topbar %}
+{% from "macros/csrf.html" import csrf_field %}
+
+{% block body %}
+{{ sidebar(active="admin_plans", visible_keys=visible_keys) }}
+
+<div class="flex flex-col md:pl-60" x-data="plansPage({{ plans | tojson }}, {{ known_tiers | tojson }})">
+  {{ topbar("Plans") }}
+  <main class="flex flex-col gap-6 p-6 overflow-y-auto" style="height:calc(100dvh - 3.5rem)">
+
+    {# Header row #}
+    <div class="flex items-center justify-between">
+      <div>
+        <h1 class="text-lg font-semibold">Subscription Plans</h1>
+        <p class="text-sm text-muted-foreground mt-0.5">Manage plans and resource allocations. Changes to a plan do not affect existing subscribers.</p>
+      </div>
+      <div class="flex items-center gap-3">
+        <a href="{{ url_for('plans.subscriptions_view') }}"
+           class="inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm font-medium hover:bg-accent transition-colors">
+          <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="20" height="14" x="2" y="5" rx="2"/><path d="M2 10h20"/></svg>
+          Subscriptions
+        </a>
+        <button @click="openCreate()"
+                class="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors">
+          <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+          New Plan
+        </button>
+      </div>
+    </div>
+
+    {# Plan cards grid #}
+    <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <template x-for="plan in planList" :key="plan.id">
+        <div class="relative flex flex-col rounded-xl border bg-card overflow-hidden transition-shadow hover:shadow-md">
+
+          {# Active indicator #}
+          <div class="h-1 w-full"
+               :class="plan.is_active ? 'bg-green-500' : 'bg-muted'"></div>
+
+          <div class="flex flex-col gap-4 p-5 flex-1">
+
+            {# Name + price #}
+            <div class="flex items-start justify-between gap-2">
+              <div class="min-w-0">
+                <h2 class="font-semibold text-base leading-tight truncate" x-text="plan.display_name"></h2>
+                <p class="text-xs text-muted-foreground mt-0.5" x-text="plan.id"></p>
+              </div>
+              <div class="shrink-0 text-right">
+                <template x-if="plan.price_monthly > 0">
+                  <div>
+                    <span class="text-xl font-bold" x-text="'$' + plan.price_monthly.toFixed(0)"></span>
+                    <span class="text-xs text-muted-foreground">/mo</span>
+                  </div>
+                </template>
+                <template x-if="plan.price_monthly === 0">
+                  <span class="text-lg font-bold text-muted-foreground">Free</span>
+                </template>
+              </div>
+            </div>
+
+            {# Description #}
+            <p class="text-sm text-muted-foreground leading-relaxed line-clamp-2 min-h-[2.5rem]"
+               x-text="plan.description || 'No description.'"></p>
+
+            {# Resource badges #}
+            <div class="flex flex-wrap gap-1.5">
+              <span class="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-1 text-xs font-medium">
+                <svg class="size-3 text-muted-foreground" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="14" height="8" x="5" y="2" rx="2"/><path d="M5 12H2v6h20v-6h-3"/><path d="M12 12v4"/></svg>
+                <span x-text="(plan.resources?.ram_gb || 2) + 'GB RAM'"></span>
+              </span>
+              <span class="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-1 text-xs font-medium">
+                <svg class="size-3 text-muted-foreground" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="6" height="14" x="2" y="5" rx="1"/><rect width="6" height="10" x="9" y="9" rx="1"/><rect width="6" height="6" x="16" y="13" rx="1"/></svg>
+                <span x-text="(plan.resources?.vcpu || 2) + ' vCPU'"></span>
+              </span>
+              <span class="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-1 text-xs font-medium">
+                <svg class="size-3 text-muted-foreground" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>
+                <span x-text="(plan.resources?.storage_gb || 20) + 'GB'"></span>
+              </span>
+            </div>
+
+            {# Tier access #}
+            <div class="space-y-1.5">
+              <p class="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Module Access</p>
+              <template x-for="tier in allTiers" :key="tier">
+                <div class="flex items-center gap-2">
+                  <template x-if="plan.allowed_tiers && plan.allowed_tiers.includes(tier)">
+                    <svg class="size-3.5 shrink-0 text-green-500" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                  </template>
+                  <template x-if="!plan.allowed_tiers || !plan.allowed_tiers.includes(tier)">
+                    <svg class="size-3.5 shrink-0 text-muted-foreground/40" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" x2="6" y1="6" y2="18"/><line x1="6" x2="18" y1="6" y2="18"/></svg>
+                  </template>
+                  <span class="text-xs capitalize"
+                        :class="plan.allowed_tiers && plan.allowed_tiers.includes(tier) ? 'text-foreground' : 'text-muted-foreground/50'"
+                        x-text="tier.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())"></span>
+                </div>
+              </template>
+            </div>
+
+          </div>
+
+          {# Card footer: status + actions #}
+          <div class="flex items-center justify-between border-t px-5 py-3 bg-muted/20">
+            <span class="inline-flex items-center gap-1.5 text-xs font-medium"
+                  :class="plan.is_active ? 'text-green-600' : 'text-muted-foreground'">
+              <span class="size-1.5 rounded-full" :class="plan.is_active ? 'bg-green-500' : 'bg-muted-foreground/50'"></span>
+              <span x-text="plan.is_active ? 'Active' : 'Inactive'"></span>
+            </span>
+            <div class="flex items-center gap-1">
+              <button @click="openEdit(plan)"
+                      class="rounded-md px-2.5 py-1.5 text-xs font-medium hover:bg-accent transition-colors">
+                Edit
+              </button>
+              <button @click="deletePlan(plan)"
+                      class="rounded-md px-2.5 py-1.5 text-xs font-medium text-destructive hover:bg-destructive/10 transition-colors">
+                Delete
+              </button>
+            </div>
+          </div>
+
+        </div>
+      </template>
+
+      {# Empty state #}
+      <template x-if="planList.length === 0">
+        <div class="col-span-full flex flex-col items-center justify-center py-20 text-muted-foreground">
+          <svg class="size-10 opacity-30 mb-3" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect width="20" height="14" x="2" y="5" rx="2"/><path d="M2 10h20"/></svg>
+          <p class="text-sm">No plans yet.</p>
+          <button @click="openCreate()" class="mt-3 text-sm text-primary hover:underline">Create your first plan</button>
+        </div>
+      </template>
+    </div>
+
+  </main>
+</div>
+
+{# ── Create / Edit dialog ───────────────────────────────────────────── #}
+<div x-data="plansDialog()" @open-plan-dialog.window="receive($event.detail)">
+  <template x-if="open">
+    <div class="fixed inset-0 z-50 flex items-center justify-center">
+      {# Backdrop #}
+      <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="close()"></div>
+
+      {# Panel #}
+      <div class="relative z-10 w-full max-w-xl mx-4 rounded-xl border bg-card shadow-xl overflow-hidden"
+           @keydown.escape.window="close()">
+
+        {# Dialog header #}
+        <div class="flex items-center justify-between border-b px-6 py-4">
+          <div>
+            <h2 class="font-semibold text-base" x-text="isEdit ? 'Edit Plan' : 'New Plan'"></h2>
+            <p class="text-xs text-muted-foreground mt-0.5" x-text="isEdit ? 'Changes take effect immediately. Existing subscribers keep their snapshotted plan.' : 'Set up a new subscription tier.'"></p>
+          </div>
+          <button @click="close()" class="rounded-md p-1.5 hover:bg-accent transition-colors">
+            <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" x2="6" y1="6" y2="18"/><line x1="6" x2="18" y1="6" y2="18"/></svg>
+          </button>
+        </div>
+
+        {# Tabs #}
+        <div class="flex border-b px-6 gap-4">
+          <button @click="tab='general'"
+                  class="py-2.5 text-sm font-medium border-b-2 transition-colors"
+                  :class="tab==='general' ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground'">
+            General
+          </button>
+          <button @click="tab='resources'"
+                  class="py-2.5 text-sm font-medium border-b-2 transition-colors"
+                  :class="tab==='resources' ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground'">
+            Resources &amp; Tiers
+          </button>
+        </div>
+
+        {# Tab: General #}
+        <div x-show="tab==='general'" class="p-6 space-y-4">
+          <template x-if="!isEdit">
+            <div class="space-y-1">
+              <label class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Plan ID <span class="text-destructive">*</span></label>
+              <input x-model="form.id" placeholder="e.g. startup" pattern="[a-z0-9_]+"
+                     class="w-full rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+              <p class="text-xs text-muted-foreground">Lowercase letters, numbers, underscores. Cannot change after creation.</p>
+            </div>
+          </template>
+
+          <div class="grid grid-cols-2 gap-4">
+            <div class="space-y-1" :class="!isEdit ? '' : 'col-span-2 sm:col-span-1'">
+              <label class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Display Name <span class="text-destructive">*</span></label>
+              <input x-model="form.display_name" placeholder="Startup"
+                     class="w-full rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+            </div>
+            <div class="space-y-1">
+              <label class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Sort Order</label>
+              <input x-model.number="form.sort_order" type="number" min="0"
+                     class="w-full rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+            </div>
+          </div>
+
+          <div class="space-y-1">
+            <label class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Description</label>
+            <textarea x-model="form.description" rows="2" placeholder="What's included in this plan…"
+                      class="w-full rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring resize-none"></textarea>
+          </div>
+
+          <div>
+            <p class="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-3">Pricing</p>
+            <div class="grid grid-cols-2 gap-4">
+              <div class="space-y-1">
+                <label class="text-xs font-medium text-muted-foreground">Monthly (USD)</label>
+                <div class="relative">
+                  <span class="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">$</span>
+                  <input x-model.number="form.price_monthly" type="number" step="0.01" min="0"
+                         class="w-full rounded-md border bg-background pl-6 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+                </div>
+              </div>
+              <div class="space-y-1">
+                <label class="text-xs font-medium text-muted-foreground">Annual (USD)</label>
+                <div class="relative">
+                  <span class="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">$</span>
+                  <input x-model.number="form.price_annual" type="number" step="0.01" min="0"
+                         class="w-full rounded-md border bg-background pl-6 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+                </div>
+              </div>
+            </div>
+            <p class="mt-1 text-xs text-muted-foreground">Set 0 for free or custom/enterprise pricing.</p>
+          </div>
+
+          <div class="flex items-center gap-2 pt-1">
+            <input type="checkbox" x-model="form.is_active" id="dlg-is-active"
+                   class="size-4 rounded border-input accent-primary">
+            <label for="dlg-is-active" class="text-sm cursor-pointer">Active (visible to new subscribers)</label>
+          </div>
+        </div>
+
+        {# Tab: Resources & Tiers #}
+        <div x-show="tab==='resources'" class="p-6 space-y-6">
+          <div>
+            <p class="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-3">Resource Allocation per Instance</p>
+            <div class="grid grid-cols-3 gap-4">
+              <div class="space-y-1">
+                <label class="text-xs font-medium text-muted-foreground">RAM (GB)</label>
+                <input x-model.number="form.ram_gb" type="number" min="1"
+                       class="w-full rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+              </div>
+              <div class="space-y-1">
+                <label class="text-xs font-medium text-muted-foreground">vCPU</label>
+                <input x-model.number="form.vcpu" type="number" min="1"
+                       class="w-full rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+              </div>
+              <div class="space-y-1">
+                <label class="text-xs font-medium text-muted-foreground">Storage (GB)</label>
+                <input x-model.number="form.storage_gb" type="number" min="1"
+                       class="w-full rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <p class="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-3">Module Tier Access</p>
+            <div class="space-y-2.5">
+              <template x-for="tier in allTiers" :key="tier">
+                <label class="flex items-start gap-3 cursor-pointer rounded-lg border p-3 transition-colors"
+                       :class="form.allowed_tiers.includes(tier) ? 'border-primary/40 bg-primary/5' : 'hover:bg-muted/40'">
+                  <input type="checkbox" :value="tier"
+                         :checked="form.allowed_tiers.includes(tier)"
+                         @change="toggleTier(tier)"
+                         class="mt-0.5 size-4 rounded border-input accent-primary">
+                  <div>
+                    <p class="text-sm font-medium capitalize"
+                       x-text="tier.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())"></p>
+                    <p class="text-xs text-muted-foreground" x-text="tierDesc[tier] || ''"></p>
+                  </div>
+                </label>
+              </template>
+            </div>
+          </div>
+        </div>
+
+        {# Dialog footer #}
+        <div class="flex items-center justify-between border-t px-6 py-4 bg-muted/20">
+          <div class="text-xs text-muted-foreground" x-text="error" x-show="error" style="color:var(--destructive)"></div>
+          <div class="flex items-center gap-3 ml-auto">
+            <button @click="close()" class="rounded-md border px-4 py-2 text-sm font-medium hover:bg-accent transition-colors">
+              Cancel
+            </button>
+            <button @click="submit()" :disabled="saving"
+                    class="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors">
+              <span x-show="!saving" x-text="isEdit ? 'Save Changes' : 'Create Plan'"></span>
+              <span x-show="saving">Saving…</span>
+            </button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </template>
+</div>
+
+<script>
+function plansPage(initialPlans, allTiers) {
+  return {
+    planList: initialPlans,
+    allTiers,
+
+    openCreate() {
+      window.dispatchEvent(new CustomEvent('open-plan-dialog', { detail: { plan: null, allTiers: this.allTiers } }));
+    },
+
+    openEdit(plan) {
+      window.dispatchEvent(new CustomEvent('open-plan-dialog', { detail: { plan, allTiers: this.allTiers } }));
+    },
+
+    async deletePlan(plan) {
+      if (!confirm(`Delete "${plan.display_name}"? Existing subscribers will be grandfathered until their subscription expires.`)) return;
+      const csrf = document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/)?.[1] || '';
+      const resp = await fetch(`/admin/plans/${plan.id}`, {
+        method: 'DELETE',
+        headers: { 'X-CSRF-Token': csrf },
+      });
+      if (resp.ok) {
+        this.planList = this.planList.filter(p => p.id !== plan.id);
+      }
+    },
+  };
+}
+
+function plansDialog() {
+  const TIER_DESC = {
+    free:          'Basic hash, file identification, and strings modules',
+    basic_triage:  'Memory and filesystem triage modules',
+    standard:      'Network, log analysis, and artifact parsing',
+    advanced:      'Malware analysis, timeline correlation, and YARA scanning',
+    enterprise:    'Full access including custom and experimental modules',
+  };
+
+  return {
+    open: false,
+    isEdit: false,
+    editId: null,
+    allTiers: [],
+    tab: 'general',
+    saving: false,
+    error: '',
+    form: {
+      id: '', display_name: '', description: '',
+      price_monthly: 0, price_annual: 0,
+      ram_gb: 2, vcpu: 2, storage_gb: 20,
+      allowed_tiers: ['free'], is_active: true, sort_order: 0,
+    },
+    tierDesc: TIER_DESC,
+
+    receive({ plan, allTiers }) {
+      this.allTiers = allTiers;
+      this.tab = 'general';
+      this.error = '';
+      if (plan) {
+        this.isEdit = true;
+        this.editId = plan.id;
+        this.form = {
+          id:            plan.id,
+          display_name:  plan.display_name  || '',
+          description:   plan.description   || '',
+          price_monthly: plan.price_monthly || 0,
+          price_annual:  plan.price_annual  || 0,
+          ram_gb:        plan.resources?.ram_gb     || 2,
+          vcpu:          plan.resources?.vcpu       || 2,
+          storage_gb:    plan.resources?.storage_gb || 20,
+          allowed_tiers: Array.isArray(plan.allowed_tiers) ? [...plan.allowed_tiers] : [],
+          is_active:     plan.is_active !== undefined ? !!plan.is_active : true,
+          sort_order:    plan.sort_order || 0,
+        };
+      } else {
+        this.isEdit = false;
+        this.editId = null;
+        this.form = {
+          id: '', display_name: '', description: '',
+          price_monthly: 0, price_annual: 0,
+          ram_gb: 2, vcpu: 2, storage_gb: 20,
+          allowed_tiers: ['free'], is_active: true, sort_order: 0,
+        };
+      }
+      this.open = true;
+    },
+
+    close() { this.open = false; },
+
+    toggleTier(tier) {
+      const idx = this.form.allowed_tiers.indexOf(tier);
+      if (idx === -1) this.form.allowed_tiers.push(tier);
+      else this.form.allowed_tiers.splice(idx, 1);
+    },
+
+    async submit() {
+      this.error = '';
+      this.saving = true;
+      const csrf = document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/)?.[1] || '';
+      try {
+        if (this.isEdit) {
+          const resp = await fetch(`/admin/plans/${this.editId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
+            body: JSON.stringify({
+              display_name:  this.form.display_name,
+              description:   this.form.description,
+              price_monthly: this.form.price_monthly,
+              price_annual:  this.form.price_annual,
+              ram_gb:        this.form.ram_gb,
+              vcpu:          this.form.vcpu,
+              storage_gb:    this.form.storage_gb,
+              allowed_tiers: this.form.allowed_tiers,
+              is_active:     this.form.is_active,
+              sort_order:    this.form.sort_order,
+            }),
+          });
+          if (!resp.ok) { this.error = 'Save failed. Please try again.'; return; }
+          this.close();
+          window.location.reload();
+        } else {
+          const fd = new FormData();
+          fd.append('id',            this.form.id);
+          fd.append('display_name',  this.form.display_name);
+          fd.append('description',   this.form.description);
+          fd.append('price_monthly', this.form.price_monthly);
+          fd.append('price_annual',  this.form.price_annual);
+          fd.append('ram_gb',        this.form.ram_gb);
+          fd.append('vcpu',          this.form.vcpu);
+          fd.append('storage_gb',    this.form.storage_gb);
+          fd.append('is_active',     this.form.is_active ? '1' : '0');
+          fd.append('sort_order',    this.form.sort_order);
+          this.form.allowed_tiers.forEach(t => fd.append('allowed_tiers', t));
+          const resp = await fetch('/admin/plans/', {
+            method: 'POST',
+            headers: { 'X-CSRF-Token': csrf },
+            body: fd,
+          });
+          if (!resp.ok) { this.error = 'Create failed. Check that the Plan ID is unique.'; return; }
+          this.close();
+          window.location.reload();
+        }
+      } finally {
+        this.saving = false;
+      }
+    },
+  };
+}
+</script>
+
+{% endblock %}

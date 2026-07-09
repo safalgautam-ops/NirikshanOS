@@ -747,11 +747,19 @@ Add supporting evidence references, screenshots, artifacts, and raw output refer
         const mods = this.checkedModuleIds
           .map((id) => this.moduleMap[id])
           .filter(Boolean);
-        const tiers = new Set(mods.map((m) => moduleTierOf(m)));
+        const batchGroups = new Set();
+        let containers = 0;
+        mods.forEach((m) => {
+          if (m.batchable && m.batch_group) {
+            batchGroups.add(m.batch_group);
+          } else {
+            containers++;
+          }
+        });
         return {
           moduleCount: mods.length,
           taskCount: mods.length,
-          containerRuns: tiers.size,
+          containerRuns: containers + batchGroups.size,
           estimatedMinutes:
             mods.length === 0 ? 0 : Math.max(2, mods.length * 2),
         };

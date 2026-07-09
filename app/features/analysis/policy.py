@@ -1,5 +1,4 @@
 """Analysis policy engine: decides whether a user may run a set of modules."""
-
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -7,6 +6,7 @@ from dataclasses import dataclass, field
 from app.core.security.org_permissions import get_user_org_permission_names
 from app.features.analysis.service import get_module, is_module_compatible
 from app.features.cases.permissions import EVIDENCE_ANALYZE
+from app.features.plans.service import get_active_subscription, get_allowed_tiers
 
 
 @dataclass
@@ -42,6 +42,9 @@ async def check_can_run(
             )],
         )
 
+    sub = await get_active_subscription(org_id)
+    allowed_tiers = get_allowed_tiers(sub)
+
     for module_id in module_ids:
         mod = await get_module(module_id)
         if mod is None:
@@ -59,15 +62,14 @@ async def check_can_run(
                 reason=f"Module '{mod['display_name']}' does not support {evidence_type!r} evidence.",
             ))
             continue
-
-        # Plan tier stub — replace with real org plan lookup when billing is built.
-        _plan_violation = _check_plan_stub(org_id, module_id, mod["tier"])
-        if _plan_violation:
-            violations.append(_plan_violation)
-            continue
+        tier = mod.get("tier") or "free"
+        if tier not in allowed_tiers:
+            plan_name = (sub["plan_snapshot"].get("display_name", "your plan")
+                         if sub and isinstance(sub.get("plan_snapshot"), dict)
+                         else "Free")
+            violations.append(PolicyViolation(
+                module_id=module_id,
+                reason=f"Module '{mod['display_name']}' requires a higher plan. Current: {plan_name}.",
+            ))
 
     return PolicyResult(allowed=len(violations) == 0, violations=violations)
-
-
-def _check_plan_stub(org_id: str, module_id: str, tier: str) -> PolicyViolation | None:
-    return None
