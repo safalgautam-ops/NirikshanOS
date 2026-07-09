@@ -3114,6 +3114,8 @@ Add supporting evidence references, screenshots, artifacts, and raw output refer
 
         // Ensure modules are loaded for this evidence (needed by canvasModuleOutputs).
         await this._fetchModulesForEvidence(evidenceId);
+        // Load persisted notes for this evidence so the Notes panel is pre-filled.
+        await this._fetchNotesForEvidence(evidenceId);
         // Load real parsed results from DB before opening so the viewer
         // shows data even when the canvas is opened after a previous session's analysis.
         await this._loadResultsFromBackend(evidenceId);
@@ -3228,11 +3230,44 @@ Add supporting evidence references, screenshots, artifacts, and raw output refer
         return this.canvasEvidenceId + ":" + moduleId;
       },
 
-      saveCanvasNote() {
+      async saveCanvasNote() {
         if (!this.canvasSelectedModuleId) return;
-        this.notesByKey[this.canvasNoteKeyFor(this.canvasSelectedModuleId)] =
-          this.canvasNoteDraft;
+        const moduleId = this.canvasSelectedModuleId;
+        const body = this.canvasNoteDraft;
+        // Validate client-side before flashing success — the server rejects
+        // empty/whitespace bodies with 400, so don't optimistically claim success.
+        if (!body.trim()) {
+          this.flashCanvas("Note is empty.");
+          return;
+        }
+        this.notesByKey[this.canvasNoteKeyFor(moduleId)] = body;
         this.flashCanvas("Note saved.");
+        fetch(
+          `/cases/${this.caseId}/evidence/${this.canvasEvidenceId}/notes/${encodeURIComponent(moduleId)}`,
+          {
+            method: "PUT",
+            headers: {
+              "Content-Type": "application/json",
+              "X-CSRF-Token": this.csrfToken,
+            },
+            body: JSON.stringify({ body }),
+          },
+        ).catch(() => {});
+      },
+
+      async _fetchNotesForEvidence(evidenceId) {
+        try {
+          const resp = await fetch(
+            `/cases/${this.caseId}/evidence/${evidenceId}/notes`,
+            { headers: { "X-CSRF-Token": this.csrfToken } },
+          );
+          if (!resp.ok) return;
+          const data = await resp.json();
+          const notes = data.notes || {};
+          Object.entries(notes).forEach(([moduleId, noteBody]) => {
+            this.notesByKey[evidenceId + ":" + moduleId] = noteBody;
+          });
+        } catch (_) {}
       },
 
       // The Output Viewer's single source of truth - Overview, Raw Output,
@@ -3465,6 +3500,24 @@ Add supporting evidence references, screenshots, artifacts, and raw output refer
             sourceModule: output.moduleName,
             includedInReport: false,
           });
+          // Persist to backend (fire-and-forget; dedup handled server-side).
+          fetch(`/cases/${this.caseId}/indicators`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-CSRF-Token": this.csrfToken,
+            },
+            body: JSON.stringify({
+              evidence_id: this.canvasEvidenceId,
+              module_id: output.moduleId,
+              type: ioc.type,
+              value: ioc.value,
+              severity: severityOfModule(mod),
+              confidence: confidenceOfModule(mod),
+              source_evidence: this.canvasEvidenceName,
+              source_module: output.moduleName,
+            }),
+          }).catch(() => {});
         });
         this.flashCanvas("Indicator added.");
       },
@@ -3480,7 +3533,7 @@ Add supporting evidence references, screenshots, artifacts, and raw output refer
         const title = note
           ? note.split("\n")[0].slice(0, 80)
           : output.findings[0] || output.moduleName + " finding";
-        this.caseFindings.push({
+        const finding = {
           id: this.canvasEvidenceId + ":" + output.moduleId + ":" + Date.now(),
           caseId: this.caseId,
           title,
@@ -3490,7 +3543,26 @@ Add supporting evidence references, screenshots, artifacts, and raw output refer
           sourceModule: output.moduleName,
           description,
           includedInReport: false,
-        });
+        };
+        this.caseFindings.push(finding);
+        // Persist to backend.
+        fetch(`/cases/${this.caseId}/findings`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-CSRF-Token": this.csrfToken,
+          },
+          body: JSON.stringify({
+            evidence_id: this.canvasEvidenceId,
+            module_id: output.moduleId,
+            title: finding.title,
+            description: finding.description,
+            severity: finding.severity,
+            confidence: finding.confidence,
+            source_evidence: finding.sourceEvidence,
+            source_module: finding.sourceModule,
+          }),
+        }).catch(() => {});
         this.flashCanvas("Finding created.");
       },
 
@@ -3504,16 +3576,34 @@ Add supporting evidence references, screenshots, artifacts, and raw output refer
             email: "Email Event",
             memory: "Memory Event",
           }[mod ? moduleTierOf(mod) : ""] || "Analysis Event";
+        const nowStr = new Date().toISOString().slice(0, 16); // "YYYY-MM-DDTHH:MM"
+        const tlTitle = output.moduleName + " completed on " + this.canvasEvidenceName;
         this.timelineEvents.push({
           id: this.canvasEvidenceId + ":" + output.moduleId + ":" + Date.now(),
           caseId: this.caseId,
           eventTime: formatTimelineTimestamp(Date.now()),
-          title: output.moduleName + " completed on " + this.canvasEvidenceName,
+          title: tlTitle,
           eventType,
           source: this.canvasEvidenceName + " → " + output.moduleName,
           confidence: confidenceOfModule(mod),
           includedInReport: false,
         });
+        // Persist to the timeline as a milestone so it appears on /cases/<id>/timeline.
+        fetch(`/cases/${this.caseId}/timeline/items/json`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-CSRF-Token": this.csrfToken,
+          },
+          body: JSON.stringify({
+            type: "milestone",
+            title: tlTitle,
+            description: eventType + " detected via " + output.moduleName,
+            timeline_time: nowStr,
+            linked_evidence_id: this.canvasEvidenceId,
+            linked_result_label: output.moduleName,
+          }),
+        }).catch(() => {});
         this.flashCanvas("Added to timeline.");
       },
 

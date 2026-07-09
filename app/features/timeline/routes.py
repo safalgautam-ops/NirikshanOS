@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from quart import Blueprint, abort, g, redirect, render_template, request, url_for
+from quart import Blueprint, abort, g, jsonify, redirect, render_template, request, url_for
 
 from app.core.security.org_permissions import get_user_org_membership, is_org_owner
 from app.core.security.permissions import get_visible_nav_keys
@@ -188,3 +188,47 @@ async def update_item_view(case_id: str, item_id: str):
         metadata={"type": item["type"]},
     )
     return redirect(url_for("timeline.case_view", case_id=case_id))
+
+
+@timeline_bp.route("/cases/<case_id>/timeline/items/json", methods=["POST"])
+@login_required
+async def create_item_json_view(case_id: str):
+    """JSON variant of create_item_view for the canvas Add to Timeline button.
+
+    Accepts the same fields as the form route but as a JSON body, and returns
+    the new item ID rather than redirecting. The canvas has no page to redirect
+    to, so this is the only shape that works from a background fetch call.
+    """
+    await _require_visible_case(case_id)
+    body = await request.get_json(silent=True) or {}
+    try:
+        item_id = await create_item(
+            case_id=case_id,
+            item_type=body.get("type", "milestone"),
+            title=body.get("title", ""),
+            description=body.get("description", ""),
+            timeline_time=body.get("timeline_time", ""),
+            created_by=g.user_id,
+            status=body.get("status", ""),
+            priority=body.get("priority", ""),
+            assigned_to=body.get("assigned_to", ""),
+            due_date=body.get("due_date", ""),
+            linked_evidence_id=body.get("linked_evidence_id", ""),
+            linked_result_label=body.get("linked_result_label", ""),
+            visibility=body.get("visibility", ""),
+        )
+    except TimelineError as exc:
+        return jsonify({"error": str(exc)}), 400
+    # Audit logging is best-effort: a failure here must not 500 after the item
+    # is already committed, which would cause the client to retry and create a duplicate.
+    try:
+        await audit_service.record_case_activity(
+            case_id=case_id,
+            actor_id=g.user_id,
+            action=audit_service.TIMELINE_ITEM_ADDED,
+            target_label=body.get("title", ""),
+            metadata={"type": body.get("type", "milestone"), "source": "canvas"},
+        )
+    except Exception:
+        pass
+    return jsonify({"id": item_id}), 201

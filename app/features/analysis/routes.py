@@ -24,7 +24,7 @@ from quart import Blueprint, abort, g, jsonify, request
 from app.config import Config
 from app.core.security.org_permissions import get_user_org_membership, is_org_owner
 from app.core.security.sessions import login_required
-from app.features.analysis import job_service, repository, result_service
+from app.features.analysis import findings_service, job_service, notes_service, repository, result_service
 from app.features.analysis.planner import create_analysis_plan
 from app.features.analysis.policy import check_can_run
 from app.features.analysis.service import (
@@ -292,3 +292,153 @@ async def cancel_job_view(job_id: str):
         return jsonify({"job_id": job_id, "status": job["status"]}), 200
     await repository.cancel_job(job_id)
     return jsonify({"job_id": job_id, "status": "cancelled"}), 200
+
+
+@analysis_bp.route("/cases/<case_id>/evidence/<evidence_id>/notes/<module_id>", methods=["PUT"])
+@login_required
+async def save_note_view(case_id: str, evidence_id: str, module_id: str):
+    """Create or update the caller's note for one evidence+module pair.
+
+    One note per (evidence, module, author). Subsequent PUTs overwrite the body.
+    Returns 204 on success.
+    """
+    await _require_visible_case(case_id)
+    evidence = await get_evidence(evidence_id)
+    if not evidence or evidence["case_id"] != case_id:
+        abort(404)
+
+    body = await request.get_json(silent=True) or {}
+    note_body: str = body.get("body", "")
+
+    try:
+        await notes_service.save_note(
+            case_id=case_id,
+            evidence_id=evidence_id,
+            module_id=module_id,
+            author_id=g.user_id,
+            body=note_body,
+        )
+    except notes_service.NoteError as exc:
+        return jsonify({"error": str(exc)}), 400
+
+    return "", 204
+
+
+@analysis_bp.route("/cases/<case_id>/evidence/<evidence_id>/notes")
+@login_required
+async def list_notes_view(case_id: str, evidence_id: str):
+    """Return all notes the caller authored for one evidence file.
+
+    Keyed as { "<module_id>": "<body>" } so the frontend can populate
+    notesByKey on canvas open without a note-per-module round trip.
+    """
+    await _require_visible_case(case_id)
+    evidence = await get_evidence(evidence_id)
+    if not evidence or evidence["case_id"] != case_id:
+        abort(404)
+
+    notes = await notes_service.list_notes_for_evidence(evidence_id)
+    my_notes = {n["module_id"]: n["body"] for n in notes if n["author_id"] == g.user_id}
+    return jsonify({"notes": my_notes})
+
+
+# ── Findings ──────────────────────────────────────────────────────────────────
+
+@analysis_bp.route("/cases/<case_id>/findings", methods=["POST"])
+@login_required
+async def create_finding_view(case_id: str):
+    """Persist an analyst-authored finding for a case. Returns the new ID."""
+    await _require_visible_case(case_id)
+    body = await request.get_json(silent=True) or {}
+    try:
+        finding_id = await findings_service.create_finding(
+            case_id=case_id,
+            evidence_id=body.get("evidence_id"),
+            module_id=body.get("module_id"),
+            author_id=g.user_id,
+            title=body.get("title", ""),
+            description=body.get("description", ""),
+            severity=body.get("severity", "medium"),
+            confidence=body.get("confidence", "medium"),
+            source_evidence=body.get("source_evidence"),
+            source_module=body.get("source_module"),
+        )
+    except findings_service.FindingError as exc:
+        return jsonify({"error": str(exc)}), 400
+    return jsonify({"id": finding_id}), 201
+
+
+@analysis_bp.route("/cases/<case_id>/findings")
+@login_required
+async def list_findings_view(case_id: str):
+    """Return all findings for a case, ordered oldest-first."""
+    await _require_visible_case(case_id)
+    findings = await findings_service.list_findings(case_id)
+    return jsonify({"findings": [
+        {
+            "id": f["id"],
+            "title": f["title"],
+            "description": f["description"],
+            "severity": f["severity"],
+            "confidence": f["confidence"],
+            "evidence_id": f["evidence_id"],
+            "module_id": f["module_id"],
+            "source_evidence": f["source_evidence"],
+            "source_module": f["source_module"],
+            "author_id": f["author_id"],
+            "created_at": _serialize_dt(f.get("created_at")),
+        }
+        for f in findings
+    ]})
+
+
+# ── Indicators ────────────────────────────────────────────────────────────────
+
+@analysis_bp.route("/cases/<case_id>/indicators", methods=["POST"])
+@login_required
+async def create_indicator_view(case_id: str):
+    """Persist an IOC for a case. Silently deduplicates by (case, type, value)."""
+    await _require_visible_case(case_id)
+    body = await request.get_json(silent=True) or {}
+    try:
+        indicator_id = await findings_service.create_indicator(
+            case_id=case_id,
+            evidence_id=body.get("evidence_id"),
+            module_id=body.get("module_id"),
+            author_id=g.user_id,
+            ioc_type=body.get("type", ""),
+            value=body.get("value", ""),
+            severity=body.get("severity", "medium"),
+            confidence=body.get("confidence", "medium"),
+            source_evidence=body.get("source_evidence"),
+            source_module=body.get("source_module"),
+        )
+    except findings_service.FindingError as exc:
+        return jsonify({"error": str(exc)}), 400
+    # 200 for a silently-skipped duplicate (no resource was created), 201 for new.
+    status = 201 if indicator_id is not None else 200
+    return jsonify({"id": indicator_id}), status
+
+
+@analysis_bp.route("/cases/<case_id>/indicators")
+@login_required
+async def list_indicators_view(case_id: str):
+    """Return all indicators for a case, ordered oldest-first."""
+    await _require_visible_case(case_id)
+    indicators = await findings_service.list_indicators(case_id)
+    return jsonify({"indicators": [
+        {
+            "id": i["id"],
+            "type": i["ioc_type"],
+            "value": i["value"],
+            "severity": i["severity"],
+            "confidence": i["confidence"],
+            "evidence_id": i["evidence_id"],
+            "module_id": i["module_id"],
+            "source_evidence": i["source_evidence"],
+            "source_module": i["source_module"],
+            "author_id": i["author_id"],
+            "created_at": _serialize_dt(i.get("created_at")),
+        }
+        for i in indicators
+    ]})
