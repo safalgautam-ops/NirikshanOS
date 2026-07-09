@@ -59,9 +59,6 @@ import time  # measure how long the container runs
 from dataclasses import dataclass  # define the RunConfig dataclass
 from pathlib import Path  # clean file system path handling
 
-from app.features.analysis.module_registry import (
-    MODULES,  # backend approved module registry
-)
 
 JOBS_BASE_DIR = os.environ.get("JOBS_DIR", "/storage/jobs")
 
@@ -136,37 +133,6 @@ def _validate_config_shape(
 # ---------------------------------------------------------------------------
 # Registry guard (defense-in-depth against stale DB / upstream bugs)
 # ---------------------------------------------------------------------------
-
-
-def _validate_against_registry(config: RunConfig) -> None:
-    """Refuse to run if the config doesn't exactly match module_registry.MODULES.
-
-    Policy and module validation already ran upstream (policy.py → routes.py →
-    job_service.py). This guard catches cases where the plan in the DB diverged
-    from the live registry — e.g. a module was disabled after the job was
-    queued, or a coding bug let a wrong image through.
-
-    Imports MODULES directly from module_registry to avoid depending on
-    service.py (which could import docker_runner.py later, causing a circular
-    import).
-    """
-    for entry in config.modules:
-        module_id = entry.get("id", "")
-        module = MODULES.get(module_id)
-
-        if module is None:
-            raise ValueError(
-                f"Module '{module_id}' not in registry — refusing to execute"
-            )
-
-        if not module.enabled:
-            raise ValueError(f"Module '{module_id}' is disabled — refusing to execute")
-
-        if module.runtime_image != config.runtime_image:
-            raise ValueError(
-                f"Image mismatch for '{module_id}': "
-                f"registry='{module.runtime_image}', config='{config.runtime_image}'"
-            )
 
 
 # ---------------------------------------------------------------------------
@@ -357,7 +323,6 @@ async def run_container(config: RunConfig) -> RunResult:
 
     try:
         _validate_config_shape(config)
-        _validate_against_registry(config)
 
         workspace = _workspace(config.job_id)
         stdout_path, stderr_path, output_dir = _prepare_workspace(config, workspace)

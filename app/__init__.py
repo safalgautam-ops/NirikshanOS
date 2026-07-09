@@ -29,6 +29,7 @@ from app.extensions import close_redis, get_redis, init_redis
 from app.features.analysis.routes import analysis_bp
 from app.features.auth.repository import get_user_by_id
 from app.features.auth.routes import auth_bp
+from app.features.admin_modules.routes import admin_modules_bp
 from app.features.notes.routes import notes_bp
 from app.features.reports.routes import reports_bp
 from app.features.cases.routes import cases_bp
@@ -145,6 +146,7 @@ def create_app() -> Quart:
     app.register_blueprint(cases_bp)
     app.register_blueprint(evidence_bp)
     app.register_blueprint(analysis_bp)
+    app.register_blueprint(admin_modules_bp)
     app.register_blueprint(notes_bp)
     app.register_blueprint(reports_bp)
     app.register_blueprint(timeline_bp)

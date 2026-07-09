@@ -19,8 +19,8 @@ import redis.asyncio as aioredis
 from app.config import Config
 from app.core.db.pool import close_pool, init_pool
 from app.core.object_storage import download_object
+from app.features.admin_modules import repository as module_defs_repo
 from app.features.analysis import repository
-from app.features.analysis.module_registry import MODULES
 from app.features.analysis.parser_service import parse_module_output
 from app.features.analysis.queue_service import POP_TIMEOUT, _key
 from app.features.evidence.repository import get_evidence
@@ -59,19 +59,31 @@ async def _process_job(job_id: str) -> None:
         local_path=str(local_evidence),
     )
 
-    # Build the modules list for job_config.json (same format run_analysis.py reads).
+    # Load each module's DB row once — used for yaml_definition, timeout, and parser_name.
+    _module_defs: dict[str, dict] = {}
+    for t in tasks:
+        db_mod = await module_defs_repo.get_module(t["module_id"])
+        if db_mod:
+            _module_defs[t["module_id"]] = db_mod
+
+    # Build modules list for job_config.json.
+    # Embed execution_spec when the DB row has a yaml_definition so the container
+    # dispatches via loader.run_yaml_module() instead of its local Python handler.
     modules_list = [
         {
             "id":      t["module_id"],
             "name":    t["module_name"],
             "options": json.loads(t["options_json"]) if t.get("options_json") else {},
+            **({"execution_spec": _module_defs[t["module_id"]]["yaml_definition"]}
+               if t["module_id"] in _module_defs and _module_defs[t["module_id"]].get("yaml_definition")
+               else {}),
         }
         for t in tasks
     ]
 
-    # Use the maximum timeout across all modules in this job.
     timeout = max(
-        (MODULES[m["id"]].timeout_seconds for m in modules_list if m["id"] in MODULES),
+        (_module_defs[m["id"]]["timeout_seconds"] if m["id"] in _module_defs else 120
+         for m in modules_list),
         default=120,
     )
 
@@ -115,10 +127,10 @@ async def _process_job(job_id: str) -> None:
                     task["id"], "failed", error_message=result.error_message
                 )
 
-        # Parse output and save to analysis_results regardless of status so the
-        # Result Canvas always has something to show even for partial runs.
-        module = MODULES.get(task["module_id"])
-        if module is not None:
+        # Parse output and save to analysis_results regardless of status.
+        db_mod = _module_defs.get(task["module_id"])
+        parser_name = db_mod["parser_name"] if db_mod and db_mod.get("parser_name") else ""
+        if parser_name:
             safe_module = task["module_id"].replace(".", "_").replace("/", "_")
             stdout_path = str(Path(result.output_dir) / f"{safe_module}.txt")
             stderr_path = str(Path(result.output_dir) / f"{safe_module}.stderr.txt")
@@ -127,7 +139,7 @@ async def _process_job(job_id: str) -> None:
                 exit_code = result.exit_code
 
             parsed = parse_module_output(
-                parser_name=module.parser_name,
+                parser_name=parser_name,
                 stdout_path=stdout_path,
                 stderr_path=stderr_path,
                 exit_code=exit_code,

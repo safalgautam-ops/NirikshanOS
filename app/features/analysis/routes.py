@@ -62,7 +62,7 @@ async def compatible_modules_view(case_id: str, evidence_id: str):
         abort(404)
 
     evidence_type = detect_evidence_type(evidence)
-    modules = get_compatible_modules(evidence_type)
+    modules = await get_compatible_modules(evidence_type)
     return jsonify(
         {
             "case_id": case_id,
@@ -76,15 +76,15 @@ async def compatible_modules_view(case_id: str, evidence_id: str):
 @analysis_bp.route("/analysis/modules")
 @login_required
 async def list_modules_view():
-    modules = list_modules()
+    modules = await list_modules()
     return jsonify({"modules": [serialize_module(module) for module in modules]})
 
 
 @analysis_bp.route("/analysis/modules/<module_id>")
 @login_required
 async def get_module_view(module_id: str):
-    module = get_module(module_id)
-    if module is None or not module.enabled:
+    module = await get_module(module_id)
+    if module is None or not module["is_enabled"] or module["status"] != "published":
         abort(404)
     return jsonify(serialize_module(module))
 
@@ -134,7 +134,7 @@ async def analyze_evidence_view(case_id: str, evidence_id: str):
         ]}), 403
 
     # Load the full AnalysisModule objects (validated by policy above).
-    selected_modules = validate_selected_modules(module_ids, evidence_type)
+    selected_modules = await validate_selected_modules(module_ids, evidence_type)
 
     # Group into the minimal set of jobs.
     plan = create_analysis_plan(selected_modules)

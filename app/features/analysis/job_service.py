@@ -44,8 +44,8 @@ async def create_jobs_from_plan(
     result = CreateJobsResult()
 
     for job_plan in plan:
-        new_modules = [m for m in job_plan.modules if m.id not in active_module_ids]
-        already_active = [m.id for m in job_plan.modules if m.id in active_module_ids]
+        new_modules = [m for m in job_plan.modules if m["id"] not in active_module_ids]
+        already_active = [m["id"] for m in job_plan.modules if m["id"] in active_module_ids]
         result.skipped_modules.extend(already_active)
 
         if not new_modules:
@@ -64,11 +64,11 @@ async def create_jobs_from_plan(
             batchable=job_plan.batchable,
         )
         for module in new_modules:
-            options = (module_options or {}).get(module.id)
+            options = (module_options or {}).get(module["id"])
             await repository.create_task(
                 job_id=job_id,
-                module_id=module.id,
-                module_name=module.name,
+                module_id=module["id"],
+                module_name=module["display_name"],
                 options_json=options,
             )
         await queue_service.enqueue_job(job_id, job_plan.queue_name)
