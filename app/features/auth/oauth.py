@@ -152,6 +152,7 @@ async def google_exchange_code(code: str) -> dict:
     return {
         "id": info["id"],
         "email": info["email"],
+        "email_verified": info.get("verified_email", False),
         "name": info.get("name", ""),
         "image": info.get("picture"),
         "access_token": tokens.get("access_token"),
@@ -238,6 +239,7 @@ async def github_exchange_code(code: str) -> dict:
     return {
         "id": str(info["id"]),
         "email": email,
+        "email_verified": email is not None,  # GitHub only returns verified emails (see emails loop above)
         "name": info.get("name") or info.get("login", ""),
         "image": info.get("avatar_url"),
         "access_token": access_token,

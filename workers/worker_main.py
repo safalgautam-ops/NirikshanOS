@@ -14,6 +14,8 @@ import asyncio
 import json
 from pathlib import Path
 
+import yaml
+
 import redis.asyncio as aioredis
 
 from app.config import Config
@@ -41,13 +43,18 @@ async def _process_job(job_id: str) -> None:
     await repository.update_job_status(job_id, "running")
     for task in tasks:
         await repository.update_task_status(task["id"], "running")
+    running_task_ids = [t["id"] for t in tasks]
 
     # Fetch evidence row to get the MinIO s3_key.
     evidence = await get_evidence(job["evidence_id"])
     if not evidence or not evidence.get("s3_key"):
-        await repository.update_job_status(
-            job_id, "failed", error_message="Evidence not found or not uploaded to storage"
-        )
+        error_msg = "Evidence not found or not uploaded to storage"
+        await repository.update_job_status(job_id, "failed", error_message=error_msg)
+        for task_id in running_task_ids:
+            try:
+                await repository.update_task_status(task_id, "failed", error_message=error_msg)
+            except Exception:
+                pass
         return
 
     # Download evidence from MinIO to local path for docker bind mount.
@@ -69,8 +76,9 @@ async def _process_job(job_id: str) -> None:
             _module_files[t["module_id"]] = await module_defs_repo.list_files(t["module_id"])
 
     # Build modules list for job_config.json.
-    # Embed files array so the container loader can write them to disk and execute
-    # the entry point instead of falling back to a built-in Python handler.
+    # For DB-managed modules (those with files in admin_modules), convert the
+    # entry point file into an execution_spec dict that run_analysis.py can
+    # dispatch via registry.dispatch_spec() → loader.run_yaml_module().
     modules_list = []
     for t in tasks:
         options: dict = {}
@@ -86,14 +94,28 @@ async def _process_job(job_id: str) -> None:
         }
         files = _module_files.get(t["module_id"], [])
         if files:
-            entry["files"] = [
-                {
-                    "filename":       f["filename"],
-                    "content":        f["content"] or "",
-                    "is_entry_point": bool(f["is_entry_point"]),
+            entry_file = next((f for f in files if f["is_entry_point"]), files[0])
+            filename = entry_file["filename"]
+            content  = entry_file["content"] or ""
+            ext      = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+
+            if ext in ("yaml", "yml"):
+                try:
+                    spec = yaml.safe_load(content) or {}
+                    spec["id"] = t["module_id"]
+                    entry["execution_spec"] = spec
+                except Exception as exc:
+                    print(f"[worker] failed to parse YAML entry point for {t['module_id']}: {exc}")
+            else:
+                # Python (or any other text file): run as embedded script.
+                # The container's exec namespace provides: options, output_dir,
+                # stdout_path, stderr_path, run_cmd, read_file, Path.
+                # The script may set `result`; if not, a default success/fail is
+                # built from whether stdout_path was written.
+                entry["execution_spec"] = {
+                    "id":     t["module_id"],
+                    "script": content,
                 }
-                for f in files
-            ]
         modules_list.append(entry)
 
     timeout = max(
@@ -116,11 +138,39 @@ async def _process_job(job_id: str) -> None:
     print(f"[worker] container done exit_code={result.exit_code} time={result.execution_time:.1f}s")
 
     # Read result.json the entrypoint wrote to /output.
+    # A missing result.json after exit_code=0 means the image does not implement
+    # the NirikshanOS contract (e.g. python:3.11-slim has no entrypoint that
+    # writes it). Treat that as a hard failure so the UI doesn't show false success.
     module_statuses: dict = {}
     result_json = Path(result.output_dir) / "result.json"
-    if result_json.exists():
+    result_json_missing = not result_json.exists()
+    if result_json_missing:
+        if result.exit_code == 0:
+            print(f"[worker] result.json not written by container — treating as failure")
+            result = result.__class__(
+                exit_code=-1,
+                stdout_path=result.stdout_path,
+                stderr_path=result.stderr_path,
+                output_dir=result.output_dir,
+                artifacts=result.artifacts,
+                execution_time=result.execution_time,
+                error_message="Container exited 0 but did not write result.json — image may not implement the NirikshanOS analyzer contract",
+            )
+    else:
         try:
-            module_statuses = json.loads(result_json.read_text()).get("modules", {})
+            parsed_json = json.loads(result_json.read_text())
+            module_statuses = parsed_json.get("modules", {})
+            # "partial" means some modules failed; surface that at the job level.
+            if parsed_json.get("status") == "partial" and not result.error_message:
+                result = result.__class__(
+                    exit_code=result.exit_code,
+                    stdout_path=result.stdout_path,
+                    stderr_path=result.stderr_path,
+                    output_dir=result.output_dir,
+                    artifacts=result.artifacts,
+                    execution_time=result.execution_time,
+                    error_message="One or more modules failed (partial)",
+                )
         except Exception as e:
             print(f"[worker] could not parse result.json: {e}")
 
@@ -135,7 +185,9 @@ async def _process_job(job_id: str) -> None:
                 task["id"], "failed", error_message=entry.get("error")
             )
         else:
-            if result.exit_code == 0:
+            # No entry in result.json for this module (missing result.json, or
+            # module not listed). Use container exit code as the best signal.
+            if result.exit_code == 0 and not result_json_missing:
                 await repository.update_task_status(task["id"], "completed")
             else:
                 await repository.update_task_status(
@@ -181,13 +233,29 @@ async def _process_job(job_id: str) -> None:
             except Exception as e:
                 print(f"[worker] could not save result for task={task['id']}: {e}")
 
-    # Update job status.
+    # Update job status. "partial" surfaces to the UI as failed-with-reason so
+    # analysts are not misled by a green "completed" on a job that had module failures.
     if result.error_message:
         await repository.update_job_status(job_id, "failed", error_message=result.error_message)
     else:
         await repository.update_job_status(job_id, "completed")
 
     print(f"[worker] job {job_id} finished")
+
+
+async def _mark_running_tasks_failed(job_id: str, error: str) -> None:
+    """Best-effort: find any tasks still in 'running' for job_id and mark them failed.
+    Called when an unexpected exception escapes _process_job so tasks don't stay stuck."""
+    try:
+        tasks = await repository.list_tasks_for_job(job_id)
+        for task in tasks:
+            if task.get("status") == "running":
+                try:
+                    await repository.update_task_status(task["id"], "failed", error_message=error)
+                except Exception:
+                    pass
+    except Exception:
+        pass
 
 
 async def _run_worker(redis_client: aioredis.Redis) -> None:
@@ -207,6 +275,7 @@ async def _run_worker(redis_client: aioredis.Redis) -> None:
                 await repository.update_job_status(job_id, "failed", error_message=str(exc))
             except Exception:
                 pass
+            await _mark_running_tasks_failed(job_id, str(exc))
 
 
 async def main() -> None:

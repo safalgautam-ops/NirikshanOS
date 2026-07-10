@@ -68,6 +68,16 @@ JOBS_BASE_DIR = os.environ.get("JOBS_DIR", "/storage/jobs")
 # job_id is used to create a folder path so it must be sanitized to avoid path traversal.
 _JOB_ID_RE = re.compile(r"^[a-zA-Z0-9_-]+$")
 
+# Allowlist of Docker images the runner is permitted to launch. Set the env var
+# ALLOWED_RUNTIME_IMAGES (comma-separated) to add images without rebuilding.
+# The DB controls which image a job requests — without this check, an admin
+# could schedule a job with an arbitrary image (e.g. alpine + shell payload).
+_ALLOWED_RUNTIME_IMAGES: frozenset[str] = frozenset(
+    img.strip()
+    for img in os.environ.get("ALLOWED_RUNTIME_IMAGES", "dfir/basic-tools:1.0").split(",")
+    if img.strip()
+)
+
 # Hard resource caps per isolation_level. Unknown levels are rejected by
 # _validate_config_shape — there is no silent fallback to weaker limits.
 _RESOURCE_LIMITS: dict[str, dict[str, str]] = {
@@ -127,6 +137,12 @@ def _validate_config_shape(
         raise ValueError(
             f"Unknown isolation_level: {config.isolation_level!r}. "
             f"Must be one of: {sorted(_RESOURCE_LIMITS)}"
+        )
+
+    if config.runtime_image not in _ALLOWED_RUNTIME_IMAGES:
+        raise ValueError(
+            f"Disallowed runtime_image: {config.runtime_image!r}. "
+            f"Must be one of: {sorted(_ALLOWED_RUNTIME_IMAGES)}"
         )
 
 

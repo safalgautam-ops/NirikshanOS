@@ -22,6 +22,7 @@ from quart import (
 )
 
 from app.core.security.permissions import get_visible_nav_keys
+from app.core.security.rate_limit import check_rate_limit
 from app.core.security.sessions import (
     PENDING_2FA_COOKIE,
     SESSION_COOKIE,
@@ -112,6 +113,7 @@ async def login():
         email = form.get("email", "").strip().lower()
         password = form.get("password", "")
         next_url = _safe_next(form.get("next")) or next_url
+        await check_rate_limit(f"rate:login:{_ip()}", max_attempts=10, window_seconds=900)
         try:
             user_id = await authenticate(email=email, password=password)
         except EmailNotVerifiedError as exc:
@@ -192,6 +194,7 @@ async def activate():
         email = form.get("email", "").strip().lower()
         code = form.get("code", "").strip()
         next_url = _safe_next(form.get("next")) or next_url
+        await check_rate_limit(f"rate:activate:{email}", max_attempts=10, window_seconds=3600)
         try:
             await activate_account(email, code)
         except AuthError as exc:
@@ -365,6 +368,7 @@ async def verify_2fa_view():
     if request.method == "POST":
         form = await request.form
         code = form.get("code", "").strip()
+        await check_rate_limit(f"rate:2fa:{token[:16]}", max_attempts=5, window_seconds=900)
         try:
             await verify_2fa(user_id, code)
         except AuthError as exc:
@@ -415,6 +419,15 @@ async def setup_2fa():
 @auth_bp.route("/2fa/disable", methods=["POST"])
 @login_required
 async def disable_2fa():
+    form = await request.form
+    code = form.get("code", "").strip()
+    if not code:
+        return redirect(url_for("auth.settings_connections", tab="security",
+                                error="Enter your authenticator code to disable 2FA."))
+    try:
+        await verify_2fa(g.user_id, code)
+    except AuthError as exc:
+        return redirect(url_for("auth.settings_connections", tab="security", error=str(exc)))
     await disable_totp(g.user_id)
     return redirect(url_for("auth.settings_connections", tab="security"))
 
@@ -465,6 +478,11 @@ async def passkey_auth_complete():
     credential = body.get("credential", {})
     try:
         user_id = await complete_passkey_authentication(challenge_key, credential)
+    except TwoFactorRequiredError as exc:
+        pending = create_pending_2fa_token(exc.user_id, current_app.config["SECRET_KEY"])
+        resp = await make_response(jsonify({"redirect": url_for("auth.verify_2fa_view")}))
+        resp.set_cookie(PENDING_2FA_COOKIE, pending, max_age=300, httponly=True, samesite="Lax")
+        return resp
     except Exception as exc:
         return jsonify({"error": str(exc)}), 400
 

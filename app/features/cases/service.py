@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from app.features.cases import repository
 from app.features.cases.choices import CLASSIFICATIONS, FORENSIC_STATUSES, SEVERITIES
+from app.features.organizations import repository as org_repository
 
 _CLASSIFICATION_VALUES = {value for value, _label in CLASSIFICATIONS}
 _SEVERITY_VALUES = {value for value, _label in SEVERITIES}
@@ -77,8 +78,9 @@ async def create_case(
         forensic_status=forensic_status,
         created_by=created_by,
     )
-    for member_id in dict.fromkeys(member_ids):  # de-dupe, preserve submitted order
-        if member_id and member_id != created_by:
+    org_member_ids = {m["id"] for m in await org_repository.list_members(organization_id)}
+    for member_id in dict.fromkeys(member_ids):
+        if member_id and member_id != created_by and member_id in org_member_ids:
             await repository.add_member(case_id, member_id, added_by=created_by)
     return case_id
 
@@ -113,6 +115,9 @@ async def add_member(case_id: str, user_id: str, *, added_by: str) -> None:
     case = await repository.get_case(case_id)
     if not case:
         raise CaseError("Case not found.")
+    org_member_ids = {m["id"] for m in await org_repository.list_members(case["organization_id"])}
+    if user_id not in org_member_ids:
+        raise CaseError("That user is not a member of this organization.")
     if user_id == case["created_by"]:
         raise CaseError("The case's creator already has access.")
     if await repository.is_case_member(case_id, user_id):

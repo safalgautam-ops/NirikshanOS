@@ -85,20 +85,24 @@ async def authenticate(*, email: str, password: str) -> str:
     """
     Validate email+password credentials. Returns user_id on success.
     Raises EmailNotVerifiedError, TwoFactorRequiredError, or AuthError.
+
+    Password is checked FIRST so that a wrong password and a non-existent
+    account both return the same error — prevents account enumeration via
+    error-message differences or timing differences between a missing-user
+    fast-path and a real password check.
     """
     user = await repository.get_user_by_email(email)
-    if not user:
+    pw_hash = await repository.get_credential_password_hash(user["id"]) if user else None
+    password_ok = pw_hash is not None and verify_password(pw_hash, password)
+    if not password_ok:
         raise AuthError("Invalid email or password.")
 
+    # Password is correct. Now reveal account-state issues to help the user.
     if not user["emailVerified"]:
         raise EmailNotVerifiedError(user["email"])
 
     if not user["isActive"]:
         raise AuthError("This account has been disabled.")
-
-    pw_hash = await repository.get_credential_password_hash(user["id"])
-    if not pw_hash or not verify_password(pw_hash, password):
-        raise AuthError("Invalid email or password.")
 
     if user["twoFactorEnabled"]:
         raise TwoFactorRequiredError(user["id"])
@@ -207,8 +211,11 @@ async def oauth_authenticate(provider_id: str, user_info: dict) -> str:
     if account:
         return account["userId"]
 
-    # Email already registered → link and return
-    if user_info.get("email"):
+    # Email already registered → link and return, but only if the provider
+    # has actually verified this email address. An unverified provider email
+    # could be a name squatting attack: attacker claims any email, gets
+    # auto-linked to the victim's account.
+    if user_info.get("email") and user_info.get("email_verified", False):
         user = await repository.get_user_by_email(user_info["email"])
         if user:
             await repository.create_oauth_account(
@@ -331,7 +338,12 @@ async def begin_passkey_authentication(challenge_key: str) -> dict:
 
 
 async def complete_passkey_authentication(challenge_key: str, credential: dict) -> str:
-    """Returns user_id of the authenticated user."""
+    """Returns user_id of the authenticated user.
+
+    Raises AuthError if the account is disabled.
+    Raises TwoFactorRequiredError if the account has TOTP enabled — the
+    passkey proves device possession but TOTP is still required if configured.
+    """
     credential_id = credential.get("id", "")
     stored = await repository.get_passkey_by_credential_id(credential_id)
     if not stored:
@@ -341,4 +353,11 @@ async def complete_passkey_authentication(challenge_key: str, credential: dict) 
         challenge_key, credential, stored
     )
     await repository.update_passkey_counter(credential_id, new_counter)
+
+    user = await repository.get_user_by_id(stored["userId"])
+    if not user or not user["isActive"]:
+        raise AuthError("This account has been disabled.")
+    if user["twoFactorEnabled"]:
+        raise TwoFactorRequiredError(user["id"])
+
     return stored["userId"]

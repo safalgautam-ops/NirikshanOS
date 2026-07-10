@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 
 from quart import Blueprint, g, jsonify, redirect, render_template, request, url_for
@@ -18,6 +19,15 @@ _ALLOWED_EXTENSIONS = {
     ".py", ".yaml", ".yml", ".sh", ".json", ".txt", ".md", ".toml", ".ini", ".conf",
 }
 _ID_RE = re.compile(r"^[a-z0-9_\-]{1,100}$")
+
+# Mirror the same env-var-driven allowlist used in docker_runner.py so that
+# disallowed images are rejected at the API layer, not just at run time.
+_DEFAULT_RUNTIME_IMAGE = "dfir/basic-tools:1.0"
+_ALLOWED_RUNTIME_IMAGES: frozenset[str] = frozenset(
+    img.strip()
+    for img in os.environ.get("ALLOWED_RUNTIME_IMAGES", _DEFAULT_RUNTIME_IMAGE).split(",")
+    if img.strip()
+)
 
 
 def _ext_ok(filename: str) -> bool:
@@ -58,7 +68,9 @@ async def create_view():
     tier = body.get("tier") or "free"
     if tier not in KNOWN_TIERS:
         return jsonify({"error": f"Invalid tier '{tier}'"}), 400
-    runtime_image = (body.get("runtime_image") or "python:3.11-slim").strip()
+    runtime_image = (body.get("runtime_image") or _DEFAULT_RUNTIME_IMAGE).strip()
+    if runtime_image not in _ALLOWED_RUNTIME_IMAGES:
+        return jsonify({"error": f"runtime_image '{runtime_image}' is not on the allowlist. Allowed: {sorted(_ALLOWED_RUNTIME_IMAGES)}"}), 400
     await repository.create_custom_module(
         module_id=module_id,
         display_name=display_name,

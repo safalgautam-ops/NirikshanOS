@@ -1,4 +1,16 @@
 services:
+  # Analyzer container image — built once so the worker can `docker run dfir/basic-tools:1.0`.
+  # This service exits immediately after build; it exists only so `docker compose build`
+  # produces the image. The worker launches it directly via the Docker socket, not compose.
+  analyzer-basic-tools:
+    build:
+      context: ./docker/analyzers/basic-tools
+      dockerfile: Dockerfile
+    image: dfir/basic-tools:1.0
+    entrypoint: ["true"]
+    profiles:
+      - build-only
+
   # Public entrypoint - only this service is reachable from the host (port 80).
   nginx:
     image: nginx:alpine

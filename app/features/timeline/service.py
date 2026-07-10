@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 
+from app.features.evidence.repository import get_evidence as _get_evidence
 from app.features.timeline import repository
 from app.features.timeline.choices import ITEM_TYPES, NOTE_VISIBILITIES, TASK_PRIORITIES, TASK_STATUSES
 
@@ -87,6 +88,20 @@ def _type_specific_fields(
     return {}  # milestone needs nothing beyond the shared fields
 
 
+async def _validate_case_foreign_keys(case_id: str, assigned_to: str, linked_evidence_id: str) -> None:
+    """Verify that assigned_to is a case member and linked_evidence_id belongs to this case."""
+    if assigned_to:
+        from app.features.cases.repository import get_case, is_case_member
+        case = await get_case(case_id)
+        if case and assigned_to != case["created_by"]:
+            if not await is_case_member(case_id, assigned_to):
+                raise TimelineError("The assigned user is not a member of this case.")
+    if linked_evidence_id:
+        ev = await _get_evidence(linked_evidence_id)
+        if not ev or ev["case_id"] != case_id:
+            raise TimelineError("The linked evidence does not belong to this case.")
+
+
 async def create_item(
     *,
     case_id: str,
@@ -105,6 +120,7 @@ async def create_item(
 ) -> str:
     if item_type not in _ITEM_TYPE_VALUES:
         raise TimelineError("Select a valid item type.")
+    await _validate_case_foreign_keys(case_id, assigned_to, linked_evidence_id)
     fields = _type_specific_fields(
         item_type,
         status=status,
@@ -141,6 +157,9 @@ async def update_item(
     linked_result_label: str = "",
     visibility: str = "",
 ) -> None:
+    existing = await repository.get_timeline_item(item_id)
+    if existing:
+        await _validate_case_foreign_keys(existing["case_id"], assigned_to, linked_evidence_id)
     fields = _type_specific_fields(
         item_type,
         status=status,

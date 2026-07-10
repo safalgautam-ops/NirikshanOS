@@ -38,6 +38,7 @@ from app.features.cases.service import (
 from app.features.auth.repository import get_user_by_id
 from app.features.evidence.service import list_case_evidence
 from app.features.organizations import repository as org_repository
+from app.features.plans.service import get_active_subscription, get_allowed_tiers
 
 
 cases_bp = Blueprint("cases", __name__, url_prefix="/cases")
@@ -195,7 +196,7 @@ async def detail_view(case_id: str):
         member_rows=await _member_rows(case, members, creator, org_id),
         evidence=evidence,
         analyze_evidence=analyze_evidence,
-        user_plan="free",  # Phase 6 replaces this with a real org plan DB lookup
+        user_plan=get_allowed_tiers(await get_active_subscription(org_id))[-1],
         activity_log=await audit_service.get_case_activity_log(case_id),
         classification_label=dict(CLASSIFICATIONS).get(case["classification"], case["classification"] or "—"),
         severity_label=dict(SEVERITIES).get(case["severity"], case["severity"]),

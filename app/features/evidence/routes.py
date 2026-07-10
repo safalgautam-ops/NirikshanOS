@@ -29,6 +29,7 @@ from app.core.security.sessions import login_required
 from app.features.audit import service as audit_service
 from app.features.cases.permissions import EVIDENCE_DELETE, EVIDENCE_UPLOAD
 from app.features.cases.service import get_case_for_user
+from app.features.evidence.repository import get_evidence as _get_evidence_row
 from app.features.evidence.service import (
     EvidenceError,
     cancel_or_delete,
@@ -58,6 +59,16 @@ async def _require_visible_case(case_id: str):
     if not case:
         abort(404)
     return case
+
+
+async def _require_evidence_in_case(evidence_id: str, case_id: str):
+    """404 if evidence_id doesn't exist or belongs to a different case.
+    Prevents IDOR: a user who can see case A cannot read evidence from case B
+    by guessing evidence IDs and substituting the case_id in the URL."""
+    ev = await _get_evidence_row(evidence_id)
+    if not ev or ev["case_id"] != case_id:
+        abort(404)
+    return ev
 
 
 @evidence_bp.route("/<case_id>/evidence")
@@ -109,6 +120,7 @@ async def init_view(case_id: str):
 @login_required
 async def status_view(case_id: str, evidence_id: str):
     await _require_visible_case(case_id)
+    await _require_evidence_in_case(evidence_id, case_id)
     try:
         state = await get_upload_state(evidence_id)
     except EvidenceError as exc:
@@ -120,6 +132,7 @@ async def status_view(case_id: str, evidence_id: str):
 @login_required
 async def part_url_view(case_id: str, evidence_id: str, part_number: int):
     await _require_visible_case(case_id)
+    await _require_evidence_in_case(evidence_id, case_id)
     try:
         url = await get_part_upload_url(evidence_id, part_number)
     except EvidenceError as exc:
@@ -131,6 +144,7 @@ async def part_url_view(case_id: str, evidence_id: str, part_number: int):
 @require_org_permission(EVIDENCE_UPLOAD)
 async def finalize_view(case_id: str, evidence_id: str):
     await _require_visible_case(case_id)
+    await _require_evidence_in_case(evidence_id, case_id)
     try:
         result = await finalize_upload(evidence_id)
     except EvidenceError as exc:
@@ -158,6 +172,7 @@ async def finalize_view(case_id: str, evidence_id: str):
 @require_org_permission(EVIDENCE_UPLOAD)
 async def pause_view(case_id: str, evidence_id: str):
     await _require_visible_case(case_id)
+    await _require_evidence_in_case(evidence_id, case_id)
     try:
         await pause_upload(evidence_id)
     except EvidenceError as exc:
@@ -169,6 +184,7 @@ async def pause_view(case_id: str, evidence_id: str):
 @require_org_permission(EVIDENCE_UPLOAD)
 async def resume_view(case_id: str, evidence_id: str):
     await _require_visible_case(case_id)
+    await _require_evidence_in_case(evidence_id, case_id)
     try:
         await resume_upload(evidence_id)
     except EvidenceError as exc:
@@ -180,6 +196,7 @@ async def resume_view(case_id: str, evidence_id: str):
 @require_org_permission(EVIDENCE_DELETE)
 async def delete_view(case_id: str, evidence_id: str):
     await _require_visible_case(case_id)
+    await _require_evidence_in_case(evidence_id, case_id)
     try:
         result = await cancel_or_delete(evidence_id)
     except EvidenceError as exc:

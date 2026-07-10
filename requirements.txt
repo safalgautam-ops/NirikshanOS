@@ -30,3 +30,7 @@ webauthn
 # Async S3 client (MinIO) - object storage for avatars, org logos,
 # documents, and case evidence (see app/core/object_storage.py)
 aioboto3
+
+# YAML parsing for module execution specs (worker reads .yaml entry points
+# from DB and builds execution_spec dicts for the analyzer container)
+PyYAML

@@ -64,7 +64,7 @@ async def create_custom_module(
         "category":        category,
         "tier":            tier,
         "runtime_image":   runtime_image,
-        "isolation_level": "container",
+        "isolation_level": "sandboxed",
         "batchable":       0,
         "queue_name":      "standard_queue",
         "timeout_seconds": 120,
