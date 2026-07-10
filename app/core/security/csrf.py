@@ -84,9 +84,9 @@ def apply_csrf_protection(app: Quart) -> None:
             response.set_cookie(
                 CSRF_COOKIE,
                 g.csrf_token,
-                httponly=True,
-                samesite="Strict",  # the CSRF cookie is never needed during a link-click
-                secure=False,  # see sessions.py - set True behind TLS
+                httponly=False,  # must be readable by JS for double-submit cookie pattern
+                samesite="Strict",
+                secure=False,  # set True behind TLS in production
             )
         return response
 

@@ -42,7 +42,8 @@ PRODUCTION_CSP = (
 # This meaningfully weakens CSP's main XSS protection, which is exactly why
 # it's gated to QUART_DEBUG and never applied in production.
 DEV_CSP = (
-    "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; "
+    "default-src 'self'; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+    "img-src 'self' data:; "
     "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://cdn.jsdelivr.net; "
     f"connect-src 'self' {Config.MINIO_PRESIGN_ENDPOINT}"
 )

@@ -1,92 +1,187 @@
 {% extends "layouts/base.html" %}
-{% block title %}Analysis Modules — NirikshanOS{% endblock %}
+{% block title %}Modules — NirikshanOS{% endblock %}
 
 {% from "dashboard/components/sidebar.html" import sidebar %}
 {% from "dashboard/components/topbar.html" import topbar %}
+{% from "components/ui/button.html" import button, button_link %}
+{% from "components/ui/badge.html" import badge %}
+{% from "components/ui/card.html" import card, card_header, card_title, card_description, card_panel, card_footer, card_action %}
+{% from "components/ui/empty.html" import empty, empty_header, empty_media, empty_title, empty_description, empty_content %}
+{% from "components/ui/input.html" import input %}
+{% from "components/ui/label.html" import label %}
+{% from "components/ui/textarea.html" import textarea %}
+{% from "components/ui/select-native.html" import select_native %}
+{% from "components/ui/separator.html" import separator %}
 
 {% block body %}
-{{ sidebar(active="admin_modules", visible_keys=visible_keys) }}
+{# Wrap everything in createModuleDialog so the top-bar button and the dialog share scope #}
+<div x-data="createModuleDialog()">
 
-<div class="flex flex-col md:pl-60">
-  {{ topbar("Analysis Modules") }}
+  {{ sidebar(active="admin_modules", visible_keys=visible_keys) }}
 
-  <main class="flex-1 p-6 space-y-8">
+  <div class="flex flex-col md:pl-60">
+    {{ topbar("Modules") }}
 
-    {% if not modules %}
-    <div class="flex flex-col items-center justify-center py-24 gap-3 text-center">
-      <svg class="size-12 text-muted-foreground/30" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-        <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/>
-        <polyline points="14 2 14 8 20 8"/>
-      </svg>
-      <p class="text-sm text-muted-foreground">No modules found.</p>
-    </div>
+    <main class="flex-1 overflow-y-auto p-6 space-y-8">
 
-    {% else %}
-
-    {% for category, group in modules | groupby('category') %}
-    <section>
-      <div class="mb-3 flex items-center gap-3">
-        <h2 class="text-xs font-semibold uppercase tracking-widest text-muted-foreground">{{ category }}</h2>
-        <div class="h-px flex-1 bg-border"></div>
-      </div>
-
-      <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-        {% for mod in group %}
-        <div class="flex flex-col rounded-lg border bg-card p-4 gap-3 transition-shadow hover:shadow-sm">
-
-          {# Header: name + enabled dot #}
-          <div class="flex items-start justify-between gap-2">
-            <div class="min-w-0">
-              <p class="font-semibold text-sm truncate" title="{{ mod.display_name }}">{{ mod.display_name }}</p>
-              <code class="text-[11px] text-muted-foreground font-mono">{{ mod.id }}</code>
-            </div>
-            <span class="mt-0.5 size-2 shrink-0 rounded-full {% if mod.is_enabled %}bg-green-500{% else %}bg-muted-foreground/40{% endif %}"
-                  title="{% if mod.is_enabled %}Enabled{% else %}Disabled{% endif %}"></span>
-          </div>
-
-          {# Description #}
-          {% if mod.description %}
-          <p class="text-xs text-muted-foreground line-clamp-2 flex-1">{{ mod.description }}</p>
-          {% else %}
-          <p class="text-xs text-muted-foreground/40 flex-1 italic">No description.</p>
-          {% endif %}
-
-          {# Badges #}
-          <div class="flex flex-wrap gap-1.5">
-            <span class="rounded px-1.5 py-0.5 text-[10px] font-medium
-              {% if mod.tier == 'enterprise' %}bg-rose-500/15 text-rose-500
-              {% elif mod.tier == 'advanced' %}bg-amber-500/15 text-amber-600
-              {% elif mod.tier == 'standard' %}bg-violet-500/15 text-violet-500
-              {% elif mod.tier == 'basic_triage' %}bg-blue-500/15 text-blue-500
-              {% else %}bg-muted text-muted-foreground{% endif %}">
-              {{ mod.tier }}
-            </span>
-            <span class="rounded px-1.5 py-0.5 text-[10px] font-medium
-              {% if mod.source == 'custom' %}bg-primary/15 text-primary{% else %}bg-muted text-muted-foreground{% endif %}">
-              {{ mod.source }}
-            </span>
-          </div>
-
-          {# Runtime image #}
-          <code class="text-[10px] text-muted-foreground font-mono truncate" title="{{ mod.runtime_image }}">{{ mod.runtime_image }}</code>
-
-          {# Open IDE link #}
-          <a href="{{ url_for('admin_modules.ide_view', module_id=mod.id) }}"
-             class="mt-auto inline-flex items-center justify-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium transition-colors hover:bg-accent">
-            <svg class="size-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>
-            </svg>
-            Open IDE
-          </a>
-
+      {# Page header #}
+      <div class="flex items-start justify-between gap-4">
+        <div>
+          <h1 class="text-xl font-semibold">Modules Available</h1>
+          <p class="mt-1 text-sm text-muted-foreground">Custom analysis tools. Click a module to open its full IDE.</p>
         </div>
-        {% endfor %}
+        {% call button(attrs={"@click": "openDialog()"}) %}
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+          New Module
+        {% endcall %}
       </div>
-    </section>
-    {% endfor %}
 
-    {% endif %}
+      {# Module cards grouped by category #}
+      {% if not modules %}
+      {% call empty() %}
+        {% call empty_header() %}
+          {% call empty_media() %}
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>
+          {% endcall %}
+          {{ empty_title(text="No modules yet") }}
+          {{ empty_description(text="Create your first custom analysis module to get started.") }}
+        {% endcall %}
+        {% call empty_content() %}
+          {% call button(attrs={"@click": "openDialog()"}) %}Create Module{% endcall %}
+        {% endcall %}
+      {% endcall %}
 
-  </main>
+      {% else %}
+
+      {% for category, group in modules | groupby('category') %}
+      <section>
+        <div class="mb-4 flex items-center gap-3">
+          <h2 class="text-xs font-semibold uppercase tracking-widest text-muted-foreground">{{ category }}</h2>
+          {{ separator(class="flex-1") }}
+        </div>
+
+        <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {% for mod in group %}
+          {% call card(class="flex flex-col") %}
+            {% call card_header() %}
+              {% call card_title() %}
+                <span class="flex items-center gap-2">
+                  <span class="size-2 rounded-full shrink-0 {% if mod.is_enabled %}bg-green-500{% else %}bg-muted-foreground/40{% endif %}"></span>
+                  {{ mod.display_name }}
+                </span>
+              {% endcall %}
+              {% call card_description() %}
+                <code class="font-mono text-[11px]">{{ mod.id }}</code>
+              {% endcall %}
+              {% call card_action() %}
+                {{ badge(text=mod.source, variant="outline" if mod.source == "builtin" else "secondary") }}
+              {% endcall %}
+            {% endcall %}
+
+            {% call card_panel() %}
+              <p class="text-sm text-muted-foreground line-clamp-2 min-h-[2.5rem]">
+                {{ mod.description or "No description." }}
+              </p>
+              <div class="mt-3 flex flex-wrap gap-1.5">
+                {{ badge(text=mod.tier, variant=(
+                  "destructive" if mod.tier == "enterprise" else
+                  "warning" if mod.tier == "advanced" else
+                  "info" if mod.tier == "standard" else
+                  "secondary" if mod.tier == "basic_triage" else
+                  "outline"
+                )) }}
+              </div>
+              <p class="mt-3 text-[11px] text-muted-foreground font-mono truncate" title="{{ mod.runtime_image }}">
+                {{ mod.runtime_image }}
+              </p>
+            {% endcall %}
+
+            {% call card_footer() %}
+              {% call button_link(href=url_for('admin_modules.ide_view', module_id=mod.id), variant="outline", size="sm", class="w-full") %}
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+                Open IDE
+              {% endcall %}
+            {% endcall %}
+          {% endcall %}
+          {% endfor %}
+        </div>
+      </section>
+      {% endfor %}
+
+      {% endif %}
+    </main>
+  </div>
+
+  {# ── Create Module dialog ──────────────────────────────────────────────────── #}
+  <template x-if="open">
+    <div class="fixed inset-0 z-50 flex items-center justify-center p-4" @keydown.escape.window="open = false">
+      <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="open = false"></div>
+
+      <div class="relative z-10 w-full max-w-md rounded-xl border bg-card shadow-xl overflow-hidden">
+
+        <div class="flex items-center justify-between border-b px-6 py-4">
+          <div>
+            <h2 class="font-semibold text-base">New Module</h2>
+            <p class="text-xs text-muted-foreground mt-0.5">You can add files in the IDE after creation.</p>
+          </div>
+          {% call button(variant="ghost", size="icon-sm", attrs={"@click": "open = false"}) %}
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" x2="6" y1="6" y2="18"/><line x1="6" x2="18" y1="6" y2="18"/></svg>
+          {% endcall %}
+        </div>
+
+        <div class="px-6 py-5 space-y-4">
+          <template x-if="error">
+            <p class="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive" x-text="error"></p>
+          </template>
+
+          <div class="grid grid-cols-2 gap-4">
+            <div class="space-y-1.5">
+              {{ label(text="Module ID", for_id="mod-id") }}
+              {{ input(type="text", placeholder="my_module", attrs={"id": "mod-id", "x-model": "form.id", "autocomplete": "off"}) }}
+              <p class="text-[11px] text-muted-foreground">Lowercase, underscores or hyphens</p>
+            </div>
+            <div class="space-y-1.5">
+              {{ label(text="Display Name", for_id="mod-name") }}
+              {{ input(type="text", placeholder="My Module", attrs={"id": "mod-name", "x-model": "form.display_name"}) }}
+            </div>
+          </div>
+
+          <div class="space-y-1.5">
+            {{ label(text="Description", for_id="mod-desc") }}
+            {{ textarea(placeholder="What this module does…", rows=2, attrs={"id": "mod-desc", "x-model": "form.description"}) }}
+          </div>
+
+          <div class="grid grid-cols-2 gap-4">
+            <div class="space-y-1.5">
+              {{ label(text="Category", for_id="mod-cat") }}
+              {{ input(type="text", placeholder="forensics", attrs={"id": "mod-cat", "x-model": "form.category"}) }}
+            </div>
+            <div class="space-y-1.5">
+              {{ label(text="Tier", for_id="mod-tier") }}
+              {% call select_native(name="tier", attrs={"id": "mod-tier", "x-model": "form.tier"}) %}
+                {% for t in known_tiers %}
+                <option value="{{ t }}">{{ t.replace("_", " ").title() }}</option>
+                {% endfor %}
+              {% endcall %}
+            </div>
+          </div>
+
+          <div class="space-y-1.5">
+            {{ label(text="Runtime Image", for_id="mod-img") }}
+            {{ input(type="text", placeholder="python:3.11-slim", attrs={"id": "mod-img", "x-model": "form.runtime_image"}) }}
+          </div>
+        </div>
+
+        <div class="flex justify-end gap-2 border-t px-6 py-4">
+          {% call button(variant="outline", attrs={"@click": "open = false"}) %}Cancel{% endcall %}
+          {% call button(attrs={"@click": "submit()", ":disabled": "saving"}) %}
+            <span x-text="saving ? 'Creating…' : 'Create Module'"></span>
+          {% endcall %}
+        </div>
+
+      </div>
+    </div>
+  </template>
+
 </div>
 {% endblock %}

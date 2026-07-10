@@ -47,6 +47,34 @@ async def upsert_module(
         await db.table("analysis_module_defs").create({**data, "id": module_id, "created_by": created_by})
 
 
+async def create_custom_module(
+    *,
+    module_id: str,
+    display_name: str,
+    description: str | None,
+    category: str,
+    tier: str,
+    runtime_image: str,
+    created_by: str,
+) -> None:
+    await db.table("analysis_module_defs").create({
+        "id":              module_id,
+        "display_name":    display_name,
+        "description":     description,
+        "category":        category,
+        "tier":            tier,
+        "runtime_image":   runtime_image,
+        "isolation_level": "container",
+        "batchable":       0,
+        "queue_name":      "standard_queue",
+        "timeout_seconds": 120,
+        "is_enabled":      0,
+        "status":          "published",
+        "source":          "custom",
+        "created_by":      created_by,
+    })
+
+
 async def set_enabled(module_id: str, enabled: bool) -> None:
     await db.table("analysis_module_defs").where("id", module_id).update(
         {"is_enabled": int(enabled)}

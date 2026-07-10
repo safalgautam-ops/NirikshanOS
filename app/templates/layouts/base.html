@@ -55,6 +55,12 @@ removes `.dark` if the user explicitly chose light. #}
             defer
             src="{{ url_for('static', filename='js/components.js') }}"
         ></script>
+        {# Module-admin Alpine components (fileTree, ideEditor, createModuleDialog).
+        Must be before alpine.min.js for the same reason as components.js. #}
+        <script
+            defer
+            src="{{ url_for('static', filename='js/module-ide.js') }}"
+        ></script>
         {# @alpinejs/csp build: parses x-data/x-show/etc. itself instead of new
         Function()/eval(), so it runs under CSP with no 'unsafe-eval'. The
         regular alpinejs/dist build fails every directive silently here. There's
