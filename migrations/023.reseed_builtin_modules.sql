@@ -16,21 +16,21 @@ VALUES
   ('generic.hash_calculation',
    'Hash Calculation',
    'Computes MD5, SHA-1, and SHA-256 hashes of the evidence file.',
-   'generic', 'basic_triage', 'dfir/basic-tools:1.0',
+   'generic', 'basic_triage', 'nirikshan/base:1.0',
    'fast_queue', 'none', 0, NULL, 60,
    'hash_calculation_parser', 1, 'published', 'builtin'),
 
   ('generic.file_identification',
    'File Type Identification',
    'Detects the real file type from magic bytes, independent of the file extension.',
-   'generic', 'basic_triage', 'dfir/basic-tools:1.0',
+   'generic', 'basic_triage', 'nirikshan/base:1.0',
    'fast_queue', 'none', 0, NULL, 30,
    'file_identification_parser', 1, 'published', 'builtin'),
 
   ('generic.strings_extraction',
    'String Extraction',
    'Extracts printable ASCII and Unicode strings from binary evidence.',
-   'generic', 'basic_triage', 'dfir/basic-tools:1.0',
+   'generic', 'basic_triage', 'nirikshan/base:1.0',
    'fast_queue', 'none', 0, NULL, 60,
    'strings_extraction_parser', 1, 'published', 'builtin')
 
@@ -52,7 +52,7 @@ SET `options_schema` = JSON_ARRAY(
     'label',       'Hash Algorithms',
     'type',        'checklist',
     'default',     JSON_ARRAY('md5','sha1','sha256'),
-    'options',     JSON_ARRAY('md5','sha1','sha256','sha512','sha3_256'),
+    'options',     JSON_ARRAY('md5','sha1','sha256','sha512'),
     'description', 'Which hash algorithms to compute'
   )
 )

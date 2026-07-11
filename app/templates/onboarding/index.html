@@ -9,6 +9,7 @@
 {% from "macros/csrf.html" import csrf_field %}
 
 {% block title %}Set up your organization - NirikshanOS{% endblock %}
+{% block scripts %}<script defer src="{{ url_for('static', filename='js/pages/onboarding/wizard.js') }}"></script>{% endblock %}
 
 {% block body %}
 {% set join_active = code or (error and "code" in error|lower) %}

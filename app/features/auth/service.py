@@ -11,7 +11,6 @@ from werkzeug.datastructures import FileStorage
 from app.config import Config
 from app.core import storage
 from app.core.utils.passwords import hash_password, verify_password
-from app.features.auth import passkey as pk_module
 from app.features.auth import repository
 from app.features.auth.otp import create_otp, verify_otp
 from app.features.auth.totp import (
@@ -269,13 +268,11 @@ async def disconnect_provider(user_id: str, provider_id: str) -> None:
     """Unlink an OAuth provider. Prevents lock-out by checking remaining login methods."""
     accounts = await repository.get_accounts_by_user(user_id)
     remaining = [a for a in accounts if a["providerId"] != provider_id]
-    passkeys = await repository.get_passkeys_by_user(user_id)
 
     has_credential = any(a["providerId"] == "credential" for a in remaining)
     has_oauth = any(a["providerId"] not in ("credential",) for a in remaining)
-    has_passkey = len(passkeys) > 0
 
-    if not (has_credential or has_oauth or has_passkey):
+    if not (has_credential or has_oauth):
         raise AuthError("Cannot disconnect — you need at least one way to log in.")
 
     await repository.delete_account_by_provider(user_id, provider_id)
@@ -315,49 +312,3 @@ async def disable_totp(user_id: str) -> None:
     await repository.set_two_factor_enabled(user_id, False)
 
 
-# ── Passkeys ──────────────────────────────────────────────────────────────────
-
-
-async def begin_passkey_registration(user_id: str) -> dict:
-    user = await repository.get_user_by_id(user_id)
-    existing = await repository.get_passkeys_by_user(user_id)
-    return await pk_module.begin_registration(
-        user_id, user["email"], user["name"], existing
-    )
-
-
-async def complete_passkey_registration(
-    user_id: str, credential: dict, name: str | None
-) -> None:
-    data = await pk_module.complete_registration(user_id, credential)
-    await repository.create_passkey(user_id=user_id, name=name, **data)
-
-
-async def begin_passkey_authentication(challenge_key: str) -> dict:
-    return await pk_module.begin_authentication(challenge_key, [])
-
-
-async def complete_passkey_authentication(challenge_key: str, credential: dict) -> str:
-    """Returns user_id of the authenticated user.
-
-    Raises AuthError if the account is disabled.
-    Raises TwoFactorRequiredError if the account has TOTP enabled — the
-    passkey proves device possession but TOTP is still required if configured.
-    """
-    credential_id = credential.get("id", "")
-    stored = await repository.get_passkey_by_credential_id(credential_id)
-    if not stored:
-        raise AuthError("Passkey not recognised.")
-
-    new_counter = await pk_module.complete_authentication(
-        challenge_key, credential, stored
-    )
-    await repository.update_passkey_counter(credential_id, new_counter)
-
-    user = await repository.get_user_by_id(stored["userId"])
-    if not user or not user["isActive"]:
-        raise AuthError("This account has been disabled.")
-    if user["twoFactorEnabled"]:
-        raise TwoFactorRequiredError(user["id"])
-
-    return stored["userId"]

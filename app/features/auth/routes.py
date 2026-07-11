@@ -6,8 +6,6 @@ Each route's only job: read the request, call the service, pick a response.
 
 from __future__ import annotations
 
-import secrets
-
 from quart import (
     Blueprint,
     abort,
@@ -49,13 +47,9 @@ from app.features.auth.service import (
     TwoFactorRequiredError,
     activate_account,
     authenticate,
-    begin_passkey_authentication,
-    begin_passkey_registration,
     begin_totp_setup,
     change_own_password,
     change_password,
-    complete_passkey_authentication,
-    complete_passkey_registration,
     confirm_totp_setup,
     disable_totp,
     disconnect_provider,
@@ -432,66 +426,6 @@ async def disable_2fa():
     return redirect(url_for("auth.settings_connections", tab="security"))
 
 
-# ── Passkey registration (settings) ──────────────────────────────────────────
-
-
-@auth_bp.route("/passkey/register-begin", methods=["POST"])
-@login_required
-async def passkey_register_begin():
-    options = await begin_passkey_registration(g.user_id)
-    return jsonify(options)
-
-
-@auth_bp.route("/passkey/register-complete", methods=["POST"])
-@login_required
-async def passkey_register_complete():
-    body = await request.get_json()
-    name = (body or {}).pop("name", None)
-    try:
-        await complete_passkey_registration(g.user_id, body or {}, name)
-    except Exception as exc:
-        return jsonify({"error": str(exc)}), 400
-    return jsonify({"ok": True})
-
-
-@auth_bp.route("/passkey/delete/<passkey_id>", methods=["POST"])
-@login_required
-async def passkey_delete(passkey_id: str):
-    await repository.delete_passkey(passkey_id, g.user_id)
-    return redirect(url_for("auth.settings_connections", tab="security"))
-
-
-# ── Passkey authentication (login) ────────────────────────────────────────────
-
-
-@auth_bp.route("/passkey/auth-begin", methods=["POST"])
-async def passkey_auth_begin():
-    challenge_key = secrets.token_urlsafe(16)
-    options = await begin_passkey_authentication(challenge_key)
-    return jsonify({"options": options, "challenge_key": challenge_key})
-
-
-@auth_bp.route("/passkey/auth-complete", methods=["POST"])
-async def passkey_auth_complete():
-    body = await request.get_json() or {}
-    challenge_key = body.get("challenge_key", "")
-    credential = body.get("credential", {})
-    try:
-        user_id = await complete_passkey_authentication(challenge_key, credential)
-    except TwoFactorRequiredError as exc:
-        pending = create_pending_2fa_token(exc.user_id, current_app.config["SECRET_KEY"])
-        resp = await make_response(jsonify({"redirect": url_for("auth.verify_2fa_view")}))
-        resp.set_cookie(PENDING_2FA_COOKIE, pending, max_age=300, httponly=True, samesite="Lax")
-        return resp
-    except Exception as exc:
-        return jsonify({"error": str(exc)}), 400
-
-    token = await create_session(user_id, _ip(), _ua())
-    resp = await make_response(jsonify({"ok": True, "redirect": url_for("dashboard")}))
-    set_session_cookie(resp, token)
-    return resp
-
-
 # ── Account settings (profile / security / connections) ─────────────────────
 
 
@@ -506,7 +440,6 @@ async def settings_connections():
     sites for no behavioral benefit."""
     user = await repository.get_user_by_id(g.user_id)
     accounts = await repository.get_accounts_by_user(g.user_id)
-    passkeys = await repository.get_passkeys_by_user(g.user_id)
     two_factor = await repository.get_two_factor(g.user_id)
     connected = {a["providerId"] for a in accounts}
     has_password = any(a["providerId"] == "credential" for a in accounts)
@@ -515,7 +448,6 @@ async def settings_connections():
         "auth/settings/connections.html",
         user=user,
         accounts=accounts,
-        passkeys=passkeys,
         two_factor=two_factor,
         connected=connected,
         has_password=has_password,

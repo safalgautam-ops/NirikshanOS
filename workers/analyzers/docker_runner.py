@@ -6,7 +6,7 @@ Call chain:
       ↓
     docker_runner.run_container(config)
       ↓
-    Docker container (isolated, resource-capped, no network)
+    Docker container (isolated, resource-capped, internet allowed for apt-get)
       ↓
     RunResult (paths, exit_code, artifacts, timing)
 
@@ -14,18 +14,23 @@ Security guarantees enforced here, not by callers:
   - job_id validated against strict allowlist (no dots, no path traversal)
   - evidence_path must be absolute and must exist before any work begins
   - isolation_level must be a known key — no silent fallback to weaker limits
-  - runtime_image and module IDs verified against module_registry.MODULES directly
-    (no service.py dependency — avoids circular imports, single source of truth)
+  - runtime_image verified against an allowlist (env-var-configurable)
   - no shell=True anywhere in this file
   - no Docker socket mounted inside the container
   - no project source mounted inside the container
-  - network disabled for all isolation levels (--network none)
-  - container root filesystem read-only; /tmp writable via tmpfs only
-  - /input mounted read-only; /work and /output mounted writable
-  - all Linux capabilities dropped; no-new-privileges set
+  - network is ALLOWED so modules can install tools via apt-get at runtime;
+    NET_RAW is still dropped so raw-socket attacks from inside are blocked
+  - container rootfs is writable (required by apt-get); the container is
+    always destroyed after the job so rootfs writes never persist (--rm)
+  - /case/evidence and /case/job_config.json mounted read-only
+  - /work and /output mounted writable (bind mounts, not container rootfs)
+  - most Linux capabilities dropped; only those needed for apt-get are kept
+    (CHOWN, DAC_OVERRIDE, FOWNER, SETUID, SETGID, MKNOD)
+  - no-new-privileges set
+  - /tmp is a size-capped tmpfs (64 MiB, nosuid, nodev)
   - PID limit enforced (--pids-limit)
   - swap bounded to equal RAM (--memory-swap == --memory)
-  - container runs as worker's own uid:gid, not root
+  - CPU and memory hard-capped per isolation_level
   - container always removed after run (--rm + kill fallback on timeout/error)
 
 Host-side workspace layout per job:
@@ -43,7 +48,8 @@ Host-side workspace layout per job:
         artifacts/        ← any extra files the container produces
 
 Inside the container these map to:
-    /input   read-only
+    /case/evidence         read-only (bind-mounted directly, never copied)
+    /case/job_config.json  read-only
     /work    writable
     /output  writable
     /tmp     writable tmpfs (64 MiB, nosuid, nodev): tmpfs means the filesystem is stored in RAM, not on disk
@@ -74,7 +80,7 @@ _JOB_ID_RE = re.compile(r"^[a-zA-Z0-9_-]+$")
 # could schedule a job with an arbitrary image (e.g. alpine + shell payload).
 _ALLOWED_RUNTIME_IMAGES: frozenset[str] = frozenset(
     img.strip()
-    for img in os.environ.get("ALLOWED_RUNTIME_IMAGES", "dfir/basic-tools:1.0").split(",")
+    for img in os.environ.get("ALLOWED_RUNTIME_IMAGES", "nirikshan/base:1.0").split(",")
     if img.strip()
 )
 
@@ -180,8 +186,9 @@ def _build_cmd(
         "--rm",
         "--name",
         f"nirikshan_{config.job_id}",
-        "--network",
-        "none",
+        # No --network flag: default bridge allows apt-get to reach the internet
+        # to install tools declared in module YAML `install:` blocks.
+        # NET_RAW is still dropped below so raw-socket attacks are blocked.
         "--cpus",
         limits["cpus"],
         "--memory",
@@ -190,24 +197,32 @@ def _build_cmd(
         limits["memory"],  # swap == memory → no extra swap
         "--pids-limit",
         limits["pids"],
-        "--cap-drop",  # drop all capabilities to minimize attack surface
-        "ALL",
-        "--security-opt",  # prevents the process from gaining privileges
+        "--cap-drop", "ALL",
+        # Restore only the capabilities apt-get needs to install packages.
+        # All other default capabilities (NET_RAW, SYS_CHROOT, NET_BIND_SERVICE,
+        # KILL, AUDIT_WRITE, SETPCAP, SETFCAP) remain dropped.
+        "--cap-add", "CHOWN",
+        "--cap-add", "DAC_OVERRIDE",
+        "--cap-add", "FOWNER",
+        "--cap-add", "SETUID",
+        "--cap-add", "SETGID",
+        "--cap-add", "MKNOD",
+        "--security-opt",
         "no-new-privileges",
-        "--read-only",  # makes the container root filesystem read-only
-        "--tmpfs",  # creates a read-write tmpfs mount for /tmp since many tools need it
-        "/tmp:rw,nosuid,nodev,size=64m",  # 64MiB
+        # --read-only removed: apt-get must write to /var/lib/apt, /var/lib/dpkg etc.
+        # The container is destroyed after every job (--rm) so rootfs writes never persist.
+        "--tmpfs",
+        "/tmp:rw,nosuid,nodev,size=64m",
         "--user",
-        f"{uid}:{gid}",  # overriding the default user(root) to the current user
-        # Two separate read-only bind mounts instead of mounting the whole input/
-        # directory. This lets the evidence file be mounted directly from its
-        # download path without copying — important for multi-GB forensic files.
+        f"{uid}:{gid}",
+        # Evidence and job config are mounted read-only under /case/ — the
+        # module specs reference the evidence as /case/evidence.
+        # Two separate bind mounts so the evidence file is mounted directly
+        # from its download path without copying (important for multi-GB files).
         "-v",
-        # this maps the host file: /storage/jobs/job_001/input/job_config.json to container path: /input/job_config.json
-        f"{workspace / 'input' / 'job_config.json'}:/input/job_config.json:ro",  # container can read the job config but not write to it
+        f"{workspace / 'input' / 'job_config.json'}:/case/job_config.json:ro",
         "-v",
-        # this maps the host file: /storage/uploads/sample.bin to container path: /input/evidence
-        f"{config.evidence_path}:/input/evidence:ro",
+        f"{config.evidence_path}:/case/evidence:ro",
         "-v",
         # this maps the host file: /storage/jobs/job_001/work to container path: /work (scratch space)
         f"{workspace / 'work'}:/work:rw",
@@ -215,7 +230,7 @@ def _build_cmd(
         # this maps the host file: /storage/jobs/job_001/output to container path: /output (output directory)
         f"{workspace / 'output'}:/output:rw",
         config.runtime_image,
-        # No command appended — the image entrypoint reads /input/job_config.json
+        # No command appended — the image entrypoint reads /case/job_config.json
         # and decides what tools to invoke. The backend controls the image via
         # module_registry; the frontend only supplies module IDs and options.
     ]

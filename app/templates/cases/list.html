@@ -1,5 +1,6 @@
 {% extends "layouts/base.html" %}
 {% block title %}Cases - NirikshanOS{% endblock %}
+{% block scripts %}<script defer src="{{ url_for('static', filename='js/pages/cases/list.js') }}"></script>{% endblock %}
 {% from "components/ui/card.html" import card, card_header, card_title, card_description, card_panel %}
 {% from "components/ui/badge.html" import badge %}
 {% from "components/ui/button.html" import button %}

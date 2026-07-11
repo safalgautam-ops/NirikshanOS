@@ -1,5 +1,9 @@
 {% extends "layouts/base.html" %}
 {% block title %}{{ case.title }} - Cases - NirikshanOS{% endblock %}
+{% block scripts %}
+<script defer src="{{ url_for('static', filename='js/pages/cases/workspace.js') }}"></script>
+<script defer src="{{ url_for('static', filename='js/pages/cases/evidence-upload.js') }}"></script>
+{% endblock %}
 {% from "components/ui/card.html" import card, card_header, card_title, card_description, card_panel %}
 {% from "components/ui/badge.html" import badge %}
 {% from "components/ui/button.html" import button %}
@@ -145,7 +149,7 @@
             {% call tabs_panel(value="evidences", class="mt-4 space-y-4") %}
                 <p class="text-sm text-muted-foreground">Manage uploaded files, view metadata, hashes, file types, and chain of custody.</p>
 
-                <div data-evidence-root data-case-id="{{ case.id }}" class="space-y-4">
+                <div data-evidence-root data-case-id="{{ case.id }}" data-csrf-token="{{ csrf_token() }}"{% if just_created %} data-just-created{% endif %} class="space-y-4">
                     <div class="flex items-center justify-between gap-3">
                         <p class="text-sm text-muted-foreground">{{ evidence|length }} file(s) collected for this case.</p>
                         <button type="button" data-slot="dialog-trigger" data-target="#evidence-upload-dialog" aria-controls="evidence-upload-dialog"
@@ -907,25 +911,4 @@
   .prose-report img { max-width: 100%; border-radius: .5rem; margin: .5rem 0; }
 </style>
 
-{% if just_created %}
-<script>
-  document.addEventListener("DOMContentLoaded", () => {
-    const dlg = document.getElementById("evidence-upload-dialog");
-    if (dlg && typeof dlg.showModal === "function") {
-      dlg.showModal();
-      dlg.dataset.state = "open";
-    }
-  });
-</script>
-{% endif %}
-
-<script src="{{ url_for('static', filename='js/evidence-upload.js') }}"></script>
-<script>
-  document.addEventListener("DOMContentLoaded", () => {
-    initEvidenceUpload({
-      caseId: "{{ case.id }}",
-      csrfToken: "{{ csrf_token() }}",
-    });
-  });
-</script>
 {% endblock %}

@@ -1,23 +1,29 @@
 {% extends "layouts/base.html" %}
 {% block title %}{{ module.display_name }} — IDE{% endblock %}
+{% block scripts %}<script defer src="{{ url_for('static', filename='js/pages/admin/module-ide.js') }}"></script>{% endblock %}
 
 {% from "dashboard/components/sidebar.html" import sidebar %}
 {% from "components/ui/button.html" import button, button_link %}
 {% from "components/ui/badge.html" import badge %}
 {% from "components/ui/separator.html" import separator %}
+{% from "components/ui/label.html" import label %}
+{% from "components/ui/input.html" import input %}
+{% from "components/ui/textarea.html" import textarea %}
+{% from "components/ui/select-native.html" import select_native %}
 
-{# CodeMirror must be synchronous (no defer) so the global is ready when Alpine inits #}
+{# CodeMirror vendored locally — no CDN, no CSP issues. Scripts are synchronous
+   (no defer) so window.CodeMirror is defined before Alpine's deferred init fires. #}
 {% block head %}
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/codemirror@5/lib/codemirror.min.css">
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/codemirror@5/theme/material-darker.min.css">
-<script src="https://cdn.jsdelivr.net/npm/codemirror@5/lib/codemirror.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/codemirror@5/mode/python/python.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/codemirror@5/mode/yaml/yaml.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/codemirror@5/mode/shell/shell.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/codemirror@5/mode/javascript/javascript.js"></script>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/vendor/codemirror.min.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/vendor/cm-material-darker.css') }}">
+<script src="{{ url_for('static', filename='js/vendor/codemirror.min.js') }}"></script>
+<script src="{{ url_for('static', filename='js/vendor/cm-mode-python.js') }}"></script>
+<script src="{{ url_for('static', filename='js/vendor/cm-mode-yaml.js') }}"></script>
+<script src="{{ url_for('static', filename='js/vendor/cm-mode-shell.js') }}"></script>
+<script src="{{ url_for('static', filename='js/vendor/cm-mode-javascript.js') }}"></script>
 <style>
-  .CodeMirror          { height: 100% !important; font-size: 13px; font-family: 'JetBrains Mono', ui-monospace, monospace; }
-  .CodeMirror-scroll   { height: 100% !important; }
+  .CodeMirror        { height: 100% !important; font-size: 13px; font-family: 'JetBrains Mono', ui-monospace, monospace; }
+  .CodeMirror-scroll { height: 100% !important; }
 </style>
 {% endblock %}
 
@@ -26,7 +32,7 @@
 
 {# Full-height IDE layout offset by sidebar #}
 <div class="flex flex-col md:pl-60 h-screen overflow-hidden"
-     x-data="ideEditor({{ module.id | tojson | forceescape }}, {{ module.options_schema | tojson | forceescape }})"
+     x-data="ideEditor({{ module.id | tojson | forceescape }}, {{ module.options_schema | tojson | forceescape }}, {{ module_meta | tojson | forceescape }})"
      @file-opened.window="loadFileContent($event.detail)">
 
   {# ── Topbar ──────────────────────────────────────────────────────────────── #}
@@ -41,7 +47,7 @@
 
     <span class="font-semibold text-sm truncate">{{ module.display_name }}</span>
     {{ badge(text=module.source, variant="outline") }}
-    {{ badge(text=module.tier, variant="secondary") }}
+    <span x-text="settings.tier" class="inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium"></span>
     {% if module.is_enabled %}
       {{ badge(text="enabled", variant="success") }}
     {% else %}
@@ -153,16 +159,21 @@
       <div class="flex shrink-0 items-center border-b bg-background px-3 gap-1">
         <button class="px-3 py-2.5 text-xs font-medium border-b-2 transition-colors"
                 :class="editorTab === 'code' ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground'"
-                @click="editorTab = 'code'">
+                @click="switchTab('code')">
           Code
         </button>
         <button class="px-3 py-2.5 text-xs font-medium border-b-2 transition-colors"
                 :class="editorTab === 'schema' ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground'"
-                @click="editorTab = 'schema'">
+                @click="switchTab('schema')">
           Parameters
         </button>
+        <button class="px-3 py-2.5 text-xs font-medium border-b-2 transition-colors"
+                :class="editorTab === 'settings' ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground'"
+                @click="switchTab('settings')">
+          Settings
+        </button>
         <span class="flex-1"></span>
-        <code class="text-[11px] text-muted-foreground font-mono mr-2">{{ module.runtime_image }}</code>
+        <code class="text-[11px] text-muted-foreground font-mono mr-2" x-text="settings.runtime_image"></code>
         <span x-show="activeFilename && editorTab === 'code'" x-text="activeFilename"
               class="text-[11px] text-muted-foreground font-mono border-l pl-2"></span>
       </div>
@@ -198,6 +209,86 @@
         </div>
         <div x-show="schemaError" x-text="schemaError"
              class="shrink-0 border-t bg-destructive/10 px-4 py-2 text-xs text-destructive"></div>
+      </div>
+
+      {# Settings tab #}
+      <div class="flex-1 min-h-0 overflow-y-auto p-6" x-show="editorTab === 'settings'">
+        <div class="max-w-lg space-y-5">
+
+          <div>
+            <h2 class="text-sm font-semibold">Module Settings</h2>
+            <p class="text-xs text-muted-foreground mt-0.5">Edit metadata and container configuration. Click Save in the topbar to apply.</p>
+          </div>
+
+          <div x-show="settingsError" x-text="settingsError"
+               class="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive"></div>
+
+          <div class="grid grid-cols-2 gap-4">
+            <div class="space-y-1.5">
+              {{ label(text="Display Name") }}
+              <input x-model="settings.display_name"
+                     class="w-full rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                     placeholder="My Module"
+                     @input="isDirty = true">
+            </div>
+            <div class="space-y-1.5">
+              {{ label(text="Category") }}
+              <input x-model="settings.category"
+                     class="w-full rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                     placeholder="forensics"
+                     @input="isDirty = true">
+            </div>
+          </div>
+
+          <div class="space-y-1.5">
+            {{ label(text="Description") }}
+            <textarea x-model="settings.description"
+                      rows="3"
+                      class="w-full rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring resize-none"
+                      placeholder="What this module does…"
+                      @input="isDirty = true"></textarea>
+          </div>
+
+          <div class="grid grid-cols-2 gap-4">
+            <div class="space-y-1.5">
+              {{ label(text="Tier") }}
+              <select x-model="settings.tier"
+                      class="w-full rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                      @change="isDirty = true">
+                {% for t in known_tiers %}
+                <option value="{{ t }}">{{ t.replace("_", " ").title() }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="space-y-1.5">
+              {{ label(text="Module ID") }}
+              <input value="{{ module.id }}"
+                     class="w-full rounded-md border bg-muted/50 px-3 py-2 text-sm text-muted-foreground cursor-not-allowed"
+                     disabled>
+              <p class="text-[11px] text-muted-foreground">Cannot be changed after creation.</p>
+            </div>
+          </div>
+
+          <div class="space-y-1.5">
+            {{ label(text="Runtime Image") }}
+            <input x-model="settings.runtime_image"
+                   class="w-full rounded-md border bg-background px-3 py-2 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-ring"
+                   placeholder="nirikshan/base:1.0"
+                   @input="isDirty = true">
+            <p class="text-[11px] text-muted-foreground">
+              Must be on the server allowlist (<code class="font-mono">ALLOWED_RUNTIME_IMAGES</code>).
+              Build with: <code class="font-mono">docker compose --profile build-only build analyzer-base</code>
+            </p>
+          </div>
+
+          <div class="pt-1 border-t">
+            <div class="mt-3 space-y-1 text-xs text-muted-foreground">
+              <p>Source: <code class="font-mono">{{ module.source }}</code></p>
+              <p>Created: {{ module.created_at }}</p>
+            </div>
+          </div>
+
+        </div>
       </div>
 
     </div>

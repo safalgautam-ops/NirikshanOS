@@ -1,0 +1,42 @@
+id: generic.file_identification
+display_name: File Type Identification
+description: >
+  Identifies the true file type from magic bytes, independent of the file extension.
+  Reports both the human-readable description and the MIME type.
+
+install:
+  apt: [file]
+  check: file
+
+script: |
+  import subprocess
+  from pathlib import Path
+
+  evidence = Path("/case/evidence")
+  lines    = []
+
+  # Human-readable description (e.g. "ELF 64-bit LSB executable, x86-64")
+  r = subprocess.run(["file", "-b", str(evidence)], capture_output=True, text=True)
+  if r.returncode == 0:
+      lines.append(f"Description : {r.stdout.strip()}")
+
+  # MIME type (e.g. "application/x-executable")
+  r = subprocess.run(["file", "-b", "--mime-type", str(evidence)], capture_output=True, text=True)
+  if r.returncode == 0:
+      lines.append(f"MIME type   : {r.stdout.strip()}")
+
+  # MIME encoding (e.g. "binary" / "utf-8")
+  r = subprocess.run(["file", "-b", "--mime-encoding", str(evidence)], capture_output=True, text=True)
+  if r.returncode == 0:
+      lines.append(f"Encoding    : {r.stdout.strip()}")
+
+  stdout_path.write_text("\n".join(lines))
+  result = {
+      "status":      "success" if lines else "failed",
+      "exit_code":   0 if lines else 1,
+      "stdout_file": stdout_path.name,
+      "stderr_file": None,
+      "error":       None if lines else "file command produced no output",
+  }
+
+options: {}

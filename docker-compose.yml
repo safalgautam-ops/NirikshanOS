@@ -1,12 +1,12 @@
 services:
-  # Analyzer container image — built once so the worker can `docker run dfir/basic-tools:1.0`.
-  # This service exits immediately after build; it exists only so `docker compose build`
-  # produces the image. The worker launches it directly via the Docker socket, not compose.
-  analyzer-basic-tools:
+  # Minimal analyzer base image — built once so the worker can `docker run nirikshan/base:1.0`.
+  # Starts with no forensic tools; each module YAML declares what to install at runtime.
+  # Run:  docker compose --profile build-only build analyzer-base
+  analyzer-base:
     build:
-      context: ./docker/analyzers/basic-tools
+      context: ./docker/analyzers/base
       dockerfile: Dockerfile
-    image: dfir/basic-tools:1.0
+    image: nirikshan/base:1.0
     entrypoint: ["true"]
     profiles:
       - build-only

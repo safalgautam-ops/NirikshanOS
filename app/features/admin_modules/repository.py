@@ -140,6 +140,24 @@ async def set_entry_point(module_id: str, file_id: str) -> None:
     )
 
 
+async def update_module_meta(
+    module_id: str,
+    *,
+    display_name: str,
+    description: str | None,
+    category: str,
+    tier: str,
+    runtime_image: str,
+) -> None:
+    await db.table("analysis_module_defs").where("id", module_id).update({
+        "display_name":  display_name,
+        "description":   description,
+        "category":      category,
+        "tier":          tier,
+        "runtime_image": runtime_image,
+    })
+
+
 async def save_options_schema(module_id: str, schema_json: str) -> None:
     await db.table("analysis_module_defs").where("id", module_id).update(
         {"options_schema": schema_json}

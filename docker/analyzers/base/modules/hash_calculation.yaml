@@ -1,0 +1,54 @@
+id: generic.hash_calculation
+display_name: Hash Calculation
+description: Computes cryptographic hashes of the evidence file (MD5, SHA-1, SHA-256, SHA-512).
+
+install:
+  apt: [coreutils]
+  check: sha256sum
+
+# Script mode: runs multiple hash commands, one per selected algorithm.
+# The result dict is set explicitly so the worker gets structured status.
+script: |
+  import subprocess
+  from pathlib import Path
+
+  evidence = Path("/case/evidence")
+  algos    = options.get("algorithms", ["md5", "sha1", "sha256"])
+
+  _hash_cmd = {
+      "md5":    ["md5sum",    str(evidence)],
+      "sha1":   ["sha1sum",   str(evidence)],
+      "sha256": ["sha256sum", str(evidence)],
+      "sha512": ["sha512sum", str(evidence)],
+  }
+
+  lines = []
+  failed = []
+  for algo in algos:
+      cmd = _hash_cmd.get(algo)
+      if not cmd:
+          continue
+      r = subprocess.run(cmd, capture_output=True, text=True)
+      if r.returncode == 0:
+          digest = r.stdout.strip().split()[0]
+          lines.append(f"{algo.upper()}: {digest}")
+      else:
+          failed.append(algo)
+          lines.append(f"{algo.upper()}: ERROR — {r.stderr.strip()}")
+
+  stdout_path.write_text("\n".join(lines))
+  result = {
+      "status":      "failed" if len(failed) == len(algos) else "success",
+      "exit_code":   1 if failed else 0,
+      "stdout_file": stdout_path.name,
+      "stderr_file": None,
+      "error":       f"Failed algorithms: {failed}" if failed else None,
+  }
+
+options:
+  algorithms:
+    type: list
+    default: [md5, sha1, sha256]
+    allowed: [md5, sha1, sha256, sha512]
+    label: Hash Algorithms
+    description: Select which algorithms to compute. All four can be selected together.

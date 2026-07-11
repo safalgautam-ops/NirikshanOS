@@ -48,56 +48,21 @@ removes `.dark` if the user explicitly chose light. #}
             defer
             src="{{ url_for('static', filename='js/vendor/alpine-anchor.min.js') }}"
         ></script>
-        {# Registers Alpine.data() components that need real JS (DOM
-        measurement, multi-statement logic) - must load before alpine.min.js so
-        its alpine:init listener is attached before Alpine.start() fires. #}
+        {# Page-specific Alpine components load here — BEFORE alpine.min.js so
+        their alpine:init listeners are registered before Alpine fires the event.
+        All deferred scripts execute in document order after DOM parsing. #}
+        {% block scripts %}{% endblock %}
+        {# Universal runtime: ui-runtime + toast + file-validate + pageSearch Alpine component. #}
         <script
             defer
-            src="{{ url_for('static', filename='js/components.js') }}"
+            src="{{ url_for('static', filename='js/runtime.js') }}"
         ></script>
-        {# Module-admin Alpine components (fileTree, ideEditor, createModuleDialog).
-        Must be before alpine.min.js for the same reason as components.js. #}
-        <script
-            defer
-            src="{{ url_for('static', filename='js/module-ide.js') }}"
-        ></script>
-        {# @alpinejs/csp build: parses x-data/x-show/etc. itself instead of new
-        Function()/eval(), so it runs under CSP with no 'unsafe-eval'. The
-        regular alpinejs/dist build fails every directive silently here. There's
-        a special version of Alpine called the "CSP build." It's the exact same
-        library, except it was rewritten to use Way 2 — the careful little
-        assistant that reads the text character by character instead of using
-        the magic machine. Since this version never touches the forbidden magic
-        machine, the security guard has nothing to object to. Everything works.
-        The only tradeoff: that careful little assistant only understands simple
-        recipes (basic things like open = true or count + 1). It can't handle
-        complicated JavaScript. But Alpine attributes are always simple anyway,
-        so that limitation never actually bites you. #}
+        {# @alpinejs/csp build — no 'unsafe-eval' needed; works under strict CSP. #}
         <script
             defer
             src="{{ url_for('static', filename='js/vendor/alpine.min.js') }}"
         ></script>
         <script src="{{ url_for('static', filename='js/vendor/htmx.min.js') }}"></script>
-        {# Event-delegation runtime for components/ui/*.html (data-slot driven,
-        no framework) - see app/static/js/ui-runtime.js for what it does. #}
-        <script
-            defer
-            src="{{ url_for('static', filename='js/ui-runtime.js') }}"
-        ></script>
-        {# Toast notifications - replaces inline error/success banners
-        across the app. See app/static/js/toast-runtime.js and
-        components/ui/toast.html's flash() macro. #}
-        <script
-            defer
-            src="{{ url_for('static', filename='js/toast-runtime.js') }}"
-        ></script>
-        {# Client-side mirror of the upload size limits enforced in
-        app/core/storage.py - rejects oversized files before they upload,
-        via the same toast system above. See app/static/js/file-validate.js. #}
-        <script
-            defer
-            src="{{ url_for('static', filename='js/file-validate.js') }}"
-        ></script>
         {% block head %}{% endblock %}
     </head>
     <body class="min-h-screen bg-background text-foreground antialiased">

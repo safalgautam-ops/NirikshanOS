@@ -1,0 +1,46 @@
+id: generic.strings_extraction
+display_name: String Extraction
+description: >
+  Extracts printable ASCII strings from the evidence file.
+  Optionally filters the output through grep for targeted searches.
+
+# Install the tool if not already in the container.
+# `check: strings` tests with `which strings` first — if already present, apt is skipped.
+install:
+  apt: [binutils]
+  check: strings
+
+# Main command. Evidence is always at /case/evidence inside the container.
+# {opt: min_length} is substituted with the validated option value at runtime.
+argv:
+  - strings
+  - -n
+  - {opt: min_length}
+  - /case/evidence
+
+# Optional second stage: pipe strings output through grep.
+# Skipped entirely if the user left filter_string blank.
+pipe:
+  argv:
+    - grep
+    - -i
+    - -E
+    - {opt: filter_string}
+  skip_if_empty: filter_string
+
+options:
+  min_length:
+    type: int
+    default: 4
+    min: 1
+    max: 200
+    label: Minimum String Length
+    description: Ignore strings shorter than this many characters
+  filter_string:
+    type: str
+    default: ""
+    label: Filter Pattern (optional)
+    description: >
+      If set, pipes the strings output through grep -iE with this pattern.
+      Leave blank to return all extracted strings.
+    optional: true

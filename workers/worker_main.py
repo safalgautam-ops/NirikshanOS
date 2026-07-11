@@ -23,7 +23,6 @@ from app.core.db.pool import close_pool, init_pool
 from app.core.object_storage import download_object
 from app.features.admin_modules import repository as module_defs_repo
 from app.features.analysis import repository
-from app.features.analysis.parser_service import parse_module_output
 from app.features.analysis.queue_service import POP_TIMEOUT, _key
 from app.features.evidence.repository import get_evidence
 from workers.analyzers.docker_runner import RunConfig, run_container
@@ -194,44 +193,27 @@ async def _process_job(job_id: str) -> None:
                     task["id"], "failed", error_message=result.error_message
                 )
 
-        # Parse output and save to analysis_results regardless of status.
-        db_mod = _module_defs.get(task["module_id"])
-        parser_name = db_mod["parser_name"] if db_mod and db_mod.get("parser_name") else ""
-        if parser_name:
-            safe_module = task["module_id"].replace(".", "_").replace("/", "_")
-            stdout_path = str(Path(result.output_dir) / f"{safe_module}.txt")
-            stderr_path = str(Path(result.output_dir) / f"{safe_module}.stderr.txt")
-            exit_code = entry.get("exit_code")
-            if exit_code is None:
-                exit_code = result.exit_code
-
-            parsed = parse_module_output(
-                parser_name=parser_name,
-                stdout_path=stdout_path,
-                stderr_path=stderr_path,
-                exit_code=exit_code,
+        # Save raw output paths so the UI can display stdout/stderr directly.
+        # No parsing — the Result Canvas reads the files as-is.
+        safe_module = task["module_id"].replace(".", "_").replace("/", "_")
+        stdout_path = str(Path(result.output_dir) / f"{safe_module}.txt")
+        stderr_path = str(Path(result.output_dir) / f"{safe_module}.stderr.txt")
+        try:
+            await repository.save_result(
+                job_id=job_id,
+                task_id=task["id"],
+                case_id=job["case_id"],
+                evidence_id=job["evidence_id"],
+                module_id=task["module_id"],
+                summary_json={},
+                normalized_json={"iocs": [], "findings": [], "artifacts": []},
+                stdout_path=stdout_path if Path(stdout_path).exists() else None,
+                stderr_path=stderr_path if Path(stderr_path).exists() else None,
+                artifact_path=None,
             )
-            normalized = {
-                "iocs":      parsed.iocs,
-                "findings":  parsed.findings,
-                "artifacts": parsed.artifacts,
-            }
-            try:
-                await repository.save_result(
-                    job_id=job_id,
-                    task_id=task["id"],
-                    case_id=job["case_id"],
-                    evidence_id=job["evidence_id"],
-                    module_id=task["module_id"],
-                    summary_json=parsed.summary,
-                    normalized_json=normalized,
-                    stdout_path=stdout_path if Path(stdout_path).exists() else None,
-                    stderr_path=stderr_path if Path(stderr_path).exists() else None,
-                    artifact_path=None,
-                )
-                print(f"[worker] saved result for task={task['id']} module={task['module_id']}")
-            except Exception as e:
-                print(f"[worker] could not save result for task={task['id']}: {e}")
+            print(f"[worker] saved result for task={task['id']} module={task['module_id']}")
+        except Exception as e:
+            print(f"[worker] could not save result for task={task['id']}: {e}")
 
     # Update job status. "partial" surfaces to the UI as failed-with-reason so
     # analysts are not misled by a green "completed" on a job that had module failures.

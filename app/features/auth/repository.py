@@ -191,55 +191,6 @@ async def delete_account_by_provider(user_id: str, provider_id: str) -> None:
     )
 
 
-async def get_passkeys_by_user(user_id: str) -> list:
-    return await db.table("passkey").where("userId", user_id).all(allow_full_table=True)
-
-
-async def get_passkey_by_credential_id(credential_id: str):
-    return await db.table("passkey").where("credentialID", credential_id).first()
-
-
-async def create_passkey(
-    *,
-    user_id: str,
-    name: str | None,
-    credentialID: str,
-    publicKey: str,
-    counter: int,
-    backedUp: bool,
-    deviceType: str,
-    transports: str,
-    aaguid: str | None,
-) -> None:
-    await db.table("passkey").create(
-        {
-            "id": new_id(),
-            "name": name,
-            "userId": user_id,
-            "credentialID": credentialID,
-            "publicKey": publicKey,
-            "counter": counter,
-            "backedUp": backedUp,
-            "deviceType": deviceType,
-            "transports": transports,
-            "aaguid": aaguid,
-        }
-    )
-
-
-async def update_passkey_counter(credential_id: str, counter: int) -> None:
-    await (
-        db.table("passkey")
-        .where("credentialID", credential_id)
-        .patch({"counter": counter})
-    )
-
-
-async def delete_passkey(passkey_id: str, user_id: str) -> None:
-    # Require user_id to prevent cross-user deletion
-    await db.table("passkey").where("id", passkey_id).where("userId", user_id).delete()
-
-
 async def get_two_factor(user_id: str):
     return await db.table("twoFactor").where("userId", user_id).first()
 

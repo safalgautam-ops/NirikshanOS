@@ -107,18 +107,15 @@ def create_app() -> Quart:
         # in a pending/rejected org with no way out.
         "onboarding.leave_view",
         "onboarding.transfer_ownership_view",
-        # Account settings (profile, password, 2FA, passkeys, connected
-        # providers) are personal to the user, not tied to organization
-        # membership - every account needs access to these regardless of
-        # onboarding state, the same way logout always works.
+        # Account settings (profile, password, 2FA, connected providers) are
+        # personal to the user, not tied to organization membership - every
+        # account needs access to these regardless of onboarding state, the
+        # same way logout always works.
         "auth.settings_connections",
         "auth.update_profile_view",
         "auth.change_password_settings_view",
         "auth.setup_2fa",
         "auth.disable_2fa",
-        "auth.passkey_register_begin",
-        "auth.passkey_register_complete",
-        "auth.passkey_delete",
         "auth.connect_provider",
         "auth.disconnect_provider_view",
         "auth.google_callback",

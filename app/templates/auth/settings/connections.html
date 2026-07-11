@@ -111,41 +111,6 @@
       {% endcall %}
       {% endif %}
 
-      {# ── Passkeys ────────────────────────────────────────────────────────── #}
-      {% call card() %}
-      {% call card_panel(class="space-y-4") %}
-        <div class="flex items-center justify-between">
-          <div>
-            <h2 class="text-lg font-semibold">Passkeys</h2>
-            <p class="text-sm text-muted-foreground">Log in with Face ID, Touch ID, or a security key - no password needed.</p>
-          </div>
-          <button
-            id="add-passkey-btn"
-            class="inline-flex h-9 items-center justify-center rounded-md border border-input bg-background px-3 text-sm font-medium hover:bg-accent hover:text-accent-foreground"
-          >Add passkey</button>
-        </div>
-
-        {% if passkeys %}
-        <div class="space-y-2">
-          {% for pk in passkeys %}
-          <div class="flex items-center justify-between rounded-lg border px-4 py-3">
-            <div>
-              <p class="text-sm font-medium">{{ pk.name or pk.deviceType or "Passkey" }}</p>
-              <p class="text-xs text-muted-foreground">Added {{ pk.createdAt.strftime('%b %d, %Y') if pk.createdAt else '' }}</p>
-            </div>
-            <form method="post" action="{{ url_for('auth.passkey_delete', passkey_id=pk.id) }}">
-              {{ csrf_field() }}
-              {% call button(variant="ghost", size="sm", type="submit") %}Remove{% endcall %}
-            </form>
-          </div>
-          {% endfor %}
-        </div>
-        {% else %}
-        <p class="text-sm text-muted-foreground">No passkeys added yet.</p>
-        {% endif %}
-      {% endcall %}
-      {% endcall %}
-
       {# ── Two-factor authentication ───────────────────────────────────────── #}
       {% call card() %}
       {% call card_panel(class="space-y-4") %}
@@ -242,15 +207,4 @@
   </main>
 </div>
 
-<script src="{{ url_for('static', filename='js/passkey.js') }}"></script>
-<script>
-  document.getElementById("add-passkey-btn")?.addEventListener("click", () => {
-    registerPasskey({
-      beginUrl: "{{ url_for('auth.passkey_register_begin') }}",
-      completeUrl: "{{ url_for('auth.passkey_register_complete') }}",
-      csrfToken: "{{ csrf_token() }}",
-      onSuccess: () => window.location.reload(),
-    });
-  });
-</script>
 {% endblock %}

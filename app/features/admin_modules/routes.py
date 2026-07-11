@@ -13,6 +13,7 @@ from app.features.admin_modules import repository
 from app.features.admin_modules.permissions import MODULE_EDIT, MODULE_VIEW
 from app.features.plans.service import KNOWN_TIERS
 
+
 admin_modules_bp = Blueprint("admin_modules", __name__, url_prefix="/admin/modules")
 
 _ALLOWED_EXTENSIONS = {
@@ -22,7 +23,7 @@ _ID_RE = re.compile(r"^[a-z0-9_\-]{1,100}$")
 
 # Mirror the same env-var-driven allowlist used in docker_runner.py so that
 # disallowed images are rejected at the API layer, not just at run time.
-_DEFAULT_RUNTIME_IMAGE = "dfir/basic-tools:1.0"
+_DEFAULT_RUNTIME_IMAGE = "nirikshan/base:1.0"
 _ALLOWED_RUNTIME_IMAGES: frozenset[str] = frozenset(
     img.strip()
     for img in os.environ.get("ALLOWED_RUNTIME_IMAGES", _DEFAULT_RUNTIME_IMAGE).split(",")
@@ -99,12 +100,53 @@ async def ide_view(module_id: str):
         for f in raw_files
     ]
     visible_keys = await get_visible_nav_keys(g.user_id)
+    module_meta = {
+        "display_name":  mod["display_name"],
+        "description":   mod["description"] or "",
+        "category":      mod["category"],
+        "tier":          mod["tier"],
+        "runtime_image": mod["runtime_image"],
+    }
     return await render_template(
         "admin/modules/ide.html",
         module=mod,
+        module_meta=module_meta,
         files=files,
+        known_tiers=KNOWN_TIERS,
         visible_keys=visible_keys,
     )
+
+
+# ── Update module metadata ────────────────────────────────────────────────────
+
+@admin_modules_bp.route("/<module_id>", methods=["PATCH"])
+@require_permission(MODULE_EDIT)
+async def update_meta_view(module_id: str):
+    mod = await repository.get_module(module_id)
+    if not mod:
+        return jsonify({"error": "not found"}), 404
+    body = await request.get_json(silent=True) or {}
+    display_name = (body.get("display_name") or "").strip()
+    if not display_name:
+        return jsonify({"error": "Display name is required"}), 400
+    category = (body.get("category") or "").strip()
+    if not category:
+        return jsonify({"error": "Category is required"}), 400
+    tier = (body.get("tier") or "free").strip()
+    if tier not in KNOWN_TIERS:
+        return jsonify({"error": f"Invalid tier '{tier}'"}), 400
+    runtime_image = (body.get("runtime_image") or _DEFAULT_RUNTIME_IMAGE).strip()
+    if runtime_image not in _ALLOWED_RUNTIME_IMAGES:
+        return jsonify({"error": f"runtime_image '{runtime_image}' is not on the allowlist. Allowed: {sorted(_ALLOWED_RUNTIME_IMAGES)}"}), 400
+    await repository.update_module_meta(
+        module_id,
+        display_name=display_name,
+        description=(body.get("description") or "").strip() or None,
+        category=category,
+        tier=tier,
+        runtime_image=runtime_image,
+    )
+    return jsonify({"ok": True})
 
 
 # ── Toggle enabled ────────────────────────────────────────────────────────────
@@ -120,7 +162,7 @@ async def toggle_view(module_id: str):
     return jsonify({"ok": True, "is_enabled": new_state})
 
 
-# ── Test (placeholder — runs a smoke check via Docker) ────────────────────────
+# ── Test ─────────────────────────────────────────────────────────────────────
 
 @admin_modules_bp.route("/<module_id>/test", methods=["POST"])
 @require_permission(MODULE_EDIT)
@@ -129,15 +171,19 @@ async def test_view(module_id: str):
     if not mod:
         return jsonify({"error": "not found"}), 404
     files = await repository.list_files(module_id)
-    entry = next((f for f in files if f["is_entry_point"]), None)
     if not files:
-        return jsonify({"ok": False, "message": "No files — add an entry point file first."}), 400
+        return jsonify({"ok": False, "message": "No files yet — create an entry point file first."}), 400
+    entry = next((f for f in files if f["is_entry_point"]), None)
     if not entry:
-        return jsonify({"ok": False, "message": "No entry point set — star a file to mark it as the entry point."}), 400
+        return jsonify({"ok": False, "message": "No entry point set — click the star icon on a file to mark it as the entry point."}), 400
     return jsonify({
-        "ok": True,
-        "message": f"Test run queued for entry point '{entry['filename']}'. (Full test execution coming soon.)",
-    })
+        "ok": False,
+        "message": (
+            f"To run '{entry['filename']}': create a case, upload evidence, then click Analyze "
+            f"and select this module. Make sure the analyzer image is built first: "
+            f"docker compose --profile build-only build analyzer-base"
+        ),
+    }), 400
 
 
 # ── Module file CRUD ──────────────────────────────────────────────────────────
