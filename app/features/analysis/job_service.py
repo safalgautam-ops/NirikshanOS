@@ -51,6 +51,11 @@ async def create_jobs_from_plan(
         if not new_modules:
             continue
 
+        # batch_group/batchable/isolation_level are legacy analysis_jobs
+        # columns from the pre-instance grouping model — container grouping
+        # is now entirely decided by instance_id (see planner.py). They're
+        # kept here as informational/display fields only, derived from
+        # whether this job bundles more than one module.
         job_id = await repository.create_job(
             case_id=case_id,
             evidence_id=evidence_id,
@@ -59,9 +64,9 @@ async def create_jobs_from_plan(
             job_type=job_plan.job_type,
             queue_name=job_plan.queue_name,
             runtime_image=job_plan.runtime_image,
-            isolation_level=job_plan.isolation_level,
-            batch_group=job_plan.batch_group,
-            batchable=job_plan.batchable,
+            isolation_level="sandboxed",
+            batch_group=job_plan.instance_id if len(job_plan.modules) > 1 else None,
+            batchable=len(job_plan.modules) > 1,
         )
         for module in new_modules:
             options = (module_options or {}).get(module["id"])

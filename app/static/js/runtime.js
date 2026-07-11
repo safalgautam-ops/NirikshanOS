@@ -5,6 +5,15 @@
 // NOTE: theme.js is kept separate because it must run synchronously
 // before first paint to prevent a light/dark flash.
 
+// ─── CSRF token helper ───────────────────────────────────────────────────────
+// Reads from the <meta name="csrf-token"> injected by base.html (server-side,
+// always correct). Cookie reading is unreliable across nested Alpine scopes.
+// All page JS that needs the CSRF token should call window.getCsrfToken().
+window.getCsrfToken = function () {
+  const meta = document.querySelector('meta[name="csrf-token"]');
+  return meta ? meta.getAttribute("content") : "";
+};
+
 // ─── pageSearch Alpine component ────────────────────────────────────────────
 // Drives the topbar "find on page" search, present on every authenticated page.
 document.addEventListener("alpine:init", () => {

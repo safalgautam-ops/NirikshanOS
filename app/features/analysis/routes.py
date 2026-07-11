@@ -137,7 +137,7 @@ async def analyze_evidence_view(case_id: str, evidence_id: str):
     selected_modules = await validate_selected_modules(module_ids, evidence_type)
 
     # Group into the minimal set of jobs.
-    plan = create_analysis_plan(selected_modules)
+    plan = await create_analysis_plan(selected_modules)
 
     # Persist jobs + tasks (dedup: skips modules already queued/running).
     result = await job_service.create_jobs_from_plan(

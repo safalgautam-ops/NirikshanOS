@@ -25,9 +25,65 @@ from app.features.admin_modules import repository as module_defs_repo
 from app.features.analysis import repository
 from app.features.analysis.queue_service import POP_TIMEOUT, _key
 from app.features.evidence.repository import get_evidence
+from app.features.instances import repository as instances_repo
 from workers.analyzers.docker_runner import RunConfig, run_container
 
 QUEUES = ["fast_queue", "standard_queue", "heavy_queue", "sandbox_queue"]
+
+# Not one of the 4 analysis job queues — a separate lane for "is this image
+# actually built on the host?" checks, pushed to by the admin Instances page's
+# Recheck button (see app/features/instances/routes.py). Only the worker
+# container has Docker access, so this is the only place that can answer.
+INSTANCE_CHECK_QUEUE_KEY = "nirikshan:instance_check_queue"
+
+# Ad-hoc IDE "Test" runs (see app/features/admin_modules/routes.py's
+# test_run_view) — no case/evidence involved, so these don't belong in the
+# 4 analysis job queues either.
+TEST_QUEUE_KEY = "nirikshan:test_queue"
+
+
+def _build_module_entry(module_id: str, module_name: str, options: dict, db_mod: dict, files: list[dict]) -> dict:
+    """Convert a DB-managed module (admin_modules) into the execution_spec
+    shape run_analysis.py dispatches via registry.dispatch_spec() →
+    loader.run_yaml_module(). Shared by real case/evidence jobs and ad-hoc
+    IDE test runs so both paths execute a module identically."""
+    entry: dict = {"id": module_id, "name": module_name, "options": options}
+    pipeline_spec = db_mod.get("pipeline_spec")
+    if pipeline_spec:
+        # A module authored via the IDE's Pipeline tab — a multi-step chain
+        # entirely replaces the single entry-point file for this run.
+        # pipeline_spec is already {"steps": [...]} shaped exactly like
+        # loader.py's steps: contract expects.
+        try:
+            spec = json.loads(pipeline_spec) if isinstance(pipeline_spec, str) else pipeline_spec
+            spec["id"] = module_id
+            entry["execution_spec"] = spec
+        except Exception as exc:
+            print(f"[worker] failed to parse pipeline_spec for {module_id}: {exc}")
+    elif files:
+        entry_file = next((f for f in files if f["is_entry_point"]), files[0])
+        filename = entry_file["filename"]
+        content  = entry_file["content"] or ""
+        ext      = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+
+        if ext in ("yaml", "yml"):
+            try:
+                spec = yaml.safe_load(content) or {}
+                spec["id"] = module_id
+                entry["execution_spec"] = spec
+            except Exception as exc:
+                print(f"[worker] failed to parse YAML entry point for {module_id}: {exc}")
+        else:
+            # Python (or any other text file): run as embedded script.
+            # The container's exec namespace provides: options, output_dir,
+            # stdout_path, stderr_path, run_cmd, read_file, Path.
+            # The script may set `result`; if not, a default success/fail is
+            # built from whether stdout_path was written.
+            entry["execution_spec"] = {
+                "id":     module_id,
+                "script": content,
+            }
+    return entry
 
 
 async def _process_job(job_id: str) -> None:
@@ -74,10 +130,7 @@ async def _process_job(job_id: str) -> None:
             _module_defs[t["module_id"]] = db_mod
             _module_files[t["module_id"]] = await module_defs_repo.list_files(t["module_id"])
 
-    # Build modules list for job_config.json.
-    # For DB-managed modules (those with files in admin_modules), convert the
-    # entry point file into an execution_spec dict that run_analysis.py can
-    # dispatch via registry.dispatch_spec() → loader.run_yaml_module().
+    # Build modules list for job_config.json — one execution_spec per task.
     modules_list = []
     for t in tasks:
         options: dict = {}
@@ -86,36 +139,9 @@ async def _process_job(job_id: str) -> None:
                 options = json.loads(t["options_json"])
             except json.JSONDecodeError as exc:
                 print(f"[worker] malformed options_json for task {t['id']}: {exc}")
-        entry: dict = {
-            "id":      t["module_id"],
-            "name":    t["module_name"],
-            "options": options,
-        }
+        db_mod = _module_defs.get(t["module_id"]) or {}
         files = _module_files.get(t["module_id"], [])
-        if files:
-            entry_file = next((f for f in files if f["is_entry_point"]), files[0])
-            filename = entry_file["filename"]
-            content  = entry_file["content"] or ""
-            ext      = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
-
-            if ext in ("yaml", "yml"):
-                try:
-                    spec = yaml.safe_load(content) or {}
-                    spec["id"] = t["module_id"]
-                    entry["execution_spec"] = spec
-                except Exception as exc:
-                    print(f"[worker] failed to parse YAML entry point for {t['module_id']}: {exc}")
-            else:
-                # Python (or any other text file): run as embedded script.
-                # The container's exec namespace provides: options, output_dir,
-                # stdout_path, stderr_path, run_cmd, read_file, Path.
-                # The script may set `result`; if not, a default success/fail is
-                # built from whether stdout_path was written.
-                entry["execution_spec"] = {
-                    "id":     t["module_id"],
-                    "script": content,
-                }
-        modules_list.append(entry)
+        modules_list.append(_build_module_entry(t["module_id"], t["module_name"], options, db_mod, files))
 
     timeout = max(
         (_module_defs[m["id"]]["timeout_seconds"] if m["id"] in _module_defs else 120
@@ -129,7 +155,6 @@ async def _process_job(job_id: str) -> None:
         runtime_image=job["runtime_image"],
         modules=modules_list,
         timeout_seconds=timeout,
-        isolation_level=job["isolation_level"],
     )
 
     print(f"[worker] running container image={config.runtime_image} timeout={timeout}s")
@@ -225,6 +250,92 @@ async def _process_job(job_id: str) -> None:
     print(f"[worker] job {job_id} finished")
 
 
+async def _process_test_run(run_id: str) -> None:
+    """Ad-hoc IDE 'Test' run — no case, no evidence row, just a sample file
+    uploaded straight from the Test dialog. Reuses the exact same
+    _build_module_entry / docker_runner.run_container path a real job takes,
+    so a passing test is a real signal, not a simulation."""
+    run = await module_defs_repo.get_test_run(run_id)
+    if run is None:
+        print(f"[worker] test run {run_id} not found in DB — skipping")
+        return
+
+    await module_defs_repo.update_test_run_status(run_id, "running")
+    module_id = run["module_id"]
+
+    db_mod = await module_defs_repo.get_module(module_id)
+    if not db_mod:
+        await module_defs_repo.update_test_run_status(run_id, "failed", error_message="Module no longer exists")
+        return
+
+    instance = await instances_repo.get_instance(run["instance_id"])
+    if not instance:
+        await module_defs_repo.update_test_run_status(run_id, "failed", error_message="Instance no longer exists")
+        return
+
+    files = await module_defs_repo.list_files(module_id)
+    job_id = f"test_{run_id}"
+    local_evidence = Path(Config.JOBS_DIR) / job_id / "input" / "evidence"
+
+    print(f"[worker] test run={run_id} module={module_id} downloading s3_key={run['s3_key']}")
+    await download_object(
+        bucket=Config.MINIO_BUCKET_PRIVATE,
+        key=run["s3_key"],
+        local_path=str(local_evidence),
+    )
+
+    entry = _build_module_entry(module_id, db_mod["display_name"], {}, db_mod, files)
+
+    config = RunConfig(
+        job_id=job_id,
+        evidence_path=str(local_evidence),
+        runtime_image=instance["image_tag"],
+        modules=[entry],
+        timeout_seconds=db_mod.get("timeout_seconds") or 120,
+    )
+
+    print(f"[worker] test run={run_id} running container image={config.runtime_image}")
+    result = await run_container(config)
+    print(f"[worker] test run={run_id} container done exit_code={result.exit_code} time={result.execution_time:.1f}s")
+
+    result_json_path = Path(result.output_dir) / "result.json"
+    module_entry: dict = {}
+    if result_json_path.exists():
+        try:
+            module_entry = json.loads(result_json_path.read_text()).get("modules", {}).get(module_id, {})
+        except Exception as exc:
+            print(f"[worker] test run={run_id} could not parse result.json: {exc}")
+
+    def _read_capped(filename: str | None, cap: int = 100_000) -> str | None:
+        if not filename:
+            return None
+        path = Path(result.output_dir) / filename
+        if not path.exists():
+            return None
+        text = path.read_text(errors="replace")
+        return text if len(text) <= cap else text[:cap] + "\n...[truncated]"
+
+    output = {
+        "status":      module_entry.get("status") or ("success" if result.exit_code == 0 else "failed"),
+        "stdout":      _read_capped(module_entry.get("stdout_file")),
+        "stderr":      _read_capped(module_entry.get("stderr_file")),
+        "steps":       module_entry.get("steps"),
+        "exit_code":   result.exit_code,
+        "execution_time": round(result.execution_time, 2),
+    }
+
+    if result.error_message or output["status"] == "failed":
+        await module_defs_repo.update_test_run_status(
+            run_id, "failed",
+            error_message=result.error_message or module_entry.get("error") or "Module reported failure",
+            result_json=json.dumps(output),
+        )
+    else:
+        await module_defs_repo.update_test_run_status(run_id, "completed", result_json=json.dumps(output))
+
+    print(f"[worker] test run={run_id} finished")
+
+
 async def _mark_running_tasks_failed(job_id: str, error: str) -> None:
     """Best-effort: find any tasks still in 'running' for job_id and mark them failed.
     Called when an unexpected exception escapes _process_job so tasks don't stay stuck."""
@@ -240,15 +351,68 @@ async def _mark_running_tasks_failed(job_id: str, error: str) -> None:
         pass
 
 
+async def _check_instance_image(instance_id: str) -> None:
+    """`docker image inspect <tag>` — the only reliable way to know if an
+    admin-registered instance's image actually exists on the host. Only the
+    worker container has the Docker socket, so this check can't live in the
+    web process; the admin Instances page's Recheck button pushes here via
+    INSTANCE_CHECK_QUEUE_KEY instead of calling Docker directly."""
+    instance = await instances_repo.get_instance(instance_id)
+    if instance is None:
+        return
+    proc = await asyncio.create_subprocess_exec(
+        "docker", "image", "inspect", instance["image_tag"],
+        stdout=asyncio.subprocess.DEVNULL,
+        stderr=asyncio.subprocess.DEVNULL,
+    )
+    rc = await proc.wait()
+    status = "ready" if rc == 0 else "missing"
+    await instances_repo.set_image_status(instance_id, status)
+    print(f"[worker] instance {instance_id} image_tag={instance['image_tag']} status={status}")
+
+
+async def _check_all_instances() -> None:
+    """One pass over every registered instance at worker startup, so the
+    admin Instances page shows real status without needing a manual Recheck
+    click for the common case of "worker just started, images already built"."""
+    instances = await instances_repo.list_instances()
+    for instance in instances:
+        try:
+            await _check_instance_image(instance["id"])
+        except Exception as exc:
+            print(f"[worker] instance check failed for {instance['id']}: {exc}")
+
+
 async def _run_worker(redis_client: aioredis.Redis) -> None:
-    queue_keys = [_key(q) for q in QUEUES]
-    print(f"[worker] listening on queues: {QUEUES}")
+    queue_keys = [_key(q) for q in QUEUES] + [INSTANCE_CHECK_QUEUE_KEY, TEST_QUEUE_KEY]
+    print(f"[worker] listening on queues: {QUEUES} + {INSTANCE_CHECK_QUEUE_KEY} + {TEST_QUEUE_KEY}")
 
     while True:
         result = await redis_client.brpop(queue_keys, timeout=POP_TIMEOUT)
         if result is None:
             continue
-        _queue_key, job_id = result
+        queue_key, value = result
+
+        if queue_key == INSTANCE_CHECK_QUEUE_KEY:
+            try:
+                await _check_instance_image(value)
+            except Exception as exc:
+                print(f"[worker] ERROR checking instance {value}: {exc}")
+            continue
+
+        if queue_key == TEST_QUEUE_KEY:
+            run_id = value
+            try:
+                await _process_test_run(run_id)
+            except Exception as exc:
+                print(f"[worker] ERROR processing test run {run_id}: {exc}")
+                try:
+                    await module_defs_repo.update_test_run_status(run_id, "failed", error_message=str(exc))
+                except Exception:
+                    pass
+            continue
+
+        job_id = value
         try:
             await _process_job(job_id)
         except Exception as exc:
@@ -272,6 +436,8 @@ async def main() -> None:
     )
 
     redis_client = aioredis.from_url(Config.REDIS_URL, decode_responses=True)
+
+    await _check_all_instances()
 
     try:
         await _run_worker(redis_client)

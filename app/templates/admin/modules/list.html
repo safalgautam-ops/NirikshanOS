@@ -54,10 +54,10 @@
 
       {% else %}
 
-      {% for category, group in modules | groupby('category') %}
+      {% for category, group in modules | groupby('category_name') %}
       <section>
         <div class="mb-4 flex items-center gap-3">
-          <h2 class="text-xs font-semibold uppercase tracking-widest text-muted-foreground">{{ category }}</h2>
+          <h2 class="text-xs font-semibold uppercase tracking-widest text-muted-foreground">{{ category or "Uncategorized" }}</h2>
           {{ separator(class="flex-1") }}
         </div>
 
@@ -92,8 +92,8 @@
                   "outline"
                 )) }}
               </div>
-              <p class="mt-3 text-[11px] text-muted-foreground font-mono truncate" title="{{ mod.runtime_image }}">
-                {{ mod.runtime_image }}
+              <p class="mt-3 text-[11px] text-muted-foreground font-mono truncate" title="{{ mod.instance_image_tag or '' }}">
+                {{ mod.instance_display_name or "No instance assigned" }}
               </p>
             {% endcall %}
 
@@ -155,7 +155,12 @@
           <div class="grid grid-cols-2 gap-4">
             <div class="space-y-1.5">
               {{ label(text="Category", for_id="mod-cat") }}
-              {{ input(type="text", placeholder="forensics", attrs={"id": "mod-cat", "x-model": "form.category"}) }}
+              {% call select_native(name="category_id", attrs={"id": "mod-cat", "x-model": "form.category_id"}) %}
+                <option value="">Uncategorized</option>
+                {% for cat in categories %}
+                <option value="{{ cat.id }}">{{ cat.name }}</option>
+                {% endfor %}
+              {% endcall %}
             </div>
             <div class="space-y-1.5">
               {{ label(text="Tier", for_id="mod-tier") }}
@@ -168,8 +173,16 @@
           </div>
 
           <div class="space-y-1.5">
-            {{ label(text="Runtime Image", for_id="mod-img") }}
-            {{ input(type="text", placeholder="python:3.11-slim", attrs={"id": "mod-img", "x-model": "form.runtime_image"}) }}
+            {{ label(text="Instance", for_id="mod-instance") }}
+            {% if not instances %}
+            <p class="text-xs text-destructive">No active instances registered — <a class="underline" href="{{ url_for('instances.list_view') }}">register one</a> before creating a module.</p>
+            {% else %}
+            {% call select_native(name="instance_id", attrs={"id": "mod-instance", "x-model": "form.instance_id"}) %}
+              {% for inst in instances %}
+              <option value="{{ inst.id }}">{{ inst.display_name }} ({{ inst.image_tag }})</option>
+              {% endfor %}
+            {% endcall %}
+            {% endif %}
           </div>
         </div>
 

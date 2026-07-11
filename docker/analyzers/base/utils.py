@@ -41,3 +41,12 @@ def read_file(path: Path) -> str:
 def output_paths(module_id: str, output_dir: Path) -> tuple[Path, Path]:
     safe = module_id.replace(".", "_").replace("/", "_")
     return output_dir / f"{safe}.txt", output_dir / f"{safe}.stderr.txt"
+
+
+def output_paths_for_step(module_id: str, step_id: str, output_dir: Path) -> tuple[Path, Path]:
+    safe_mod = module_id.replace(".", "_").replace("/", "_")
+    safe_step = step_id.replace(".", "_").replace("/", "_")
+    return (
+        output_dir / f"{safe_mod}__{safe_step}.txt",
+        output_dir / f"{safe_mod}__{safe_step}.stderr.txt",
+    )

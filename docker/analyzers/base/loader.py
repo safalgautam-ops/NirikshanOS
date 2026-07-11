@@ -50,7 +50,7 @@ import subprocess
 import traceback
 from pathlib import Path
 
-from utils import output_paths, read_file, run_cmd
+from utils import output_paths, output_paths_for_step, read_file, run_cmd
 
 
 # ── Option validation ─────────────────────────────────────────────────────────
@@ -205,6 +205,156 @@ def _run_pipe(pipe_spec: dict, validated: dict, stdout_path: Path, stderr_path: 
         pipe_err.unlink(missing_ok=True)
 
 
+# ── Multi-step chains (steps:) ─────────────────────────────────────────────────
+#
+# A module may declare a `steps:` list instead of a bare `argv`/`script`, to
+# express "run A, then B, then C" — each step still executes inside the SAME
+# container invocation (no new containers, no new queue mechanics), just
+# sequenced by dependency order:
+#
+#   steps:
+#     - id: parse
+#       run: {argv: [python3, parse.py, /case/evidence]}
+#     - id: scan
+#       depends_on: [parse]
+#       run: {script: |
+#         # previous_output(step_id) reads an earlier step's stdout file
+#         data = previous_output("parse")
+#         ...
+#       }
+#       continue_on_error: false   # default — a failed step aborts anything
+#                                  # that (transitively) depends on it
+#
+# `install`/`options`/`timeout` still apply once, at the module level, shared
+# by every step — only the "what runs" part is broken into named pieces.
+
+def _topological_order(steps: list[dict]) -> list[dict]:
+    """Kahn's algorithm over each step's depends_on list. Raises ValueError
+    on an unknown dependency or a cycle — both are admin authoring mistakes
+    that should fail loudly rather than silently drop steps."""
+    by_id = {s["id"]: s for s in steps}
+    for s in steps:
+        for dep in s.get("depends_on", []):
+            if dep not in by_id:
+                raise ValueError(f"Step '{s['id']}' depends_on unknown step '{dep}'")
+
+    ordered: list[dict] = []
+    seen: set[str] = set()
+    visiting: set[str] = set()
+
+    def visit(step: dict) -> None:
+        if step["id"] in seen:
+            return
+        if step["id"] in visiting:
+            raise ValueError(f"Cycle detected in steps: at '{step['id']}'")
+        visiting.add(step["id"])
+        for dep in step.get("depends_on", []):
+            visit(by_id[dep])
+        visiting.discard(step["id"])
+        seen.add(step["id"])
+        ordered.append(step)
+
+    for s in steps:
+        visit(s)
+    return ordered
+
+
+def _run_steps(defn: dict, validated: dict, output_dir: Path, timeout: int | None) -> dict:
+    module_id = defn["id"]
+    steps = _topological_order(defn["steps"])
+
+    step_results: dict[str, dict] = {}
+    step_stdout_paths: dict[str, Path] = {}
+    failed_ids: set[str] = set()
+    overall_status = "success"
+    last_stdout_name: str | None = None
+    last_stderr_name: str | None = None
+
+    def previous_output(step_id: str) -> str:
+        path = step_stdout_paths.get(step_id)
+        return read_file(path) if path else ""
+
+    for step in steps:
+        step_id = step["id"]
+        deps = step.get("depends_on", [])
+        if any(d in failed_ids for d in deps):
+            step_results[step_id] = {
+                "status": "skipped", "exit_code": None,
+                "stdout_file": None, "stderr_file": None,
+                "error": f"Skipped — upstream step failed: {[d for d in deps if d in failed_ids]}",
+            }
+            failed_ids.add(step_id)
+            continue
+
+        stdout_path, stderr_path = output_paths_for_step(module_id, step_id, output_dir)
+        step_stdout_paths[step_id] = stdout_path
+        run_spec = step.get("run", {})
+
+        if "script" in run_spec:
+            namespace: dict = {
+                "options":          validated,
+                "output_dir":       output_dir,
+                "stdout_path":      stdout_path,
+                "stderr_path":      stderr_path,
+                "run_cmd":          run_cmd,
+                "read_file":        read_file,
+                "previous_output":  previous_output,
+                "Path":             Path,
+            }
+            try:
+                exec(run_spec["script"], namespace)  # noqa: S102 — trusted admin-uploaded code
+                result = namespace.get("result") or {
+                    "status":      "success" if stdout_path.exists() else "failed",
+                    "exit_code":   0,
+                    "stdout_file": stdout_path.name,
+                    "stderr_file": stderr_path.name,
+                    "error":       None,
+                }
+            except Exception as exc:
+                err = f"Script raised: {exc}\n{traceback.format_exc()}"
+                stderr_path.write_text(err)
+                result = {"status": "failed", "exit_code": 1,
+                          "stdout_file": stdout_path.name, "stderr_file": stderr_path.name,
+                          "error": str(exc)}
+        elif "argv" in run_spec:
+            argv = _build_argv(run_spec["argv"], validated)
+            try:
+                rc = run_cmd(argv, stdout_path, stderr_path, timeout=timeout)
+                result = {
+                    "status":      "success" if rc == 0 else "failed",
+                    "exit_code":   rc,
+                    "stdout_file": stdout_path.name,
+                    "stderr_file": stderr_path.name,
+                    "error":       None if rc == 0 else f"Step exited {rc}",
+                }
+            except subprocess.TimeoutExpired:
+                stderr_path.write_text(f"Step timed out after {timeout}s\n")
+                result = {"status": "failed", "exit_code": -1,
+                          "stdout_file": stdout_path.name, "stderr_file": stderr_path.name,
+                          "error": f"Timed out after {timeout}s"}
+        else:
+            result = {"status": "failed", "exit_code": -1,
+                      "stdout_file": None, "stderr_file": None,
+                      "error": f"Step '{step_id}' has neither 'argv' nor 'script'"}
+
+        step_results[step_id] = result
+        if result["status"] == "success":
+            last_stdout_name = result["stdout_file"]
+            last_stderr_name = result["stderr_file"]
+        elif not step.get("continue_on_error", False):
+            failed_ids.add(step_id)
+            overall_status = "failed"
+
+    return {
+        "status":      overall_status,
+        "exit_code":   0 if overall_status == "success" else -1,
+        "stdout_file": last_stdout_name,
+        "stderr_file": last_stderr_name,
+        "error":       None if overall_status == "success" else "One or more steps failed",
+        "steps":       step_results,
+    }
+
+
 # ── Public entry point ────────────────────────────────────────────────────────
 
 def run_yaml_module(defn: dict, raw_options: dict, output_dir: Path) -> dict:
@@ -213,8 +363,10 @@ def run_yaml_module(defn: dict, raw_options: dict, output_dir: Path) -> dict:
     Execution order:
       1. Install tool if needed (install: block).
       2. Validate and coerce options.
-      3. Run main command (argv: or script:).
-      4. Pipe output if pipe: is declared and the trigger option is non-empty.
+      3. Run main command (argv: / script: / steps:).
+      4. Pipe output if pipe: is declared and the trigger option is non-empty
+         (steps: modules skip this — pipe chaining a multi-step module's
+         output doesn't have one obvious "the" output to pipe).
     """
     module_id   = defn["id"]
     stdout_path, stderr_path = output_paths(module_id, output_dir)
@@ -233,7 +385,11 @@ def run_yaml_module(defn: dict, raw_options: dict, output_dir: Path) -> dict:
                     "error": str(exc)}
 
     # Step 2 — run
-    if "script" in defn:
+    if "steps" in defn:
+        # Multi-step chain — pipe: (step 3 below) does not apply; each step
+        # already wrote its own stdout/stderr under its own filename.
+        return _run_steps(defn, validated, output_dir, timeout)
+    elif "script" in defn:
         result = _run_script(defn["script"], validated, output_dir, stdout_path, stderr_path)
     elif "argv" in defn:
         argv = _build_argv(defn["argv"], validated)

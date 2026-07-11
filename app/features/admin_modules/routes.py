@@ -3,37 +3,70 @@
 from __future__ import annotations
 
 import json
-import os
 import re
 
 from quart import Blueprint, g, jsonify, redirect, render_template, request, url_for
 
+from app.config import Config
+from app.core.object_storage import put_object
 from app.core.security.permissions import get_visible_nav_keys, require_permission
+from app.core.utils.ids import new_id
+from app.extensions import get_redis
 from app.features.admin_modules import repository
 from app.features.admin_modules.permissions import MODULE_EDIT, MODULE_VIEW
+from app.features.categories import repository as categories_repository
+from app.features.instances import repository as instances_repository
 from app.features.plans.service import KNOWN_TIERS
 
-
 admin_modules_bp = Blueprint("admin_modules", __name__, url_prefix="/admin/modules")
+
+# Ad-hoc test-run uploads are sample files, not full forensic evidence images —
+# capped much lower than the evidence pipeline's 100GB ceiling.
+_MAX_TEST_UPLOAD_BYTES = 200 * 1024 * 1024  # 200MB
 
 _ALLOWED_EXTENSIONS = {
     ".py", ".yaml", ".yml", ".sh", ".json", ".txt", ".md", ".toml", ".ini", ".conf",
 }
 _ID_RE = re.compile(r"^[a-z0-9_\-]{1,100}$")
 
-# Mirror the same env-var-driven allowlist used in docker_runner.py so that
-# disallowed images are rejected at the API layer, not just at run time.
-_DEFAULT_RUNTIME_IMAGE = "nirikshan/base:1.0"
-_ALLOWED_RUNTIME_IMAGES: frozenset[str] = frozenset(
-    img.strip()
-    for img in os.environ.get("ALLOWED_RUNTIME_IMAGES", _DEFAULT_RUNTIME_IMAGE).split(",")
-    if img.strip()
-)
-
 
 def _ext_ok(filename: str) -> bool:
     import os
     return os.path.splitext(filename.lower())[1] in _ALLOWED_EXTENSIONS
+
+
+async def _validate_meta_fields(body: dict) -> tuple[dict | None, str | None]:
+    """Shared validation for create/update. Returns (clean_fields, error).
+
+    instance_id is looked up against the `instances` table directly — the FK
+    itself is the allowlist now, no separate env-var/frozenset check needed.
+    """
+    display_name = (body.get("display_name") or "").strip()
+    if not display_name:
+        return None, "Display name is required"
+    tier = (body.get("tier") or "free").strip()
+    if tier not in KNOWN_TIERS:
+        return None, f"Invalid tier '{tier}'"
+
+    category_id = (body.get("category_id") or "").strip() or None
+    if category_id and not await categories_repository.get_category(category_id):
+        return None, f"Category '{category_id}' does not exist"
+
+    instance_id = (body.get("instance_id") or "").strip() or None
+    if instance_id:
+        instance = await instances_repository.get_instance(instance_id)
+        if not instance:
+            return None, f"Instance '{instance_id}' does not exist"
+        if not instance["is_active"]:
+            return None, f"Instance '{instance_id}' is not active"
+
+    return {
+        "display_name": display_name,
+        "description": (body.get("description") or "").strip() or None,
+        "category_id": category_id,
+        "tier": tier,
+        "instance_id": instance_id,
+    }, None
 
 
 # ── List + create ─────────────────────────────────────────────────────────────
@@ -42,10 +75,14 @@ def _ext_ok(filename: str) -> bool:
 @require_permission(MODULE_VIEW)
 async def list_view():
     modules = await repository.list_modules()
+    categories = await categories_repository.list_categories()
+    instances = await instances_repository.list_active_instances()
     visible_keys = await get_visible_nav_keys(g.user_id)
     return await render_template(
         "admin/modules/list.html",
         modules=modules,
+        categories=categories,
+        instances=instances,
         known_tiers=KNOWN_TIERS,
         visible_keys=visible_keys,
     )
@@ -60,26 +97,15 @@ async def create_view():
         return jsonify({"error": "ID must be 1–100 lowercase alphanumeric/underscore/hyphen characters"}), 400
     if await repository.get_module(module_id):
         return jsonify({"error": f"Module '{module_id}' already exists"}), 409
-    display_name = (body.get("display_name") or "").strip()
-    if not display_name:
-        return jsonify({"error": "Display name is required"}), 400
-    category = (body.get("category") or "").strip()
-    if not category:
-        return jsonify({"error": "Category is required"}), 400
-    tier = body.get("tier") or "free"
-    if tier not in KNOWN_TIERS:
-        return jsonify({"error": f"Invalid tier '{tier}'"}), 400
-    runtime_image = (body.get("runtime_image") or _DEFAULT_RUNTIME_IMAGE).strip()
-    if runtime_image not in _ALLOWED_RUNTIME_IMAGES:
-        return jsonify({"error": f"runtime_image '{runtime_image}' is not on the allowlist. Allowed: {sorted(_ALLOWED_RUNTIME_IMAGES)}"}), 400
+
+    fields, error = await _validate_meta_fields(body)
+    if error:
+        return jsonify({"error": error}), 400
+
     await repository.create_custom_module(
         module_id=module_id,
-        display_name=display_name,
-        description=(body.get("description") or "").strip() or None,
-        category=category,
-        tier=tier,
-        runtime_image=runtime_image,
         created_by=g.user_id,
+        **fields,
     )
     return jsonify({"ok": True, "id": module_id})
 
@@ -99,19 +125,28 @@ async def ide_view(module_id: str):
         {"id": f["id"], "filename": f["filename"], "is_entry_point": bool(f["is_entry_point"])}
         for f in raw_files
     ]
+    categories = await categories_repository.list_categories()
+    instances = await instances_repository.list_active_instances()
+    instances_for_js = [
+        {"id": i["id"], "display_name": i["display_name"], "image_tag": i["image_tag"]}
+        for i in instances
+    ]
     visible_keys = await get_visible_nav_keys(g.user_id)
     module_meta = {
-        "display_name":  mod["display_name"],
-        "description":   mod["description"] or "",
-        "category":      mod["category"],
-        "tier":          mod["tier"],
-        "runtime_image": mod["runtime_image"],
+        "display_name": mod["display_name"],
+        "description":  mod["description"] or "",
+        "category_id":  mod["category_id"],
+        "tier":         mod["tier"],
+        "instance_id":  mod["instance_id"],
     }
     return await render_template(
         "admin/modules/ide.html",
         module=mod,
         module_meta=module_meta,
         files=files,
+        categories=categories,
+        instances=instances,
+        instances_for_js=instances_for_js,
         known_tiers=KNOWN_TIERS,
         visible_keys=visible_keys,
     )
@@ -126,26 +161,10 @@ async def update_meta_view(module_id: str):
     if not mod:
         return jsonify({"error": "not found"}), 404
     body = await request.get_json(silent=True) or {}
-    display_name = (body.get("display_name") or "").strip()
-    if not display_name:
-        return jsonify({"error": "Display name is required"}), 400
-    category = (body.get("category") or "").strip()
-    if not category:
-        return jsonify({"error": "Category is required"}), 400
-    tier = (body.get("tier") or "free").strip()
-    if tier not in KNOWN_TIERS:
-        return jsonify({"error": f"Invalid tier '{tier}'"}), 400
-    runtime_image = (body.get("runtime_image") or _DEFAULT_RUNTIME_IMAGE).strip()
-    if runtime_image not in _ALLOWED_RUNTIME_IMAGES:
-        return jsonify({"error": f"runtime_image '{runtime_image}' is not on the allowlist. Allowed: {sorted(_ALLOWED_RUNTIME_IMAGES)}"}), 400
-    await repository.update_module_meta(
-        module_id,
-        display_name=display_name,
-        description=(body.get("description") or "").strip() or None,
-        category=category,
-        tier=tier,
-        runtime_image=runtime_image,
-    )
+    fields, error = await _validate_meta_fields(body)
+    if error:
+        return jsonify({"error": error}), 400
+    await repository.update_module_meta(module_id, **fields)
     return jsonify({"ok": True})
 
 
@@ -157,33 +176,11 @@ async def toggle_view(module_id: str):
     mod = await repository.get_module(module_id)
     if not mod:
         return jsonify({"error": "not found"}), 404
+    if not mod["is_enabled"] and not mod["instance_id"]:
+        return jsonify({"error": "Assign an instance in Settings before enabling this module."}), 400
     new_state = not bool(mod["is_enabled"])
     await repository.set_enabled(module_id, new_state)
     return jsonify({"ok": True, "is_enabled": new_state})
-
-
-# ── Test ─────────────────────────────────────────────────────────────────────
-
-@admin_modules_bp.route("/<module_id>/test", methods=["POST"])
-@require_permission(MODULE_EDIT)
-async def test_view(module_id: str):
-    mod = await repository.get_module(module_id)
-    if not mod:
-        return jsonify({"error": "not found"}), 404
-    files = await repository.list_files(module_id)
-    if not files:
-        return jsonify({"ok": False, "message": "No files yet — create an entry point file first."}), 400
-    entry = next((f for f in files if f["is_entry_point"]), None)
-    if not entry:
-        return jsonify({"ok": False, "message": "No entry point set — click the star icon on a file to mark it as the entry point."}), 400
-    return jsonify({
-        "ok": False,
-        "message": (
-            f"To run '{entry['filename']}': create a case, upload evidence, then click Analyze "
-            f"and select this module. Make sure the analyzer image is built first: "
-            f"docker compose --profile build-only build analyzer-base"
-        ),
-    }), 400
 
 
 # ── Module file CRUD ──────────────────────────────────────────────────────────
@@ -270,3 +267,111 @@ async def save_options_schema_view(module_id: str):
     else:
         await repository.save_options_schema(module_id, None)
     return jsonify({"ok": True})
+
+
+@admin_modules_bp.route("/<module_id>/pipeline", methods=["PUT"])
+@require_permission(MODULE_EDIT)
+async def save_pipeline_view(module_id: str):
+    if not await repository.get_module(module_id):
+        return jsonify({"error": "not found"}), 404
+    body = await request.get_json(silent=True) or {}
+    raw = body.get("pipeline", "")
+    if raw:
+        try:
+            parsed = json.loads(raw)
+            if not isinstance(parsed, dict) or not isinstance(parsed.get("steps"), list):
+                return jsonify({"error": "pipeline must be a JSON object with a 'steps' array"}), 400
+            step_ids = set()
+            for step in parsed["steps"]:
+                if not isinstance(step, dict) or not step.get("id"):
+                    return jsonify({"error": "every step needs an 'id'"}), 400
+                if step["id"] in step_ids:
+                    return jsonify({"error": f"duplicate step id '{step['id']}'"}), 400
+                step_ids.add(step["id"])
+                if "run" not in step or not ("argv" in step["run"] or "script" in step["run"]):
+                    return jsonify({"error": f"step '{step['id']}' needs run.argv or run.script"}), 400
+                for dep in step.get("depends_on", []):
+                    if dep not in step_ids and dep not in {s.get("id") for s in parsed["steps"]}:
+                        return jsonify({"error": f"step '{step['id']}' depends_on unknown step '{dep}'"}), 400
+        except json.JSONDecodeError as exc:
+            return jsonify({"error": f"Invalid JSON: {exc}"}), 400
+        await repository.save_pipeline(module_id, raw)
+    else:
+        await repository.save_pipeline(module_id, None)
+    return jsonify({"ok": True})
+
+
+# ── Ad-hoc test runs (real, in-IDE — no case/evidence involved) ───────────────
+
+@admin_modules_bp.route("/<module_id>/test/upload", methods=["POST"])
+@require_permission(MODULE_EDIT)
+async def test_upload_view(module_id: str):
+    if not await repository.get_module(module_id):
+        return jsonify({"error": "not found"}), 404
+    files = await request.files
+    file = files.get("file")
+    if not file or not file.filename:
+        return jsonify({"error": "No file provided"}), 400
+    data = file.read()
+    if len(data) > _MAX_TEST_UPLOAD_BYTES:
+        return jsonify({"error": f"File too large — max {_MAX_TEST_UPLOAD_BYTES // (1024*1024)}MB for test uploads"}), 400
+    upload_id = new_id()
+    safe_filename = re.sub(r"[^A-Za-z0-9._-]", "_", file.filename)
+    s3_key = f"module-tests/{module_id}/{upload_id}/{safe_filename}"
+    await put_object(
+        bucket=Config.MINIO_BUCKET_PRIVATE,
+        key=s3_key,
+        data=data,
+        content_type=file.content_type or "application/octet-stream",
+    )
+    return jsonify({"ok": True, "s3_key": s3_key})
+
+
+@admin_modules_bp.route("/<module_id>/test/run", methods=["POST"])
+@require_permission(MODULE_EDIT)
+async def test_run_view(module_id: str):
+    mod = await repository.get_module(module_id)
+    if not mod:
+        return jsonify({"error": "not found"}), 404
+    if not mod["instance_id"]:
+        return jsonify({"error": "Assign an instance in Settings before testing this module."}), 400
+    files = await repository.list_files(module_id)
+    has_entry = any(f["is_entry_point"] for f in files)
+    if not has_entry and not mod.get("pipeline_spec"):
+        return jsonify({"error": "No entry point set and no pipeline defined — nothing to run."}), 400
+
+    body = await request.get_json(silent=True) or {}
+    s3_key = (body.get("s3_key") or "").strip()
+    if not s3_key:
+        return jsonify({"error": "Upload a sample file first."}), 400
+
+    run_id = await repository.create_test_run(
+        module_id=module_id,
+        instance_id=mod["instance_id"],
+        s3_key=s3_key,
+        created_by=g.user_id,
+    )
+    redis = get_redis()
+    await redis.lpush("nirikshan:test_queue", run_id)
+    return jsonify({"ok": True, "run_id": run_id})
+
+
+@admin_modules_bp.route("/<module_id>/test/<run_id>")
+@require_permission(MODULE_VIEW)
+async def test_status_view(module_id: str, run_id: str):
+    run = await repository.get_test_run(run_id)
+    if not run or run["module_id"] != module_id:
+        return jsonify({"error": "not found"}), 404
+    raw_result = run["result_json"]
+    if isinstance(raw_result, str):
+        try:
+            raw_result = json.loads(raw_result)
+        except json.JSONDecodeError:
+            raw_result = None
+    return jsonify({
+        "id":             run["id"],
+        "status":         run["status"],
+        "error_message":  run["error_message"],
+        "result":         raw_result,
+        "finished_at":    run["finished_at"].isoformat() if run["finished_at"] else None,
+    })

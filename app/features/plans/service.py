@@ -51,14 +51,17 @@ async def assign_plan(
 
     # Snapshot the full plan at subscription time — immutable after this point.
     # If the plan is later edited or deleted, this org's access stays as-was
-    # until ends_at (grandfathering).
+    # until ends_at (grandfathering). allowed_instance_ids follows the same
+    # grandfathering rule as allowed_tiers: resolved once, here, from the
+    # live plan_instances join table.
     snapshot = {
-        "id":            plan["id"],
-        "display_name":  plan["display_name"],
-        "resources":     plan["resources"],
-        "allowed_tiers": plan["allowed_tiers"],
-        "price_monthly": str(plan["price_monthly"]),
-        "price_annual":  str(plan["price_annual"]),
+        "id":                  plan["id"],
+        "display_name":        plan["display_name"],
+        "resources":           plan["resources"],
+        "allowed_tiers":       plan["allowed_tiers"],
+        "allowed_instance_ids": await repository.get_instance_ids_for_plan(plan_id),
+        "price_monthly":       str(plan["price_monthly"]),
+        "price_annual":        str(plan["price_annual"]),
     }
 
     sub_id = await repository.create_subscription(
@@ -92,3 +95,23 @@ def get_allowed_tiers(sub: dict | None) -> list[str]:
             tiers = []
     tiers = tiers if isinstance(tiers, list) else ["free", "basic_triage"]
     return tiers if tiers else ["free"]
+
+
+def get_allowed_instance_ids(sub: dict | None) -> list[str]:
+    """Return the granted instance_id list from a subscription snapshot.
+
+    No subscription at all means no instance is granted — unlike tiers
+    (which default to free/basic_triage), there's no sensible "free
+    instance" to fall back to; an org with no active plan simply cannot
+    run anything until one is assigned.
+    """
+    if sub is None:
+        return []
+    snapshot = sub.get("plan_snapshot") or {}
+    ids = snapshot.get("allowed_instance_ids", [])
+    if isinstance(ids, str):
+        try:
+            ids = json.loads(ids)
+        except Exception:
+            ids = []
+    return ids if isinstance(ids, list) else []

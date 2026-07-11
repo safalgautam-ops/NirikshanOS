@@ -32,7 +32,7 @@
 
 {# Full-height IDE layout offset by sidebar #}
 <div class="flex flex-col md:pl-60 h-screen overflow-hidden"
-     x-data="ideEditor({{ module.id | tojson | forceescape }}, {{ module.options_schema | tojson | forceescape }}, {{ module_meta | tojson | forceescape }})"
+     x-data="ideEditor({{ module.id | tojson | forceescape }}, {{ module.options_schema | tojson | forceescape }}, {{ module_meta | tojson | forceescape }}, {{ instances_for_js | tojson | forceescape }}, {{ module.pipeline_spec | tojson | forceescape }})"
      @file-opened.window="loadFileContent($event.detail)">
 
   {# ── Topbar ──────────────────────────────────────────────────────────────── #}
@@ -59,9 +59,9 @@
     <span x-show="flash" x-text="flash" class="text-xs text-muted-foreground shrink-0 px-1" x-cloak></span>
     <span x-show="isDirty && !flash" class="text-xs text-amber-500 shrink-0 px-1">Unsaved</span>
 
-    {% call button(variant="outline", size="sm", attrs={"@click": "runTest()", ":disabled": "testing"}) %}
+    {% call button(variant="outline", size="sm", attrs={"@click": "openTestDialog()"}) %}
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-      <span x-text="testing ? 'Running…' : 'Test'"></span>
+      Test
     {% endcall %}
 
     {% call button(size="sm", attrs={"@click": "save()", ":disabled": "saving || (editorTab === 'code' && !activeFileId)"}) %}
@@ -168,12 +168,17 @@
           Parameters
         </button>
         <button class="px-3 py-2.5 text-xs font-medium border-b-2 transition-colors"
+                :class="editorTab === 'pipeline' ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground'"
+                @click="switchTab('pipeline')">
+          Pipeline
+        </button>
+        <button class="px-3 py-2.5 text-xs font-medium border-b-2 transition-colors"
                 :class="editorTab === 'settings' ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground'"
                 @click="switchTab('settings')">
           Settings
         </button>
         <span class="flex-1"></span>
-        <code class="text-[11px] text-muted-foreground font-mono mr-2" x-text="settings.runtime_image"></code>
+        <code class="text-[11px] text-muted-foreground font-mono mr-2" x-text="instanceLabel"></code>
         <span x-show="activeFilename && editorTab === 'code'" x-text="activeFilename"
               class="text-[11px] text-muted-foreground font-mono border-l pl-2"></span>
       </div>
@@ -211,6 +216,28 @@
              class="shrink-0 border-t bg-destructive/10 px-4 py-2 text-xs text-destructive"></div>
       </div>
 
+      {# Pipeline (multi-step chain) editor #}
+      <div class="flex-1 min-h-0 flex flex-col overflow-hidden" x-show="editorTab === 'pipeline'">
+        <div class="shrink-0 border-b bg-muted/30 px-4 py-2 text-xs text-muted-foreground">
+          Optional. Leave empty to run the entry point file as a single step (default).
+          A JSON object with a <code class="font-mono bg-muted px-1 rounded">steps</code> array —
+          each step has <code class="font-mono bg-muted px-1 rounded">id</code>,
+          <code class="font-mono bg-muted px-1 rounded">run</code>
+          (<code class="font-mono bg-muted px-1 rounded">{"argv": [...]}</code> or
+          <code class="font-mono bg-muted px-1 rounded">{"script": "..."}</code>),
+          optional <code class="font-mono bg-muted px-1 rounded">depends_on</code> (array of step ids)
+          and <code class="font-mono bg-muted px-1 rounded">continue_on_error</code>.
+          Steps run in the same container, in dependency order; a script step can call
+          <code class="font-mono bg-muted px-1 rounded">previous_output("step_id")</code>
+          to read an earlier step's stdout.
+        </div>
+        <div class="flex-1 min-h-0 relative overflow-hidden">
+          <div id="cm-pipeline-wrapper" class="absolute inset-0"></div>
+        </div>
+        <div x-show="pipelineError" x-text="pipelineError"
+             class="shrink-0 border-t bg-destructive/10 px-4 py-2 text-xs text-destructive"></div>
+      </div>
+
       {# Settings tab #}
       <div class="flex-1 min-h-0 overflow-y-auto p-6" x-show="editorTab === 'settings'">
         <div class="max-w-lg space-y-5">
@@ -233,10 +260,14 @@
             </div>
             <div class="space-y-1.5">
               {{ label(text="Category") }}
-              <input x-model="settings.category"
-                     class="w-full rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
-                     placeholder="forensics"
-                     @input="isDirty = true">
+              <select x-model="settings.category_id"
+                      class="w-full rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                      @change="isDirty = true">
+                <option value="">Uncategorized</option>
+                {% for cat in categories %}
+                <option value="{{ cat.id }}">{{ cat.name }}</option>
+                {% endfor %}
+              </select>
             </div>
           </div>
 
@@ -270,14 +301,22 @@
           </div>
 
           <div class="space-y-1.5">
-            {{ label(text="Runtime Image") }}
-            <input x-model="settings.runtime_image"
-                   class="w-full rounded-md border bg-background px-3 py-2 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-ring"
-                   placeholder="nirikshan/base:1.0"
-                   @input="isDirty = true">
+            {{ label(text="Instance") }}
+            {% if not instances %}
+            <p class="text-sm text-destructive">No active instances registered — <a class="underline" href="{{ url_for('instances.list_view') }}">register one</a> before enabling this module.</p>
+            {% else %}
+            <select x-model="settings.instance_id"
+                    class="w-full rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                    @change="isDirty = true">
+              <option value="">No instance assigned</option>
+              {% for inst in instances %}
+              <option value="{{ inst.id }}">{{ inst.display_name }} ({{ inst.image_tag }})</option>
+              {% endfor %}
+            </select>
+            {% endif %}
             <p class="text-[11px] text-muted-foreground">
-              Must be on the server allowlist (<code class="font-mono">ALLOWED_RUNTIME_IMAGES</code>).
-              Build with: <code class="font-mono">docker compose --profile build-only build analyzer-base</code>
+              The container this tool runs in. Manage instances at
+              <a class="underline" href="{{ url_for('instances.list_view') }}">/admin/instances</a>.
             </p>
           </div>
 
@@ -293,5 +332,98 @@
 
     </div>
   </div>
+
+  {# ── Test dialog ──────────────────────────────────────────────────────────── #}
+  <template x-if="testDialogOpen">
+    <div class="fixed inset-0 z-50 flex items-center justify-center p-4" @keydown.escape.window="testDialogOpen = false">
+      <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="!testRunning && (testDialogOpen = false)"></div>
+
+      <div class="relative z-10 w-full max-w-lg rounded-xl border bg-card shadow-xl overflow-hidden max-h-[80vh] flex flex-col">
+
+        <div class="flex items-center justify-between border-b px-6 py-4 shrink-0">
+          <div>
+            <h2 class="font-semibold text-base">Test Module</h2>
+            <p class="text-xs text-muted-foreground mt-0.5">Runs for real, in the configured instance, against the file you upload here.</p>
+          </div>
+          {% call button(variant="ghost", size="icon-sm", attrs={"@click": "testDialogOpen = false", ":disabled": "testRunning"}) %}
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" x2="6" y1="6" y2="18"/><line x1="6" x2="18" y1="6" y2="18"/></svg>
+          {% endcall %}
+        </div>
+
+        <div class="px-6 py-5 space-y-4 overflow-y-auto">
+
+          <template x-if="testError">
+            <p class="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive" x-text="testError"></p>
+          </template>
+
+          <template x-if="!settings.instance_id">
+            <p class="rounded-lg bg-amber-500/10 px-3 py-2 text-sm text-amber-600">Assign an instance in Settings before testing.</p>
+          </template>
+
+          <template x-if="!testRunId">
+            <div class="space-y-1.5">
+              {{ label(text="Sample file") }}
+              <input type="file" x-ref="testFileInput" @change="onTestFileChange($event)"
+                     class="w-full rounded-md border bg-background px-3 py-2 text-sm file:mr-3 file:rounded file:border-0 file:bg-muted file:px-2 file:py-1 file:text-xs">
+              <p class="text-[11px] text-muted-foreground">Max 200MB. Uploaded straight to this test run — not saved as evidence.</p>
+            </div>
+          </template>
+
+          <template x-if="testRunId">
+            <div class="space-y-3">
+              <div class="flex items-center gap-2 text-sm">
+                <span class="size-2 rounded-full"
+                      :class="{
+                        'bg-amber-400 animate-pulse': testStatus === 'queued' || testStatus === 'running',
+                        'bg-green-500': testStatus === 'completed',
+                        'bg-destructive': testStatus === 'failed',
+                      }"></span>
+                <span class="font-medium capitalize" x-text="testStatus"></span>
+              </div>
+
+              <template x-if="testResult">
+                <div class="space-y-3">
+                  <template x-if="testResult.stdout">
+                    <div>
+                      <p class="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground mb-1">stdout</p>
+                      <pre class="rounded-md bg-muted p-3 text-xs font-mono overflow-x-auto max-h-48 overflow-y-auto whitespace-pre-wrap" x-text="testResult.stdout"></pre>
+                    </div>
+                  </template>
+                  <template x-if="testResult.stderr">
+                    <div>
+                      <p class="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground mb-1">stderr</p>
+                      <pre class="rounded-md bg-destructive/10 p-3 text-xs font-mono overflow-x-auto max-h-48 overflow-y-auto whitespace-pre-wrap" x-text="testResult.stderr"></pre>
+                    </div>
+                  </template>
+                  <p class="text-[11px] text-muted-foreground">
+                    exit code <span x-text="testResult.exit_code"></span> · <span x-text="testResult.execution_time"></span>s
+                  </p>
+                </div>
+              </template>
+
+              <template x-if="testErrorMessage">
+                <p class="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive" x-text="testErrorMessage"></p>
+              </template>
+            </div>
+          </template>
+
+        </div>
+
+        <div class="flex justify-end gap-2 border-t px-6 py-4 shrink-0">
+          {% call button(variant="outline", attrs={"@click": "testDialogOpen = false", ":disabled": "testRunning"}) %}Close{% endcall %}
+          <template x-if="testRunId && !testRunning">
+            {% call button(variant="outline", attrs={"@click": "resetTestDialog()"}) %}Test Again{% endcall %}
+          </template>
+          <template x-if="!testRunId">
+            {% call button(attrs={"@click": "runTest()", ":disabled": "testRunning || !testFile || !settings.instance_id"}) %}
+              <span x-text="testRunning ? 'Uploading…' : 'Run Test'"></span>
+            {% endcall %}
+          </template>
+        </div>
+
+      </div>
+    </div>
+  </template>
+
 </div>
 {% endblock %}

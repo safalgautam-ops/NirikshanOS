@@ -13,13 +13,21 @@ class AnalysisError(Exception):
 
 
 async def list_modules() -> list[dict]:
-    """All published, enabled modules."""
+    """All published, enabled modules, with category/instance display info joined in."""
     return await (
         db.table("analysis_module_defs")
-        .where("status", "published")
-        .where("is_enabled", 1)
-        .order_by("category", "asc")
-        .order_by("display_name", "asc")
+        .left_join("categories", "analysis_module_defs.category_id", "categories.id")
+        .left_join("instances", "analysis_module_defs.instance_id", "instances.id")
+        .where("analysis_module_defs.status", "published")
+        .where("analysis_module_defs.is_enabled", 1)
+        .select(
+            "analysis_module_defs.*",
+            "categories.name as category_name",
+            "instances.image_tag as runtime_image",
+            "instances.queue_name as queue_name",
+        )
+        .order_by("categories.sort_order", "asc")
+        .order_by("analysis_module_defs.display_name", "asc")
         .all(allow_full_table=True)
     )
 
@@ -31,7 +39,7 @@ async def get_module(module_id: str) -> dict | None:
 def is_module_compatible(module: dict, evidence_type: str) -> bool:
     raw = module.get("supported_types")
     supported: list[str] | None = json.loads(raw) if raw else None
-    if not supported or "*" in supported or module.get("category") == "generic":
+    if not supported or "*" in supported:
         return True
     if evidence_type == "unknown":
         return "unknown" in supported
@@ -76,16 +84,14 @@ def serialize_module(module: dict) -> dict:
     return {
         "id":               module["id"],
         "name":             module["display_name"],
-        "category":         module["category"],
+        "category":         module.get("category_name"),
         "description":      module.get("description") or "",
         "supported_types":  supported,
         "tier":             module["tier"],
         "required_plan":    module["tier"],
-        "queue_name":       module["queue_name"],
-        "runtime_image":    module["runtime_image"],
-        "isolation_level":  module["isolation_level"],
-        "batchable":        bool(module["batchable"]),
-        "batch_group":      module.get("batch_group"),
+        "queue_name":       module.get("queue_name"),
+        "runtime_image":    module.get("runtime_image"),
+        "instance_id":      module.get("instance_id"),
         "timeout_seconds":  module["timeout_seconds"],
         "parser_name":      module.get("parser_name") or "",
         "source":           module["source"],

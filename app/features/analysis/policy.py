@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from app.core.security.org_permissions import get_user_org_permission_names
 from app.features.analysis.service import get_module, is_module_compatible
 from app.features.cases.permissions import EVIDENCE_ANALYZE
-from app.features.plans.service import get_active_subscription, get_allowed_tiers
+from app.features.plans.service import get_active_subscription, get_allowed_instance_ids, get_allowed_tiers
 
 
 @dataclass
@@ -44,6 +44,10 @@ async def check_can_run(
 
     sub = await get_active_subscription(org_id)
     allowed_tiers = get_allowed_tiers(sub)
+    allowed_instance_ids = get_allowed_instance_ids(sub)
+    plan_name = (sub["plan_snapshot"].get("display_name", "your plan")
+                 if sub and isinstance(sub.get("plan_snapshot"), dict)
+                 else "Free")
 
     for module_id in module_ids:
         mod = await get_module(module_id)
@@ -62,14 +66,23 @@ async def check_can_run(
                 reason=f"Module '{mod['display_name']}' does not support {evidence_type!r} evidence.",
             ))
             continue
+        if not mod.get("instance_id"):
+            violations.append(PolicyViolation(
+                module_id=module_id,
+                reason=f"Module '{mod['display_name']}' has no instance assigned yet — an admin needs to configure it.",
+            ))
+            continue
         tier = mod.get("tier") or "free"
         if tier not in allowed_tiers:
-            plan_name = (sub["plan_snapshot"].get("display_name", "your plan")
-                         if sub and isinstance(sub.get("plan_snapshot"), dict)
-                         else "Free")
             violations.append(PolicyViolation(
                 module_id=module_id,
                 reason=f"Module '{mod['display_name']}' requires a higher plan. Current: {plan_name}.",
+            ))
+            continue
+        if mod["instance_id"] not in allowed_instance_ids:
+            violations.append(PolicyViolation(
+                module_id=module_id,
+                reason=f"Module '{mod['display_name']}' requires an instance not included in your plan. Current: {plan_name}.",
             ))
 
     return PolicyResult(allowed=len(violations) == 0, violations=violations)

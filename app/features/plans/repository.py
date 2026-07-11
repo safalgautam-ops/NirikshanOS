@@ -43,12 +43,19 @@ async def list_plans() -> list[dict]:
         .order_by("display_name", "asc")
         .all(allow_full_table=True)
     )
-    return [_parse_plan(dict(r)) for r in rows]
+    plans = [_parse_plan(dict(r)) for r in rows]
+    for plan in plans:
+        plan["allowed_instance_ids"] = await get_instance_ids_for_plan(plan["id"])
+    return plans
 
 
 async def get_plan(plan_id: str) -> dict | None:
     row = await db.table("plans").where("id", plan_id).first()
-    return _parse_plan(dict(row)) if row else None
+    if not row:
+        return None
+    plan = _parse_plan(dict(row))
+    plan["allowed_instance_ids"] = await get_instance_ids_for_plan(plan_id)
+    return plan
 
 
 async def create_plan(
@@ -98,6 +105,19 @@ async def update_plan(
         "is_active":     int(is_active),
         "sort_order":    sort_order,
     })
+
+
+async def get_instance_ids_for_plan(plan_id: str) -> list[str]:
+    rows = await db.table("plan_instances").where("plan_id", plan_id).all(allow_full_table=True)
+    return [r["instance_id"] for r in rows]
+
+
+async def set_plan_instances(plan_id: str, instance_ids: list[str]) -> None:
+    """Replace-all: same pattern update_plan already uses for allowed_tiers,
+    just as real rows in a join table instead of a JSON column."""
+    await db.table("plan_instances").where("plan_id", plan_id).delete()
+    for instance_id in instance_ids:
+        await db.table("plan_instances").create({"plan_id": plan_id, "instance_id": instance_id})
 
 
 async def delete_plan(plan_id: str) -> None:

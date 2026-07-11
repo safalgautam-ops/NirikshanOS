@@ -8,7 +8,7 @@
 {% block body %}
 {{ sidebar(active="admin_plans", visible_keys=visible_keys) }}
 
-<div class="flex flex-col md:pl-60" x-data="plansPage({{ plans | tojson }}, {{ known_tiers | tojson }})">
+<div class="flex flex-col md:pl-60" x-data="plansPage({{ plans | tojson | forceescape }}, {{ known_tiers | tojson | forceescape }}, {{ instances_for_js | tojson | forceescape }})">
   {{ topbar("Plans") }}
   <main class="flex flex-col gap-6 p-6 overflow-y-auto" style="height:calc(100dvh - 3.5rem)">
 
@@ -275,6 +275,28 @@
               </template>
             </div>
           </div>
+
+          <div>
+            <p class="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-3">Instance Access</p>
+            <template x-if="allInstances.length === 0">
+              <p class="text-sm text-muted-foreground">No active instances registered yet — <a class="underline" href="/admin/instances">register one</a> first.</p>
+            </template>
+            <div class="space-y-2.5">
+              <template x-for="inst in allInstances" :key="inst.id">
+                <label class="flex items-start gap-3 cursor-pointer rounded-lg border p-3 transition-colors"
+                       :class="form.allowed_instance_ids.includes(inst.id) ? 'border-primary/40 bg-primary/5' : 'hover:bg-muted/40'">
+                  <input type="checkbox" :value="inst.id"
+                         :checked="form.allowed_instance_ids.includes(inst.id)"
+                         @change="toggleInstance(inst.id)"
+                         class="mt-0.5 size-4 rounded border-input accent-primary">
+                  <div>
+                    <p class="text-sm font-medium" x-text="inst.display_name"></p>
+                    <p class="text-xs text-muted-foreground font-mono" x-text="inst.image_tag"></p>
+                  </div>
+                </label>
+              </template>
+            </div>
+          </div>
         </div>
 
         {# Dialog footer #}
@@ -298,22 +320,23 @@
 </div>
 
 <script>
-function plansPage(initialPlans, allTiers) {
+function plansPage(initialPlans, allTiers, allInstances) {
   return {
     planList: initialPlans,
     allTiers,
+    allInstances,
 
     openCreate() {
-      window.dispatchEvent(new CustomEvent('open-plan-dialog', { detail: { plan: null, allTiers: this.allTiers } }));
+      window.dispatchEvent(new CustomEvent('open-plan-dialog', { detail: { plan: null, allTiers: this.allTiers, allInstances: this.allInstances } }));
     },
 
     openEdit(plan) {
-      window.dispatchEvent(new CustomEvent('open-plan-dialog', { detail: { plan, allTiers: this.allTiers } }));
+      window.dispatchEvent(new CustomEvent('open-plan-dialog', { detail: { plan, allTiers: this.allTiers, allInstances: this.allInstances } }));
     },
 
     async deletePlan(plan) {
       if (!confirm(`Delete "${plan.display_name}"? Existing subscribers will be grandfathered until their subscription expires.`)) return;
-      const csrf = document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/)?.[1] || '';
+      const csrf = window.getCsrfToken ? window.getCsrfToken() : '';
       const resp = await fetch(`/admin/plans/${plan.id}`, {
         method: 'DELETE',
         headers: { 'X-CSRF-Token': csrf },
@@ -339,6 +362,7 @@ function plansDialog() {
     isEdit: false,
     editId: null,
     allTiers: [],
+    allInstances: [],
     tab: 'general',
     saving: false,
     error: '',
@@ -346,12 +370,13 @@ function plansDialog() {
       id: '', display_name: '', description: '',
       price_monthly: 0, price_annual: 0,
       ram_gb: 2, vcpu: 2, storage_gb: 20,
-      allowed_tiers: ['free'], is_active: true, sort_order: 0,
+      allowed_tiers: ['free'], allowed_instance_ids: [], is_active: true, sort_order: 0,
     },
     tierDesc: TIER_DESC,
 
-    receive({ plan, allTiers }) {
+    receive({ plan, allTiers, allInstances }) {
       this.allTiers = allTiers;
+      this.allInstances = allInstances || [];
       this.tab = 'general';
       this.error = '';
       if (plan) {
@@ -367,6 +392,7 @@ function plansDialog() {
           vcpu:          plan.resources?.vcpu       || 2,
           storage_gb:    plan.resources?.storage_gb || 20,
           allowed_tiers: Array.isArray(plan.allowed_tiers) ? [...plan.allowed_tiers] : [],
+          allowed_instance_ids: Array.isArray(plan.allowed_instance_ids) ? [...plan.allowed_instance_ids] : [],
           is_active:     plan.is_active !== undefined ? !!plan.is_active : true,
           sort_order:    plan.sort_order || 0,
         };
@@ -377,7 +403,7 @@ function plansDialog() {
           id: '', display_name: '', description: '',
           price_monthly: 0, price_annual: 0,
           ram_gb: 2, vcpu: 2, storage_gb: 20,
-          allowed_tiers: ['free'], is_active: true, sort_order: 0,
+          allowed_tiers: ['free'], allowed_instance_ids: [], is_active: true, sort_order: 0,
         };
       }
       this.open = true;
@@ -391,10 +417,16 @@ function plansDialog() {
       else this.form.allowed_tiers.splice(idx, 1);
     },
 
+    toggleInstance(instanceId) {
+      const idx = this.form.allowed_instance_ids.indexOf(instanceId);
+      if (idx === -1) this.form.allowed_instance_ids.push(instanceId);
+      else this.form.allowed_instance_ids.splice(idx, 1);
+    },
+
     async submit() {
       this.error = '';
       this.saving = true;
-      const csrf = document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/)?.[1] || '';
+      const csrf = window.getCsrfToken ? window.getCsrfToken() : '';
       try {
         if (this.isEdit) {
           const resp = await fetch(`/admin/plans/${this.editId}`, {
@@ -409,6 +441,7 @@ function plansDialog() {
               vcpu:          this.form.vcpu,
               storage_gb:    this.form.storage_gb,
               allowed_tiers: this.form.allowed_tiers,
+              allowed_instance_ids: this.form.allowed_instance_ids,
               is_active:     this.form.is_active,
               sort_order:    this.form.sort_order,
             }),
@@ -429,6 +462,7 @@ function plansDialog() {
           fd.append('is_active',     this.form.is_active ? '1' : '0');
           fd.append('sort_order',    this.form.sort_order);
           this.form.allowed_tiers.forEach(t => fd.append('allowed_tiers', t));
+          this.form.allowed_instance_ids.forEach(id => fd.append('allowed_instance_ids', id));
           const resp = await fetch('/admin/plans/', {
             method: 'POST',
             headers: { 'X-CSRF-Token': csrf },

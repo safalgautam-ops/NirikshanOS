@@ -5,6 +5,7 @@ from quart import Blueprint, g, jsonify, redirect, render_template, request, url
 
 from app.core.db.orm import db
 from app.core.security.permissions import get_visible_nav_keys, require_permission
+from app.features.instances import repository as instances_repository
 from app.features.plans import repository, service
 from app.features.plans.permissions import PLAN_ASSIGN, PLAN_EDIT, PLAN_VIEW
 from app.features.plans.service import KNOWN_TIERS
@@ -16,6 +17,11 @@ plans_bp = Blueprint("plans", __name__, url_prefix="/admin/plans")
 @require_permission(PLAN_VIEW)
 async def list_view():
     plans = await repository.list_plans()
+    instances = await instances_repository.list_active_instances()
+    instances_for_js = [
+        {"id": i["id"], "display_name": i["display_name"], "image_tag": i["image_tag"]}
+        for i in instances
+    ]
     visible_keys = await get_visible_nav_keys(g.user_id)
     selected_id = request.args.get("p")
     is_new = selected_id == "new"
@@ -25,6 +31,7 @@ async def list_view():
     return await render_template(
         "admin/plans/list.html",
         plans=plans,
+        instances_for_js=instances_for_js,
         selected=selected,
         is_new=is_new,
         known_tiers=KNOWN_TIERS,
@@ -57,6 +64,7 @@ async def create_view():
         is_active=form.get("is_active") == "1",
         sort_order=int(form.get("sort_order") or 0),
     )
+    await repository.set_plan_instances(plan_id, form.getlist("allowed_instance_ids"))
     return redirect(url_for("plans.list_view") + f"?p={plan_id}")
 
 
@@ -85,6 +93,7 @@ async def update_view(plan_id: str):
         is_active=bool(body.get("is_active", True)),
         sort_order=int(body.get("sort_order") or 0),
     )
+    await repository.set_plan_instances(plan_id, body.get("allowed_instance_ids") or [])
     return jsonify({"ok": True})
 
 

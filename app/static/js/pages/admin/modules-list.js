@@ -11,14 +11,13 @@ document.addEventListener("alpine:init", () => {
       id: "",
       display_name: "",
       description: "",
-      category: "",
+      category_id: "",
       tier: "free",
-      runtime_image: "nirikshan/base:1.0",
+      instance_id: "",
     },
 
     init() {
-      const m = document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/);
-      this.csrf = m ? decodeURIComponent(m[1]) : "";
+      this.csrf = window.getCsrfToken ? window.getCsrfToken() : "";
     },
 
     openDialog() {
@@ -28,17 +27,17 @@ document.addEventListener("alpine:init", () => {
         id: "",
         display_name: "",
         description: "",
-        category: "",
+        category_id: "",
         tier: "free",
-        runtime_image: "nirikshan/base:1.0",
+        instance_id: "",
       };
     },
 
     async submit() {
       this.error = "";
       const id = this.form.id.trim().toLowerCase().replace(/\s+/g, "_");
-      if (!id || !this.form.display_name.trim() || !this.form.category.trim()) {
-        this.error = "ID, name, and category are required.";
+      if (!id || !this.form.display_name.trim()) {
+        this.error = "ID and display name are required.";
         return;
       }
       this.saving = true;

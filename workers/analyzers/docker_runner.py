@@ -65,6 +65,8 @@ import time  # measure how long the container runs
 from dataclasses import dataclass  # define the RunConfig dataclass
 from pathlib import Path  # clean file system path handling
 
+from app.core.db.orm import db
+
 
 JOBS_BASE_DIR = os.environ.get("JOBS_DIR", "/storage/jobs")
 
@@ -74,35 +76,30 @@ JOBS_BASE_DIR = os.environ.get("JOBS_DIR", "/storage/jobs")
 # job_id is used to create a folder path so it must be sanitized to avoid path traversal.
 _JOB_ID_RE = re.compile(r"^[a-zA-Z0-9_-]+$")
 
-# Allowlist of Docker images the runner is permitted to launch. Set the env var
-# ALLOWED_RUNTIME_IMAGES (comma-separated) to add images without rebuilding.
-# The DB controls which image a job requests — without this check, an admin
-# could schedule a job with an arbitrary image (e.g. alpine + shell payload).
-_ALLOWED_RUNTIME_IMAGES: frozenset[str] = frozenset(
-    img.strip()
-    for img in os.environ.get("ALLOWED_RUNTIME_IMAGES", "nirikshan/base:1.0").split(",")
-    if img.strip()
-)
 
-# Hard resource caps per isolation_level. Unknown levels are rejected by
-# _validate_config_shape — there is no silent fallback to weaker limits.
-_RESOURCE_LIMITS: dict[str, dict[str, str]] = {
-    "none": {"cpus": "2.0", "memory": "1g", "pids": "256"},
-    "network_restricted": {"cpus": "1.0", "memory": "512m", "pids": "128"},
-    "sandboxed": {"cpus": "0.5", "memory": "256m", "pids": "64"},
-}
+async def _get_active_instance_by_image(image_tag: str) -> dict | None:
+    """The `instances` table IS the allowlist now — an admin registers an
+    instance through the UI, and only images with an active, registered row
+    may ever be scheduled. No env var, no hardcoded default; a job whose
+    image isn't registered (or was deactivated) fails closed, same as the
+    old frozenset check used to."""
+    return await (
+        db.table("instances")
+        .where("image_tag", image_tag)
+        .where("is_active", 1)
+        .first()
+    )
 
 
 @dataclass
 class RunConfig:  # input to the Docker runner
     job_id: str
     evidence_path: str  # absolute local path — caller downloads from MinIO first
-    runtime_image: str  # sourced from module_registry, never from user input
+    runtime_image: str  # must match an active `instances.image_tag` row
     modules: list[
         dict
     ]  # [{"id": "...", "name": "...", "options": {...}}] analysis modules to run
     timeout_seconds: int
-    isolation_level: str
 
 
 @dataclass
@@ -121,10 +118,14 @@ class RunResult:  # this is what the Docker runner returns to the caller
 # ---------------------------------------------------------------------------
 
 
-def _validate_config_shape(
+async def _validate_config_shape(
     config: RunConfig,
-) -> None:  # validates the basic input fields
-    """Validate raw RunConfig fields before touching the filesystem or registry."""
+) -> dict:  # validates the basic input fields, returns the resolved instance row
+    """Validate raw RunConfig fields before touching the filesystem or registry.
+
+    Returns the matching `instances` row (resource limits) so the caller
+    doesn't need a second DB round-trip.
+    """
     if not _JOB_ID_RE.match(config.job_id):
         raise ValueError(f"Unsafe job_id: {config.job_id!r}")
 
@@ -139,17 +140,13 @@ def _validate_config_shape(
     if config.timeout_seconds > 600:
         raise ValueError("timeout_seconds cannot exceed 600")
 
-    if config.isolation_level not in _RESOURCE_LIMITS:
+    instance = await _get_active_instance_by_image(config.runtime_image)
+    if instance is None:
         raise ValueError(
-            f"Unknown isolation_level: {config.isolation_level!r}. "
-            f"Must be one of: {sorted(_RESOURCE_LIMITS)}"
+            f"runtime_image {config.runtime_image!r} is not a registered, active "
+            f"instance. Register it at /admin/instances first."
         )
-
-    if config.runtime_image not in _ALLOWED_RUNTIME_IMAGES:
-        raise ValueError(
-            f"Disallowed runtime_image: {config.runtime_image!r}. "
-            f"Must be one of: {sorted(_ALLOWED_RUNTIME_IMAGES)}"
-        )
+    return instance
 
 
 # ---------------------------------------------------------------------------
@@ -168,15 +165,15 @@ def _workspace(job_id: str) -> Path:
 
 
 def _build_cmd(
-    config: RunConfig, workspace: Path
+    config: RunConfig, workspace: Path, instance: dict
 ) -> list[str]:  # ["docker", "run", "--rm", ...]
-    """Return the full docker run argv. Never uses shell interpolation."""
-    # isolation_level is guaranteed valid by _validate_config_shape, so direct
-    # key access is safe — no fallback needed or wanted.
+    """Return the full docker run argv. Never uses shell interpolation.
+
+    Resource limits come from the registered `instances` row resolved by
+    _validate_config_shape — admin-configured per instance, not a
+    hardcoded 3-tier table.
+    """
     # docker command arguments are passed as a list, so there is no shell interpolation and shell injectins.
-    limits = _RESOURCE_LIMITS[
-        config.isolation_level
-    ]  # get limits for this isolation level
     uid = os.getuid()  # get the current user's UID (current user means the user running the NirikshanOS process)
     gid = os.getgid()  # get the current user's GID (current user means the user running the NirikshanOS process)
 
@@ -190,13 +187,13 @@ def _build_cmd(
         # to install tools declared in module YAML `install:` blocks.
         # NET_RAW is still dropped below so raw-socket attacks are blocked.
         "--cpus",
-        limits["cpus"],
+        instance["cpu_limit"],
         "--memory",
-        limits["memory"],
+        instance["memory_limit"],
         "--memory-swap",
-        limits["memory"],  # swap == memory → no extra swap
+        instance["memory_limit"],  # swap == memory → no extra swap
         "--pids-limit",
-        limits["pids"],
+        str(instance["pids_limit"]),
         "--cap-drop", "ALL",
         # Restore only the capabilities apt-get needs to install packages.
         # All other default capabilities (NET_RAW, SYS_CHROOT, NET_BIND_SERVICE,
@@ -353,12 +350,12 @@ async def run_container(config: RunConfig) -> RunResult:
     output_dir: Path = Path("/dev/null")
 
     try:
-        _validate_config_shape(config)
+        instance = await _validate_config_shape(config)
 
         workspace = _workspace(config.job_id)
         stdout_path, stderr_path, output_dir = _prepare_workspace(config, workspace)
 
-        cmd = _build_cmd(config, workspace)  # creates the full Docker command as a list
+        cmd = _build_cmd(config, workspace, instance)  # creates the full Docker command as a list
 
         with stdout_path.open("wb") as out_f, stderr_path.open("wb") as err_f:
             proc = await asyncio.create_subprocess_exec(  # actually starts the docker

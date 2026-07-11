@@ -7,44 +7,35 @@ from app.core.utils.ids import new_id
 
 
 async def list_modules() -> list[dict]:
-    return await (
+    """All modules, with their category/instance display info joined in —
+    category_id/instance_id are FKs now, not free-text columns.
+
+    category_name defaults to "Uncategorized" in Python (not SQL COALESCE —
+    the query builder's .select() validates column identifiers and rejects
+    arbitrary SQL expressions) so Jinja's `groupby('category_name')` never
+    has to compare None against a string, which raises TypeError.
+    """
+    rows = await (
         db.table("analysis_module_defs")
-        .order_by("category", "asc")
-        .order_by("id", "asc")
+        .left_join("categories", "analysis_module_defs.category_id", "categories.id")
+        .left_join("instances", "analysis_module_defs.instance_id", "instances.id")
+        .select(
+            "analysis_module_defs.*",
+            "categories.name as category_name",
+            "instances.display_name as instance_display_name",
+            "instances.image_tag as instance_image_tag",
+        )
+        .order_by("categories.sort_order", "asc")
+        .order_by("analysis_module_defs.id", "asc")
         .all(allow_full_table=True)
     )
+    for row in rows:
+        row["category_name"] = row["category_name"] or "Uncategorized"
+    return rows
 
 
 async def get_module(module_id: str) -> dict | None:
     return await db.table("analysis_module_defs").where("id", module_id).first()
-
-
-async def upsert_module(
-    *,
-    module_id: str,
-    display_name: str,
-    description: str | None,
-    category: str,
-    tier: str,
-    runtime_image: str,
-    is_enabled: bool,
-    source: str,
-    created_by: str | None = None,
-) -> None:
-    existing = await get_module(module_id)
-    data: dict = {
-        "display_name": display_name,
-        "description": description,
-        "category": category,
-        "tier": tier,
-        "runtime_image": runtime_image,
-        "is_enabled": int(is_enabled),
-        "source": source,
-    }
-    if existing:
-        await db.table("analysis_module_defs").where("id", module_id).update(data)
-    else:
-        await db.table("analysis_module_defs").create({**data, "id": module_id, "created_by": created_by})
 
 
 async def create_custom_module(
@@ -52,21 +43,18 @@ async def create_custom_module(
     module_id: str,
     display_name: str,
     description: str | None,
-    category: str,
+    category_id: str | None,
     tier: str,
-    runtime_image: str,
+    instance_id: str | None,
     created_by: str,
 ) -> None:
     await db.table("analysis_module_defs").create({
         "id":              module_id,
         "display_name":    display_name,
         "description":     description,
-        "category":        category,
+        "category_id":     category_id,
         "tier":            tier,
-        "runtime_image":   runtime_image,
-        "isolation_level": "sandboxed",
-        "batchable":       0,
-        "queue_name":      "standard_queue",
+        "instance_id":     instance_id,
         "timeout_seconds": 120,
         "is_enabled":      0,
         "status":          "published",
@@ -145,16 +133,16 @@ async def update_module_meta(
     *,
     display_name: str,
     description: str | None,
-    category: str,
+    category_id: str | None,
     tier: str,
-    runtime_image: str,
+    instance_id: str | None,
 ) -> None:
     await db.table("analysis_module_defs").where("id", module_id).update({
-        "display_name":  display_name,
-        "description":   description,
-        "category":      category,
-        "tier":          tier,
-        "runtime_image": runtime_image,
+        "display_name": display_name,
+        "description":  description,
+        "category_id":  category_id,
+        "tier":         tier,
+        "instance_id":  instance_id,
     })
 
 
@@ -162,3 +150,51 @@ async def save_options_schema(module_id: str, schema_json: str) -> None:
     await db.table("analysis_module_defs").where("id", module_id).update(
         {"options_schema": schema_json}
     )
+
+
+async def save_pipeline(module_id: str, pipeline_json: str | None) -> None:
+    await db.table("analysis_module_defs").where("id", module_id).update(
+        {"pipeline_spec": pipeline_json}
+    )
+
+
+# ---------------------------------------------------------------------------
+# Ad-hoc test runs (IDE "Test" button — no case/evidence involved)
+# ---------------------------------------------------------------------------
+
+
+async def create_test_run(
+    *, module_id: str, instance_id: str, s3_key: str, created_by: str
+) -> str:
+    run_id = new_id()
+    await db.table("module_test_runs").create({
+        "id":          run_id,
+        "module_id":   module_id,
+        "instance_id": instance_id,
+        "s3_key":      s3_key,
+        "status":      "queued",
+        "created_by":  created_by,
+    })
+    return run_id
+
+
+async def get_test_run(run_id: str) -> dict | None:
+    return await db.table("module_test_runs").where("id", run_id).first()
+
+
+async def update_test_run_status(
+    run_id: str,
+    status: str,
+    *,
+    error_message: str | None = None,
+    result_json: str | None = None,
+) -> None:
+    data: dict = {"status": status}
+    if error_message is not None:
+        data["error_message"] = error_message
+    if result_json is not None:
+        data["result_json"] = result_json
+    if status in ("completed", "failed"):
+        from datetime import datetime, timezone
+        data["finished_at"] = datetime.now(timezone.utc)
+    await db.table("module_test_runs").where("id", run_id).update(data)
