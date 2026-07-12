@@ -26,6 +26,16 @@ ORG_DOCUMENT_VIEW = OrgPermission(
     "View and download this organization's submitted government documents",
 )
 
+# Gates who inside an org can initiate a real eSewa payment for that org's
+# subscription (see app/features/finance/routes.py's billing_bp). The org
+# owner always bypasses this via is_org_owner, same as every other
+# org-scoped permission here - this only matters for delegating billing to
+# a non-owner member (e.g. a finance/admin staff role).
+ORG_BILLING_MANAGE = OrgPermission(
+    "org_billing", "manage", "Organization Billing",
+    "View the current subscription and pay for a plan on this organization's behalf",
+)
+
 register_org_permissions(
     ORG_STAFF_VIEW,
     ORG_STAFF_REMOVE,
@@ -35,4 +45,5 @@ register_org_permissions(
     ORG_ROLE_DELETE,
     ORG_SETTINGS_MANAGE,
     ORG_DOCUMENT_VIEW,
+    ORG_BILLING_MANAGE,
 )

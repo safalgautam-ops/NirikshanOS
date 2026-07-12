@@ -24,6 +24,21 @@ async def list_active_instances() -> list[dict]:
     )
 
 
+async def list_ready_instances() -> list[dict]:
+    """Active instances whose image has actually been confirmed built
+    (`docker image inspect` succeeded — see workers/worker_main.py's
+    _check_instance_image). Used everywhere a module is about to be run
+    (assignment dropdowns, Test) so a not-built instance is never offered
+    or executed against."""
+    return await (
+        db.table("instances")
+        .where("is_active", 1)
+        .where("image_status", "ready")
+        .order_by("display_name", "asc")
+        .all(allow_full_table=True)
+    )
+
+
 async def get_instance(instance_id: str) -> dict | None:
     return await db.table("instances").where("id", instance_id).first()
 

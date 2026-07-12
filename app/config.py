@@ -82,6 +82,14 @@ class Config:
     GITHUB_CLIENT_ID = os.environ.get("GITHUB_CLIENT_ID", "")
     GITHUB_CLIENT_SECRET = os.environ.get("GITHUB_CLIENT_SECRET", "")
 
+    # eSewa payment gateway. Defaults are eSewa's own published UAT sandbox
+    # values (developer.esewa.com.np/pages/Epay) so local dev works without
+    # any setup — set real merchant credentials + ESEWA_ENV=production
+    # before taking real payments.
+    ESEWA_PRODUCT_CODE = os.environ.get("ESEWA_PRODUCT_CODE", "EPAYTEST")
+    ESEWA_SECRET_KEY = os.environ.get("ESEWA_SECRET_KEY", "8gBm/:&EnhH.1/q")
+    ESEWA_ENV = os.environ.get("ESEWA_ENV", "sandbox")  # "sandbox" | "production"
+
     WEBAUTHN_RP_ID = os.environ.get("WEBAUTHN_RP_ID", "localhost")
     WEBAUTHN_RP_NAME = os.environ.get("WEBAUTHN_RP_NAME", "NirikshanOS")
     WEBAUTHN_RP_ORIGIN = os.environ.get("WEBAUTHN_RP_ORIGIN", "http://localhost:8000")

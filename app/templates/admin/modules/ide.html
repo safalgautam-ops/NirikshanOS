@@ -310,7 +310,7 @@
                     @change="isDirty = true">
               <option value="">No instance assigned</option>
               {% for inst in instances %}
-              <option value="{{ inst.id }}">{{ inst.display_name }} ({{ inst.image_tag }})</option>
+              <option value="{{ inst.id }}">{{ inst.display_name }} ({{ inst.image_tag }}){% if inst.image_status != "ready" %} — not built, cannot run{% endif %}</option>
               {% endfor %}
             </select>
             {% endif %}

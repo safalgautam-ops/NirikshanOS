@@ -37,6 +37,8 @@ from app.features.notes.routes import notes_bp
 from app.features.reports.routes import reports_bp
 from app.features.cases.routes import cases_bp
 from app.features.evidence.routes import evidence_bp
+from app.features.finance.routes import finance_bp
+from app.features.finance.billing_routes import billing_bp
 from app.features.onboarding.routes import onboarding_bp
 from app.features.organizations.routes import organizations_bp
 from app.features.rbac.routes import rbac_bp
@@ -153,6 +155,8 @@ def create_app() -> Quart:
     app.register_blueprint(reports_bp)
     app.register_blueprint(timeline_bp)
     app.register_blueprint(plans_bp)
+    app.register_blueprint(finance_bp)
+    app.register_blueprint(billing_bp)
 
     @app.before_serving
     async def startup() -> None:

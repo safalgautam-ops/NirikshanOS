@@ -1,0 +1,88 @@
+{% extends "layouts/base.html" %}
+{% block title %}Transactions — NirikshanOS{% endblock %}
+
+{% from "dashboard/components/sidebar.html" import sidebar %}
+{% from "dashboard/components/topbar.html" import topbar %}
+{% from "components/ui/badge.html" import badge %}
+{% import "components/ui/frame.html" as frame %}
+{% import "components/ui/table.html" as table %}
+
+{% set _status_variants = {"completed": "success", "initiated": "outline", "failed": "destructive", "refunded": "secondary"} %}
+
+{% block body %}
+<div x-data="{ submitFilters() { $refs.filterForm.submit(); } }">
+
+  {{ sidebar(active="admin_transactions", visible_keys=visible_keys) }}
+
+  <div class="flex flex-col md:pl-60">
+    {{ topbar("Transactions") }}
+
+    <main class="flex-1 overflow-y-auto p-6 space-y-8">
+
+      <div>
+        <h1 class="text-xl font-semibold">Payment Transactions</h1>
+        <p class="mt-1 text-sm text-muted-foreground">Ledger of every eSewa payment attempt, verified server-side before any plan is activated.</p>
+      </div>
+
+      <form x-ref="filterForm" method="GET" class="flex flex-wrap items-center gap-3">
+        <select name="org_id" @change="submitFilters()" class="flex h-9 rounded-lg border border-input bg-popover px-3 text-sm sm:h-8">
+          <option value="">All organizations</option>
+          {% for org in orgs %}
+          <option value="{{ org.id }}" {% if org.id == selected_org_id %}selected{% endif %}>{{ org.name }}</option>
+          {% endfor %}
+        </select>
+        <select name="status" @change="submitFilters()" class="flex h-9 rounded-lg border border-input bg-popover px-3 text-sm sm:h-8">
+          <option value="">All statuses</option>
+          {% for s in ("initiated", "completed", "failed", "refunded") %}
+          <option value="{{ s }}" {% if s == selected_status %}selected{% endif %}>{{ s|capitalize }}</option>
+          {% endfor %}
+        </select>
+      </form>
+
+      {% call frame.frame() %}
+      {% call table.table(variant="card") %}
+        {% call table.table_header() %}
+          {% call table.table_row() %}
+            {{ table.table_head("Organization") }}
+            {{ table.table_head("Plan") }}
+            {{ table.table_head("Period") }}
+            {{ table.table_head("Amount") }}
+            {{ table.table_head("Status") }}
+            {{ table.table_head("eSewa Code") }}
+            {{ table.table_head("Created") }}
+          {% endcall %}
+        {% endcall %}
+        {% call table.table_body() %}
+          {% if not transactions %}
+            {% call table.table_row() %}
+              {% call table.table_cell(class="h-24 text-center text-muted-foreground", attrs={"colspan": "7"}) %}No transactions yet.{% endcall %}
+            {% endcall %}
+          {% else %}
+            {% for t in transactions %}
+            {% call table.table_row() %}
+              {% call table.table_cell(class="font-medium") %}{{ t.org_name }}{% endcall %}
+              {% call table.table_cell() %}{{ t.plan_name }}{% endcall %}
+              {% call table.table_cell(class="text-sm text-muted-foreground") %}{{ t.billing_period }}{% endcall %}
+              {% call table.table_cell() %}
+                Rs. {{ t.total_amount }}
+                {% if t.discount_amount and t.discount_amount|float > 0 %}
+                <span class="text-xs text-muted-foreground">(−{{ t.discount_amount }})</span>
+                {% endif %}
+              {% endcall %}
+              {% call table.table_cell() %}
+                {{ badge(text=t.status, variant=_status_variants.get(t.status, "outline")) }}
+              {% endcall %}
+              {% call table.table_cell(class="font-mono text-xs text-muted-foreground") %}{{ t.esewa_transaction_code or "—" }}{% endcall %}
+              {% call table.table_cell(class="text-sm text-muted-foreground") %}{{ t.created_at }}{% endcall %}
+            {% endcall %}
+            {% endfor %}
+          {% endif %}
+        {% endcall %}
+      {% endcall %}
+      {% endcall %}
+
+    </main>
+  </div>
+
+</div>
+{% endblock %}

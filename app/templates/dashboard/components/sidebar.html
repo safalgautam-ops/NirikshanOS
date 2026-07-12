@@ -37,10 +37,12 @@ items at all, locked or not - they manage every org from /admin/organizations
 instead of being a tenant member through their own platform identity (see
 onboarding/routes.py's blueprint guard, which enforces this server-side too). #}
 {% macro sidebar(active="dashboard", visible_keys=None) %}
-{% set org_items = [ ("org_staff", "Staff", "/onboarding/staff"), ("org_role", "Roles", "/onboarding/roles") ] %}
+{% set org_items = [ ("org_staff", "Staff", "/onboarding/staff"), ("org_role", "Roles", "/onboarding/roles"), ("org_billing", "Billing", "/billing/") ] %}
 {% set app_items = [ ("case", "Case", "/cases/"), ("timeline", "Timeline", "/timeline") ] %}
 {% set admin_items = [ ("admin_users", "Users", "/admin/users"), ("admin_organizations", "Organizations", "/admin/organizations"), ("admin_roles", "Roles", "/admin/roles"), ("admin_staff", "Staff", "/admin/staff"), ("admin_modules", "Modules", "/admin/modules"), ("admin_instances", "Instances", "/admin/instances"), ("admin_categories", "Categories", "/admin/categories"), ("admin_plans", "Plans", "/admin/plans") ] %}
+{% set finance_items = [ ("admin_transactions", "Transactions", "/admin/finance/transactions"), ("admin_coupons", "Coupons", "/admin/finance/coupons"), ("admin_discounts", "Discounts", "/admin/finance/discounts") ] %}
 {% set visible_admin_items = admin_items|selectattr("0", "in", visible_keys)|list if visible_keys is not none else admin_items %}
+{% set visible_finance_items = finance_items|selectattr("0", "in", visible_keys)|list if visible_keys is not none else finance_items %}
 {% set visible_org_items = org_items|selectattr("0", "in", g.org_nav_keys)|list if g.org_nav_keys is not none else org_items %}
 {% set visible_app_items = app_items|selectattr("0", "in", g.org_nav_keys)|list if g.org_nav_keys is not none else app_items %}
 <aside
@@ -76,6 +78,15 @@ onboarding/routes.py's blueprint guard, which enforces this server-side too). #}
         <div class="space-y-1">
             <p class="px-3 text-xs font-medium uppercase text-sidebar-foreground/50">Administration</p>
             {% for key, label, href in visible_admin_items %}
+            {{ _nav_link(key, label, href, active, locked=False) }}
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        {% if visible_finance_items %}
+        <div class="space-y-1">
+            <p class="px-3 text-xs font-medium uppercase text-sidebar-foreground/50">Finance</p>
+            {% for key, label, href in visible_finance_items %}
             {{ _nav_link(key, label, href, active, locked=False) }}
             {% endfor %}
         </div>

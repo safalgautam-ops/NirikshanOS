@@ -76,7 +76,7 @@ async def _validate_meta_fields(body: dict) -> tuple[dict | None, str | None]:
 async def list_view():
     modules = await repository.list_modules()
     categories = await categories_repository.list_categories()
-    instances = await instances_repository.list_active_instances()
+    instances = await instances_repository.list_ready_instances()
     visible_keys = await get_visible_nav_keys(g.user_id)
     return await render_template(
         "admin/modules/list.html",
@@ -126,9 +126,17 @@ async def ide_view(module_id: str):
         for f in raw_files
     ]
     categories = await categories_repository.list_categories()
-    instances = await instances_repository.list_active_instances()
+    instances = await instances_repository.list_ready_instances()
+    # If the module's currently-assigned instance isn't ready (e.g. its image
+    # was never built, or build broke later), still show it in the dropdown
+    # so the current selection isn't silently dropped from view — but no
+    # *other* not-ready instance is ever offered as a new choice.
+    if mod["instance_id"] and not any(i["id"] == mod["instance_id"] for i in instances):
+        current = await instances_repository.get_instance(mod["instance_id"])
+        if current:
+            instances = [current] + instances
     instances_for_js = [
-        {"id": i["id"], "display_name": i["display_name"], "image_tag": i["image_tag"]}
+        {"id": i["id"], "display_name": i["display_name"], "image_tag": i["image_tag"], "image_status": i["image_status"]}
         for i in instances
     ]
     visible_keys = await get_visible_nav_keys(g.user_id)
@@ -335,6 +343,11 @@ async def test_run_view(module_id: str):
         return jsonify({"error": "not found"}), 404
     if not mod["instance_id"]:
         return jsonify({"error": "Assign an instance in Settings before testing this module."}), 400
+    instance = await instances_repository.get_instance(mod["instance_id"])
+    if not instance or not instance["is_active"]:
+        return jsonify({"error": "This module's instance no longer exists or is inactive. Assign a different one in Settings."}), 400
+    if instance["image_status"] != "ready":
+        return jsonify({"error": f"Instance '{instance['display_name']}' has not been built yet — build the image and click Recheck on /admin/instances before testing."}), 400
     files = await repository.list_files(module_id)
     has_entry = any(f["is_entry_point"] for f in files)
     if not has_entry and not mod.get("pipeline_spec"):

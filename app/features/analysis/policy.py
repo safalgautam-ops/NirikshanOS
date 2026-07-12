@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from app.core.security.org_permissions import get_user_org_permission_names
 from app.features.analysis.service import get_module, is_module_compatible
 from app.features.cases.permissions import EVIDENCE_ANALYZE
+from app.features.instances import repository as instances_repository
 from app.features.plans.service import get_active_subscription, get_allowed_instance_ids, get_allowed_tiers
 
 
@@ -70,6 +71,19 @@ async def check_can_run(
             violations.append(PolicyViolation(
                 module_id=module_id,
                 reason=f"Module '{mod['display_name']}' has no instance assigned yet — an admin needs to configure it.",
+            ))
+            continue
+        instance = await instances_repository.get_instance(mod["instance_id"])
+        if not instance or not instance["is_active"]:
+            violations.append(PolicyViolation(
+                module_id=module_id,
+                reason=f"Module '{mod['display_name']}' is assigned to an instance that no longer exists or is inactive.",
+            ))
+            continue
+        if instance["image_status"] != "ready":
+            violations.append(PolicyViolation(
+                module_id=module_id,
+                reason=f"Module '{mod['display_name']}' cannot run — its instance '{instance['display_name']}' has not been built yet.",
             ))
             continue
         tier = mod.get("tier") or "free"

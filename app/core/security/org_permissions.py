@@ -25,6 +25,7 @@ ORG_NAV_KEYS: list[tuple[str, str]] = [
     ("org_role", "Roles"),
     ("case", "Cases"),
     ("timeline", "Timeline"),
+    ("org_billing", "Billing"),
 ]
 
 

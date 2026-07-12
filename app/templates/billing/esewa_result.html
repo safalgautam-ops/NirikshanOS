@@ -1,0 +1,26 @@
+{% extends "layouts/base.html" %}
+{% block title %}Payment {{ "Successful" if success else "Failed" }} — NirikshanOS{% endblock %}
+
+{% from "components/ui/button.html" import button_link %}
+
+{% block body %}
+<div class="flex min-h-screen items-center justify-center p-6">
+  <div class="w-full max-w-sm rounded-xl border bg-card p-6 text-center space-y-4">
+    {% if success %}
+    <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-500">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="h-6 w-6"><path d="M20 6 9 17l-5-5"/></svg>
+    </div>
+    <h1 class="text-lg font-semibold">Payment Successful</h1>
+    {% else %}
+    <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-destructive/10 text-destructive">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="h-6 w-6"><line x1="18" x2="6" y1="6" y2="18"/><line x1="6" x2="18" y1="6" y2="18"/></svg>
+    </div>
+    <h1 class="text-lg font-semibold">Payment Failed</h1>
+    {% endif %}
+
+    <p class="text-sm text-muted-foreground">{{ message }}</p>
+
+    {% call button_link(href="/billing/", class="w-full") %}Back to Billing{% endcall %}
+  </div>
+</div>
+{% endblock %}
