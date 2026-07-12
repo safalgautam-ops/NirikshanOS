@@ -112,6 +112,30 @@ async def update_view(instance_id: str):
     return jsonify({"ok": True})
 
 
+@instances_bp.route("/<instance_id>/usage", methods=["GET"])
+@require_permission(INSTANCE_EDIT)
+async def usage_view(instance_id: str):
+    """Counts shown in the delete confirmation dialog before an admin
+    commits - modules/plan grants change silently on delete (SET NULL /
+    CASCADE), so the UI surfaces the blast radius up front instead of
+    letting that happen invisibly."""
+    if not await repository.get_instance(instance_id):
+        return jsonify({"error": "not found"}), 404
+    return jsonify(await repository.get_usage_counts(instance_id))
+
+
+@instances_bp.route("/<instance_id>/clear_test_runs", methods=["POST"])
+@require_permission(INSTANCE_EDIT)
+async def clear_test_runs_view(instance_id: str):
+    """Clears the one usage type that actually blocks deletion (see
+    delete_view's ForeignKeyError handling) - surfaced as its own action
+    since there was previously no way at all to remove test run history."""
+    if not await repository.get_instance(instance_id):
+        return jsonify({"error": "not found"}), 404
+    cleared = await repository.clear_test_runs_for_instance(instance_id)
+    return jsonify({"ok": True, "cleared": cleared})
+
+
 @instances_bp.route("/<instance_id>", methods=["DELETE"])
 @require_permission(INSTANCE_EDIT)
 async def delete_view(instance_id: str):

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+from app.core import storage
 from app.core.db.orm import db
 
 
@@ -96,6 +97,53 @@ async def update_instance(
         # Image identity may have changed — status is stale until rechecked.
         "image_status":            "unknown",
     })
+
+
+async def get_usage_counts(instance_id: str) -> dict:
+    """How many rows in each dependent table currently reference this
+    instance - shown in the delete confirmation so an admin knows the
+    blast radius before confirming, since two of these three references
+    (modules, plan grants) change silently on delete (SET NULL / CASCADE)
+    rather than blocking it. Only test_runs actually blocks deletion (see
+    delete_view's ForeignKeyError handling) - surfaced here too so the
+    confirmation dialog can explain why Delete might be refused."""
+    modules = await (
+        db.table("analysis_module_defs")
+        .where("instance_id", instance_id)
+        .count()
+    )
+    plans = await (
+        db.table("plan_instances")
+        .where("instance_id", instance_id)
+        .count()
+    )
+    test_runs = await (
+        db.table("module_test_runs")
+        .where("instance_id", instance_id)
+        .count()
+    )
+    return {"modules": modules, "plans": plans, "test_runs": test_runs}
+
+
+async def clear_test_runs_for_instance(instance_id: str) -> int:
+    """Deletes every module_test_runs row referencing this instance - the
+    one reference that actually blocks instance deletion (module_test_runs
+    has no ON DELETE rule, unlike plan_instances/analysis_module_defs which
+    cascade/null out silently - see get_usage_counts). Best-effort deletes
+    each run's uploaded sample file from object storage too, so clearing
+    history doesn't leave orphaned files in MinIO. Returns how many rows
+    were removed, for the confirmation UI to report back."""
+    runs = await (
+        db.table("module_test_runs")
+        .where("instance_id", instance_id)
+        .select("id", "s3_key")
+        .all(allow_full_table=True)
+    )
+    for run in runs:
+        if run["s3_key"]:
+            await storage.delete_file(run["s3_key"])
+    await db.table("module_test_runs").where("instance_id", instance_id).delete()
+    return len(runs)
 
 
 async def delete_instance(instance_id: str) -> None:

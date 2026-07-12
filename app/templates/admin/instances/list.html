@@ -86,9 +86,21 @@
             <p class="mt-2 text-[11px] text-muted-foreground">queue: {{ inst.queue_name }}</p>
           {% endcall %}
 
-          {% call card_footer(class="gap-2") %}
-            {% call button(variant="outline", size="sm", class="flex-1", attrs={"@click": "recheck('%s')" % inst.id}) %}Recheck{% endcall %}
-            {% call button(variant="outline", size="sm", class="flex-1", attrs={"@click": "openDialog(%s)" % (inst | tojson)}) %}Edit{% endcall %}
+          {% call card_footer() %}
+            <div class="flex flex-col gap-2 w-full">
+              <div class="flex gap-2">
+                {% call button(variant="outline", size="sm", class="flex-1", attrs={"@click": "recheck('%s')" % inst.id}) %}Recheck{% endcall %}
+                {% call button(variant="outline", size="sm", class="flex-1", attrs={"@click": "openDialog(%s)" % (inst | tojson)}) %}Edit{% endcall %}
+              </div>
+              <div class="flex gap-2">
+                {% if inst.is_active %}
+                {% call button(variant="outline", size="sm", class="flex-1", attrs={"@click": "toggleActive(%s)" % (inst | tojson)}) %}Deactivate{% endcall %}
+                {% else %}
+                {% call button(variant="outline", size="sm", class="flex-1", attrs={"@click": "toggleActive(%s)" % (inst | tojson)}) %}Activate{% endcall %}
+                {% endif %}
+                {% call button(variant="destructive-outline", size="sm", class="flex-1", attrs={"@click": "openDeleteDialog(%s)" % (inst | tojson)}) %}Delete{% endcall %}
+              </div>
+            </div>
           {% endcall %}
         {% endcall %}
         {% endfor %}
@@ -171,6 +183,59 @@
           {% call button(variant="outline", attrs={"@click": "open = false"}) %}Cancel{% endcall %}
           {% call button(attrs={"@click": "submit()", ":disabled": "saving"}) %}
             <span x-text="saving ? 'Saving…' : (editingId ? 'Save' : 'Register')"></span>
+          {% endcall %}
+        </div>
+
+      </div>
+    </div>
+  </template>
+
+  {# ── Delete confirmation dialog — shows the blast radius before committing ── #}
+  <template x-if="deleteOpen">
+    <div class="fixed inset-0 z-50 flex items-center justify-center p-4" @keydown.escape.window="deleteOpen = false">
+      <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="deleteOpen = false"></div>
+
+      <div class="relative z-10 w-full max-w-sm rounded-xl border bg-card shadow-xl overflow-hidden">
+
+        <div class="flex items-center justify-between border-b px-6 py-4">
+          <h2 class="font-semibold text-base">Delete <span x-text="deleteTarget?.display_name"></span>?</h2>
+          {% call button(variant="ghost", size="icon-sm", attrs={"@click": "deleteOpen = false"}) %}
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" x2="6" y1="6" y2="18"/><line x1="6" x2="18" y1="6" y2="18"/></svg>
+          {% endcall %}
+        </div>
+
+        <div class="px-6 py-5 space-y-3">
+          <template x-if="deleteError">
+            <p class="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive" x-text="deleteError"></p>
+          </template>
+
+          <template x-if="deleteLoadingUsage">
+            <p class="text-sm text-muted-foreground">Checking what uses this instance…</p>
+          </template>
+
+          <template x-if="!deleteLoadingUsage && deleteUsage">
+            <div class="space-y-2">
+              <template x-if="deleteUsage.test_runs > 0">
+                <div class="space-y-2">
+                  <p class="text-sm text-destructive">
+                    Can't delete — <span x-text="deleteUsage.test_runs"></span> test run(s) reference this instance.
+                  </p>
+                  {% call button(variant="outline", size="sm", attrs={"@click": "clearTestRuns()", ":disabled": "clearingRuns"}) %}
+                    <span x-text="clearingRuns ? 'Clearing…' : 'Clear test run history'"></span>
+                  {% endcall %}
+                </div>
+              </template>
+              <template x-if="deleteUsage.test_runs === 0">
+                <p class="text-sm text-muted-foreground" x-text="deleteImpactText()"></p>
+              </template>
+            </div>
+          </template>
+        </div>
+
+        <div class="flex justify-end gap-2 border-t px-6 py-4">
+          {% call button(variant="outline", attrs={"@click": "deleteOpen = false"}) %}Cancel{% endcall %}
+          {% call button(variant="destructive", attrs={"@click": "confirmDelete()", ":disabled": "deleteLoadingUsage || deleteConfirming || (deleteUsage && deleteUsage.test_runs > 0)"}) %}
+            <span x-text="deleteConfirming ? 'Deleting…' : 'Delete'"></span>
           {% endcall %}
         </div>
 
