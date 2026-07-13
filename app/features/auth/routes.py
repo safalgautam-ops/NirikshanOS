@@ -11,7 +11,6 @@ from quart import (
     abort,
     current_app,
     g,
-    jsonify,
     make_response,
     redirect,
     render_template,

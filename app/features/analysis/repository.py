@@ -148,10 +148,6 @@ async def save_result(
     return result_id
 
 
-async def get_result_for_task(task_id: str) -> dict | None:
-    return await db.table("analysis_results").where("task_id", task_id).first()
-
-
 async def get_results_for_evidence(evidence_id: str) -> list[dict]:
     return await (
         db.table("analysis_results")

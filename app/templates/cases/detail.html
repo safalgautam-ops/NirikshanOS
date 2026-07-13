@@ -563,15 +563,15 @@
                                 </template>
                                 <template x-if="f.type === 'checkbox'">
                                     <label class="flex items-center gap-2 text-sm">
-                                        <input type="checkbox" class="size-4 rounded border border-input accent-primary" x-model="moduleOptionsByModule[selectedModule][f.key]">
+                                        {{ checkbox("", attrs={"x-model": "moduleOptionsByModule[selectedModule][f.key]"}) }}
                                         <span x-text="moduleOptionsByModule[selectedModule][f.key] ? 'Yes' : 'No'"></span>
                                     </label>
                                 </template>
                                 <template x-if="f.type === 'checklist'">
-                                    <div class="flex flex-wrap gap-3">
+                                    <div class="flex flex-wrap gap-3" role="group">
                                         <template x-for="opt in f.options" :key="opt">
                                             <label class="flex items-center gap-1.5 text-sm">
-                                                <input type="checkbox" class="size-4 rounded border border-input accent-primary" :checked="moduleOptionsByModule[selectedModule][f.key].includes(opt)" @change="toggleChecklistValue(selectedModule, f.key, opt)">
+                                                {{ checkbox("", attrs={":checked": "moduleOptionsByModule[selectedModule][f.key].includes(opt)", "@change": "toggleChecklistValue(selectedModule, f.key, opt)"}) }}
                                                 <span x-text="opt"></span>
                                             </label>
                                         </template>

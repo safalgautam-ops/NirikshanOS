@@ -9,6 +9,7 @@
 {% from "components/ui/card.html" import card, card_header, card_title, card_description, card_panel, card_footer, card_action %}
 {% from "components/ui/input.html" import input %}
 {% from "components/ui/label.html" import label %}
+{% from "components/ui/radio-group.html" import radio %}
 
 {% block body %}
 <div x-data="planPicker()">
@@ -90,15 +91,15 @@
         <div class="px-6 py-5 space-y-4">
           <div class="space-y-1.5">
             {{ label(text="Billing period") }}
-            <div class="flex gap-2">
+            <div class="flex gap-2" role="radiogroup">
               <label class="flex-1 flex items-center justify-center gap-2 rounded-lg border p-3 cursor-pointer text-sm"
                      :class="billingPeriod === 'monthly' ? 'border-primary/40 bg-primary/5' : ''">
-                <input type="radio" name="billing_period" value="monthly" x-model="billingPeriod" class="accent-primary">
+                {{ radio(name="billing_period", value="monthly", attrs={"x-model": "billingPeriod"}) }}
                 Monthly — <span x-text="'Rs. ' + plan.price_monthly"></span>
               </label>
               <label class="flex-1 flex items-center justify-center gap-2 rounded-lg border p-3 cursor-pointer text-sm"
                      :class="billingPeriod === 'annual' ? 'border-primary/40 bg-primary/5' : ''">
-                <input type="radio" name="billing_period" value="annual" x-model="billingPeriod" class="accent-primary">
+                {{ radio(name="billing_period", value="annual", attrs={"x-model": "billingPeriod"}) }}
                 Annual — <span x-text="'Rs. ' + plan.price_annual"></span>
               </label>
             </div>

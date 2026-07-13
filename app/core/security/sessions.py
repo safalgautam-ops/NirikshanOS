@@ -26,7 +26,7 @@ from functools import wraps
 #   redirect -> send the browser to another URL
 #   request  -> the incoming HTTP request (where we read cookies)
 #   url_for  -> build a URL from a route name
-from quart import Quart, Response, g, redirect, request, url_for
+from quart import Quart, Response, g, request, url_for
 
 from app.core.db.orm import db, raw_sql  # the query builder + safe raw-SQL wrapper
 from app.core.security.htmx import redirect_or_htmx

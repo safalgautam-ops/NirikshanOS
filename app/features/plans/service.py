@@ -80,11 +80,6 @@ async def assign_plan(
     return sub_id
 
 
-async def cancel_subscription(sub_id: str, org_id: str) -> None:
-    await repository.cancel_subscription(sub_id)
-    await invalidate_subscription_cache(org_id)
-
-
 def get_allowed_tiers(sub: dict | None) -> list[str]:
     """Return the tier list from a subscription snapshot, or basic defaults if no sub."""
     if sub is None:

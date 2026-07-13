@@ -6,7 +6,7 @@ service.py; this file only knows about columns and tables.
 
 from __future__ import annotations
 
-from app.core.db.orm import db, raw_sql
+from app.core.db.orm import db
 from app.core.utils.ids import new_id
 
 

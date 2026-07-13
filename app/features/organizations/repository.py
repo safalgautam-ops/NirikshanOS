@@ -126,10 +126,6 @@ async def update_organization(org_id: str, *, name: str, description: str, statu
     )
 
 
-async def delete_organization(org_id: str) -> None:
-    await db.table("organizations").where("id", org_id).delete()
-
-
 async def regenerate_invite_code(org_id: str) -> str:
     code = _generate_invite_code()
     await db.table("organizations").where("id", org_id).patch({"invite_code": code})

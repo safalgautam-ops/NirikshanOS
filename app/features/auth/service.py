@@ -141,7 +141,6 @@ async def forgot_password(email: str) -> None:
     if not user:
         return
     code = await create_otp(email, "reset")
-    print(code)
     await send_reset_email(to=email, code=code)
 
 

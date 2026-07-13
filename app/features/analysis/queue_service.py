@@ -38,19 +38,3 @@ async def enqueue_job(job_id: str, queue_name: str) -> None:
     await redis.lpush(_key(queue_name), job_id)
 
 
-async def dequeue_job(queue_name: str) -> str | None:
-    """Pop the next job_id from the named queue. Blocks up to POP_TIMEOUT seconds.
-    Returns None if the queue was empty during the timeout window."""
-    redis = get_redis()
-    # BRPOP returns (key, value) or None on timeout.
-    result = await redis.brpop(_key(queue_name), timeout=POP_TIMEOUT)
-    if result is None:
-        return None
-    _key_returned, job_id = result
-    return job_id
-
-
-async def queue_length(queue_name: str) -> int:
-    """Number of jobs currently waiting in the named queue."""
-    redis = get_redis()
-    return await redis.llen(_key(queue_name))

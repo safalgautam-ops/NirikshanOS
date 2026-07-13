@@ -82,15 +82,6 @@ async def create_jobs_from_plan(
     return result
 
 
-async def get_job_with_tasks(job_id: str) -> dict | None:
-    """Fetch one job with its tasks nested under a 'tasks' key."""
-    job = await repository.get_job(job_id)
-    if not job:
-        return None
-    job["tasks"] = await repository.list_tasks_for_job(job_id)
-    return job
-
-
 async def list_jobs_for_evidence(evidence_id: str) -> list[dict]:
     """All jobs for one evidence file, each with its tasks."""
     jobs = await repository.list_jobs_for_evidence(evidence_id)

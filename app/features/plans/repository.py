@@ -156,11 +156,6 @@ async def list_subscriptions() -> list[dict]:
     return [_parse_sub(dict(r)) for r in rows]
 
 
-async def get_subscription(sub_id: str) -> dict | None:
-    row = await db.table("org_subscriptions").where("id", sub_id).first()
-    return _parse_sub(dict(row)) if row else None
-
-
 async def get_active_subscription_db(org_id: str) -> dict | None:
     row = await (
         db.table("org_subscriptions")

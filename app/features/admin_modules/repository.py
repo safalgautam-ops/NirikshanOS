@@ -69,10 +69,6 @@ async def set_enabled(module_id: str, enabled: bool) -> None:
     )
 
 
-async def delete_module(module_id: str) -> None:
-    await db.table("analysis_module_defs").where("id", module_id).delete()
-
-
 # ---------------------------------------------------------------------------
 # Module files
 # ---------------------------------------------------------------------------

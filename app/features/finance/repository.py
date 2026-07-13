@@ -221,10 +221,6 @@ async def list_transactions(*, org_id: str | None = None, status: str | None = N
     return await query.order_by("payment_transactions.created_at", "desc").all(allow_full_table=True)
 
 
-async def get_transaction(transaction_id: str) -> dict | None:
-    return await db.table("payment_transactions").where("id", transaction_id).first()
-
-
 async def get_transaction_by_uuid(transaction_uuid: str) -> dict | None:
     return await db.table("payment_transactions").where("transaction_uuid", transaction_uuid).first()
 
@@ -273,7 +269,3 @@ async def mark_transaction_failed(transaction_id: str, *, reason: str) -> None:
         "status": "failed",
         "failure_reason": reason,
     })
-
-
-async def mark_transaction_refunded(transaction_id: str) -> None:
-    await db.table("payment_transactions").where("id", transaction_id).update({"status": "refunded"})

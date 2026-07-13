@@ -5,6 +5,8 @@
 {% from "dashboard/components/sidebar.html" import sidebar %}
 {% from "dashboard/components/topbar.html" import topbar %}
 {% from "macros/csrf.html" import csrf_field %}
+{% from "components/ui/fieldset.html" import fieldset, fieldset_legend %}
+{% from "components/ui/checkbox.html" import checkbox %}
 
 {% set SUBSCRIPTION_STATUS_STYLES = {
   "active":        "bg-green-500/15 text-green-600",
@@ -264,8 +266,8 @@
                       class="w-full rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring resize-none"></textarea>
           </div>
 
-          <div>
-            <p class="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-3">Pricing</p>
+          {% call fieldset() %}
+            {{ fieldset_legend("Pricing") }}
             <div class="grid grid-cols-2 gap-4">
               <div class="space-y-1">
                 <label class="text-xs font-medium text-muted-foreground">Monthly (USD)</label>
@@ -284,20 +286,19 @@
                 </div>
               </div>
             </div>
-            <p class="mt-1 text-xs text-muted-foreground">Set 0 for free or custom/enterprise pricing.</p>
-          </div>
+            <p class="text-xs text-muted-foreground">Set 0 for free or custom/enterprise pricing.</p>
+          {% endcall %}
 
           <div class="flex items-center gap-2 pt-1">
-            <input type="checkbox" x-model="form.is_active" id="dlg-is-active"
-                   class="size-4 rounded border-input accent-primary">
+            {{ checkbox("", attrs={"x-model": "form.is_active", "id": "dlg-is-active"}) }}
             <label for="dlg-is-active" class="text-sm cursor-pointer">Active (visible to new subscribers)</label>
           </div>
         </div>
 
         {# Tab: Resources & Tiers #}
         <div x-show="tab==='resources'" class="p-6 space-y-6">
-          <div>
-            <p class="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-3">Resource Allocation per Instance</p>
+          {% call fieldset() %}
+            {{ fieldset_legend("Resource Allocation per Instance") }}
             <div class="grid grid-cols-3 gap-4">
               <div class="space-y-1">
                 <label class="text-xs font-medium text-muted-foreground">RAM (GB)</label>
@@ -315,18 +316,15 @@
                        class="w-full rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
               </div>
             </div>
-          </div>
+          {% endcall %}
 
-          <div>
-            <p class="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-3">Module Tier Access</p>
+          {% call fieldset() %}
+            {{ fieldset_legend("Module Tier Access") }}
             <div class="space-y-2.5">
               <template x-for="tier in allTiers" :key="tier">
                 <label class="flex items-start gap-3 cursor-pointer rounded-lg border p-3 transition-colors"
                        :class="form.allowed_tiers.includes(tier) ? 'border-primary/40 bg-primary/5' : 'hover:bg-muted/40'">
-                  <input type="checkbox" :value="tier"
-                         :checked="form.allowed_tiers.includes(tier)"
-                         @change="toggleTier(tier)"
-                         class="mt-0.5 size-4 rounded border-input accent-primary">
+                  {{ checkbox("", class="mt-0.5", attrs={":value": "tier", ":checked": "form.allowed_tiers.includes(tier)", "@change": "toggleTier(tier)"}) }}
                   <div>
                     <p class="text-sm font-medium capitalize"
                        x-text="tier.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())"></p>
@@ -335,10 +333,10 @@
                 </label>
               </template>
             </div>
-          </div>
+          {% endcall %}
 
-          <div>
-            <p class="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-3">Instance Access</p>
+          {% call fieldset() %}
+            {{ fieldset_legend("Instance Access") }}
             <template x-if="allInstances.length === 0">
               <p class="text-sm text-muted-foreground">No active instances registered yet — <a class="underline" href="/admin/instances">register one</a> first.</p>
             </template>
@@ -346,10 +344,7 @@
               <template x-for="inst in allInstances" :key="inst.id">
                 <label class="flex items-start gap-3 cursor-pointer rounded-lg border p-3 transition-colors"
                        :class="form.allowed_instance_ids.includes(inst.id) ? 'border-primary/40 bg-primary/5' : 'hover:bg-muted/40'">
-                  <input type="checkbox" :value="inst.id"
-                         :checked="form.allowed_instance_ids.includes(inst.id)"
-                         @change="toggleInstance(inst.id)"
-                         class="mt-0.5 size-4 rounded border-input accent-primary">
+                  {{ checkbox("", class="mt-0.5", attrs={":value": "inst.id", ":checked": "form.allowed_instance_ids.includes(inst.id)", "@change": "toggleInstance(inst.id)"}) }}
                   <div>
                     <p class="text-sm font-medium" x-text="inst.display_name"></p>
                     <p class="text-xs text-muted-foreground font-mono" x-text="inst.image_tag"></p>
@@ -357,7 +352,7 @@
                 </label>
               </template>
             </div>
-          </div>
+          {% endcall %}
         </div>
 
         {# Dialog footer #}

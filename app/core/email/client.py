@@ -20,7 +20,6 @@ async def send_email(*, to: str, subject: str, html: str) -> None:
         return
 
     from_addr = current_app.config["RESEND_FROM_EMAIL"]
-    print(from_addr)
     # open an async HTTP client (auto-closes via async with)
     async with httpx.AsyncClient() as client:
         # post to the Resend API to send the email
