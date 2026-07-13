@@ -43,31 +43,29 @@ document.addEventListener("alpine:init", () => {
 
   const MODULE_MAP = {};
 
+  // Must match app/features/plans/service.py's KNOWN_TIERS exactly - this is
+  // the same tier vocabulary the DB actually stores on modules/plans, not a
+  // separate taxonomy. (Previously this listed stale tier names - basic_triage/
+  // standard/advanced/network/email/memory - that never included "free" or
+  // "enterprise", so any real free-tier module silently vanished from every
+  // group in compatibleModuleGroups() below even though the server returned
+  // it as compatible.)
   const MODULE_TIER_LABELS = {
-    basic_triage: "Basic Triage Bundle",
-    standard: "Standard Modules",
-    advanced: "Advanced Modules",
-    network: "Network Modules",
-    email: "Email Modules",
-    memory: "Memory Modules",
+    free: "Free",
+    basic_triage: "Basic Triage",
+    standard: "Standard",
+    advanced: "Advanced",
+    enterprise: "Enterprise",
   };
   const MODULE_TIER_ORDER = Object.keys(MODULE_TIER_LABELS);
 
   function moduleTierOf(module) {
-    if (module.tier) return module.tier;
-    if (module.category === "pcap") return "network";
-    if (module.category === "email") return "email";
-    if (module.category === "memory") return "memory";
-    if (module.category === "generic") return "basic_triage";
-    return "standard";
+    return module.tier || "free";
   }
 
-  const PLAN_ORDER = ["free", "analyst", "advanced"];
+  const PLAN_ORDER = MODULE_TIER_ORDER;
   function requiredPlanOf(module) {
-    if (module.required_plan) return module.required_plan;
-    const tier = moduleTierOf(module);
-    if (tier === "advanced") return "advanced";
-    return "free";
+    return module.required_plan || moduleTierOf(module);
   }
   function isModuleLocked(module, userPlan) {
     const plan = (userPlan || "free").toLowerCase();

@@ -3,11 +3,10 @@ from __future__ import annotations
 
 from quart import Blueprint, g, jsonify, redirect, render_template, request, url_for
 
-from app.core.db.orm import db
 from app.core.security.permissions import get_visible_nav_keys, require_permission
 from app.features.instances import repository as instances_repository
-from app.features.plans import repository, service
-from app.features.plans.permissions import PLAN_ASSIGN, PLAN_EDIT, PLAN_VIEW
+from app.features.plans import repository
+from app.features.plans.permissions import PLAN_EDIT, PLAN_VIEW
 from app.features.plans.service import KNOWN_TIERS
 
 plans_bp = Blueprint("plans", __name__, url_prefix="/admin/plans")
@@ -22,6 +21,10 @@ async def list_view():
         {"id": i["id"], "display_name": i["display_name"], "image_tag": i["image_tag"]}
         for i in instances
     ]
+    # Subscriptions render directly on this page (read-only audit view) -
+    # orgs take/cancel their own plan from their Billing page via eSewa,
+    # there is no separate admin subscriptions route anymore.
+    subscriptions = await repository.list_subscriptions()
     visible_keys = await get_visible_nav_keys(g.user_id)
     selected_id = request.args.get("p")
     is_new = selected_id == "new"
@@ -32,6 +35,7 @@ async def list_view():
         "admin/plans/list.html",
         plans=plans,
         instances_for_js=instances_for_js,
+        subscriptions=subscriptions,
         selected=selected,
         is_new=is_new,
         known_tiers=KNOWN_TIERS,
@@ -104,48 +108,3 @@ async def delete_view(plan_id: str):
         return jsonify({"error": "Not found"}), 404
     await repository.delete_plan(plan_id)
     return jsonify({"ok": True})
-
-
-@plans_bp.route("/subscriptions")
-@require_permission(PLAN_ASSIGN)
-async def subscriptions_view():
-    subs = await repository.list_subscriptions()
-    plans = await repository.list_plans()
-    orgs = await db.table("organizations").order_by("name", "asc").all(allow_full_table=True)
-    visible_keys = await get_visible_nav_keys(g.user_id)
-    return await render_template(
-        "admin/plans/subscriptions.html",
-        subscriptions=subs,
-        plans=plans,
-        orgs=orgs,
-        visible_keys=visible_keys,
-    )
-
-
-@plans_bp.route("/subscriptions", methods=["POST"])
-@require_permission(PLAN_ASSIGN)
-async def assign_view():
-    form = await request.form
-    org_id = form.get("org_id") or ""
-    plan_id = form.get("plan_id") or ""
-    if not org_id or not plan_id:
-        return redirect(url_for("plans.subscriptions_view"))
-    await service.assign_plan(
-        org_id=org_id,
-        plan_id=plan_id,
-        billing_period=form.get("billing_period") or "monthly",
-        ends_at=form.get("ends_at") or None,
-        notes=form.get("notes") or None,
-        created_by=g.user_id,
-    )
-    return redirect(url_for("plans.subscriptions_view"))
-
-
-@plans_bp.route("/subscriptions/<sub_id>/cancel", methods=["POST"])
-@require_permission(PLAN_ASSIGN)
-async def cancel_sub_view(sub_id: str):
-    sub = await repository.get_subscription(sub_id)
-    if not sub:
-        return jsonify({"error": "Not found"}), 404
-    await service.cancel_subscription(sub_id, sub["org_id"])
-    return redirect(url_for("plans.subscriptions_view"))
