@@ -7,8 +7,11 @@ from app.extensions import get_redis
 from app.features.plans import repository
 
 # Canonical tier order — matches the `tier` column in analysis_module_defs.
-# Plans declare which of these tiers their subscribers may access.
-KNOWN_TIERS: list[str] = ["free", "basic_triage", "standard", "advanced", "enterprise"]
+# Plans declare which of these tiers their subscribers may access. Maps
+# 1:1 onto the light/medium/heavy/full container classes (see
+# app/features/instances) - a module's tier is what decides which class of
+# container it needs to run in, independent of its display Category.
+KNOWN_TIERS: list[str] = ["basic", "core_forensics", "specialized_forensics", "enterprise"]
 
 _SUB_CACHE_TTL = 300  # 5 minutes — acceptable lag for admin plan changes
 
@@ -83,9 +86,9 @@ async def cancel_subscription(sub_id: str, org_id: str) -> None:
 
 
 def get_allowed_tiers(sub: dict | None) -> list[str]:
-    """Return the tier list from a subscription snapshot, or free defaults if no sub."""
+    """Return the tier list from a subscription snapshot, or basic defaults if no sub."""
     if sub is None:
-        return ["free", "basic_triage"]
+        return ["basic"]
     snapshot = sub.get("plan_snapshot") or {}
     tiers = snapshot.get("allowed_tiers", [])
     if isinstance(tiers, str):
@@ -93,17 +96,17 @@ def get_allowed_tiers(sub: dict | None) -> list[str]:
             tiers = json.loads(tiers)
         except Exception:
             tiers = []
-    tiers = tiers if isinstance(tiers, list) else ["free", "basic_triage"]
-    return tiers if tiers else ["free"]
+    tiers = tiers if isinstance(tiers, list) else ["basic"]
+    return tiers if tiers else ["basic"]
 
 
 def get_allowed_instance_ids(sub: dict | None) -> list[str]:
     """Return the granted instance_id list from a subscription snapshot.
 
     No subscription at all means no instance is granted — unlike tiers
-    (which default to free/basic_triage), there's no sensible "free
-    instance" to fall back to; an org with no active plan simply cannot
-    run anything until one is assigned.
+    (which default to "basic"), there's no sensible instance to fall back
+    to; an org with no active plan simply cannot run anything until one is
+    assigned.
     """
     if sub is None:
         return []

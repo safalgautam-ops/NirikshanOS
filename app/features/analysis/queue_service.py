@@ -5,10 +5,10 @@ policy, or results. Its only job is to push and pop job IDs between the
 four named queues.
 
 Queue names map to Redis list keys:
-  fast_queue     → analysis:fast_queue
-  standard_queue → analysis:standard_queue
-  heavy_queue    → analysis:heavy_queue
-  sandbox_queue  → analysis:sandbox_queue
+  light_queue  → analysis:light_queue
+  medium_queue → analysis:medium_queue
+  heavy_queue  → analysis:heavy_queue
+  full_queue   → analysis:full_queue
 
 Push (by job_service) uses LPUSH — adds to the left of the list.
 Pop  (by worker)      uses BRPOP — blocks until an item appears on the right.

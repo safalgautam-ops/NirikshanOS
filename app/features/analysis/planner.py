@@ -36,11 +36,11 @@ class AnalysisJobPlan:
     @property
     def usage_type(self) -> str:
         return {
-            "fast_queue":     "fast",
-            "standard_queue": "standard",
-            "heavy_queue":    "heavy",
-            "sandbox_queue":  "sandbox",
-        }.get(self.queue_name, "standard")
+            "light_queue":  "light",
+            "medium_queue": "medium",
+            "heavy_queue":  "heavy",
+            "full_queue":   "full",
+        }.get(self.queue_name, "medium")
 
 
 async def create_analysis_plan(selected_modules: list[dict]) -> list[AnalysisJobPlan]:

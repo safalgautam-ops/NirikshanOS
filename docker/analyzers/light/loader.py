@@ -4,8 +4,14 @@ Each module YAML supports three keys that drive the full execution lifecycle:
 
   install:          (optional) Install the tool if missing.
     apt: [pkg, ...]     packages to install via apt-get
-    check: binary       binary name to test with `which` first
-                        if `which` succeeds, apt-get is skipped
+    pip: [pkg, ...]     packages to install via pip3 (declare alongside apt
+                        when the tool needs a native dependency first, e.g.
+                        python3-pip itself, or a C library a pip package
+                        links against)
+    check: binary       binary name to test with `which` first - if it
+                        already exists, BOTH the apt and pip install steps
+                        are skipped (covers pip packages that install a
+                        console-script binary, not just apt packages)
 
   argv / script:    What to run (one of these is required).
 
@@ -106,35 +112,50 @@ def _validate_options(schema: dict, raw: dict) -> dict:
 # ── Tool installation ─────────────────────────────────────────────────────────
 
 def _install_if_needed(install_spec: dict) -> None:
-    """Install apt packages if the required binary is not already on PATH.
+    """Install apt and/or pip packages if the required binary/module is not
+    already present. Runs once per module per container lifetime - if the
+    tool is already installed (common when multiple modules share a
+    package), the corresponding install call is skipped entirely so startup
+    stays fast.
 
-    Runs once per module per container lifetime. If the tool is already installed
-    (common when multiple modules share a package), the apt-get call is skipped
-    entirely so startup stays fast.
+    `check` disambiguates what "already installed" means for whichever of
+    apt/pip is declared: a PATH binary (e.g. "vol") for `apt` (or for a pip
+    console-script), or an importable module name for `pip` when the tool
+    has no standalone binary. Declaring both `apt` and `pip` installs apt
+    first (e.g. python3-pip itself, or a native dependency) then pip.
     """
     check_bin = install_spec.get("check", "")
-    packages  = install_spec.get("apt", [])
-    if not packages:
-        return
+    apt_packages = install_spec.get("apt", [])
+    pip_packages = install_spec.get("pip", [])
 
-    # If the binary exists, nothing to do.
-    if check_bin and shutil.which(check_bin):
-        print(f"[loader] tool '{check_bin}' already present — skipping install")
-        return
+    if apt_packages:
+        if check_bin and shutil.which(check_bin):
+            print(f"[loader] tool '{check_bin}' already present — skipping apt install")
+        else:
+            print(f"[loader] installing (apt): {apt_packages}")
+            try:
+                subprocess.run(["apt-get", "update", "-qq"], check=True, capture_output=True)
+                subprocess.run(
+                    ["apt-get", "install", "-y", "--no-install-recommends"] + apt_packages,
+                    check=True, capture_output=True,
+                )
+                print(f"[loader] installed (apt): {apt_packages}")
+            except subprocess.CalledProcessError as exc:
+                raise RuntimeError(f"apt-get install failed for {apt_packages}: {exc.stderr.decode(errors='replace')}") from exc
 
-    print(f"[loader] installing: {packages}")
-    try:
-        subprocess.run(
-            ["apt-get", "update", "-qq"],
-            check=True, capture_output=True,
-        )
-        subprocess.run(
-            ["apt-get", "install", "-y", "--no-install-recommends"] + packages,
-            check=True, capture_output=True,
-        )
-        print(f"[loader] installed: {packages}")
-    except subprocess.CalledProcessError as exc:
-        raise RuntimeError(f"apt-get install failed for {packages}: {exc.stderr.decode(errors='replace')}") from exc
+    if pip_packages:
+        if check_bin and shutil.which(check_bin):
+            print(f"[loader] tool '{check_bin}' already present — skipping pip install")
+        else:
+            print(f"[loader] installing (pip): {pip_packages}")
+            try:
+                subprocess.run(
+                    ["pip3", "install", "--no-cache-dir", "--break-system-packages"] + pip_packages,
+                    check=True, capture_output=True,
+                )
+                print(f"[loader] installed (pip): {pip_packages}")
+            except subprocess.CalledProcessError as exc:
+                raise RuntimeError(f"pip install failed for {pip_packages}: {exc.stderr.decode(errors='replace')}") from exc
 
 
 # ── argv helpers ──────────────────────────────────────────────────────────────

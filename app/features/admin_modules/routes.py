@@ -44,7 +44,7 @@ async def _validate_meta_fields(body: dict) -> tuple[dict | None, str | None]:
     display_name = (body.get("display_name") or "").strip()
     if not display_name:
         return None, "Display name is required"
-    tier = (body.get("tier") or "free").strip()
+    tier = (body.get("tier") or "basic").strip()
     if tier not in KNOWN_TIERS:
         return None, f"Invalid tier '{tier}'"
 

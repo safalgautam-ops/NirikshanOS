@@ -28,7 +28,7 @@ from app.features.evidence.repository import get_evidence
 from app.features.instances import repository as instances_repo
 from workers.analyzers.docker_runner import RunConfig, run_container
 
-QUEUES = ["fast_queue", "standard_queue", "heavy_queue", "sandbox_queue"]
+QUEUES = ["light_queue", "medium_queue", "heavy_queue", "full_queue"]
 
 # Not one of the 4 analysis job queues — a separate lane for "is this image
 # actually built on the host?" checks, pushed to by the admin Instances page's

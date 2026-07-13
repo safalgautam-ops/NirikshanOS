@@ -15,7 +15,7 @@ document.addEventListener("alpine:init", () => {
       cpu_limit: "1.0",
       memory_limit: "512m",
       pids_limit: "128",
-      queue_name: "standard_queue",
+      queue_name: "medium_queue",
       default_timeout_seconds: "120",
     },
 
@@ -43,7 +43,7 @@ document.addEventListener("alpine:init", () => {
         this.form = {
           id: "", display_name: "", image_tag: "",
           cpu_limit: "1.0", memory_limit: "512m", pids_limit: "128",
-          queue_name: "standard_queue", default_timeout_seconds: "120",
+          queue_name: "medium_queue", default_timeout_seconds: "120",
         };
       }
     },

@@ -47,11 +47,10 @@ document.addEventListener("alpine:init", () => {
 
   Alpine.data("plansDialog", () => {
     const TIER_DESC = {
-      free: "Basic hash, file identification, and strings modules",
-      basic_triage: "Memory and filesystem triage modules",
-      standard: "Network, log analysis, and artifact parsing",
-      advanced: "Malware analysis, timeline correlation, and YARA scanning",
-      enterprise: "Full access including custom and experimental modules",
+      basic: "Imaging, hashing, identification, metadata, and basic searching",
+      core_forensics: "File-system analysis, recovery, carving, and basic timelines",
+      specialized_forensics: "Memory, network, Windows artifacts, mobile, and advanced timelines",
+      enterprise: "Threat hunting, reverse engineering, and distributed acquisition",
     };
 
     return {
@@ -67,7 +66,7 @@ document.addEventListener("alpine:init", () => {
         id: "", display_name: "", description: "",
         price_monthly: 0, price_annual: 0,
         ram_gb: 2, vcpu: 2, storage_gb: 20,
-        allowed_tiers: ["free"], allowed_instance_ids: [], is_active: true, sort_order: 0,
+        allowed_tiers: ["basic"], allowed_instance_ids: [], is_active: true, sort_order: 0,
       },
       tierDesc: TIER_DESC,
 
@@ -100,7 +99,7 @@ document.addEventListener("alpine:init", () => {
             id: "", display_name: "", description: "",
             price_monthly: 0, price_annual: 0,
             ram_gb: 2, vcpu: 2, storage_gb: 20,
-            allowed_tiers: ["free"], allowed_instance_ids: [], is_active: true, sort_order: 0,
+            allowed_tiers: ["basic"], allowed_instance_ids: [], is_active: true, sort_order: 0,
           };
         }
         this.open = true;

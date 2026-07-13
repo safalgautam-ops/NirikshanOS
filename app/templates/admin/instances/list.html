@@ -166,10 +166,10 @@
             <div class="space-y-1.5">
               {{ label(text="Queue", for_id="inst-queue") }}
               {% call select_native(name="queue_name", attrs={"id": "inst-queue", "x-model": "form.queue_name"}) %}
-                <option value="fast_queue">fast_queue</option>
-                <option value="standard_queue">standard_queue</option>
+                <option value="light_queue">light_queue</option>
+                <option value="medium_queue">medium_queue</option>
                 <option value="heavy_queue">heavy_queue</option>
-                <option value="sandbox_queue">sandbox_queue</option>
+                <option value="full_queue">full_queue</option>
               {% endcall %}
             </div>
             <div class="space-y-1.5">

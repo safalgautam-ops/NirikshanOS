@@ -45,22 +45,17 @@ document.addEventListener("alpine:init", () => {
 
   // Must match app/features/plans/service.py's KNOWN_TIERS exactly - this is
   // the same tier vocabulary the DB actually stores on modules/plans, not a
-  // separate taxonomy. (Previously this listed stale tier names - basic_triage/
-  // standard/advanced/network/email/memory - that never included "free" or
-  // "enterprise", so any real free-tier module silently vanished from every
-  // group in compatibleModuleGroups() below even though the server returned
-  // it as compatible.)
+  // separate taxonomy.
   const MODULE_TIER_LABELS = {
-    free: "Free",
-    basic_triage: "Basic Triage",
-    standard: "Standard",
-    advanced: "Advanced",
+    basic: "Basic",
+    core_forensics: "Core Forensics",
+    specialized_forensics: "Specialized Forensics",
     enterprise: "Enterprise",
   };
   const MODULE_TIER_ORDER = Object.keys(MODULE_TIER_LABELS);
 
   function moduleTierOf(module) {
-    return module.tier || "free";
+    return module.tier || "basic";
   }
 
   const PLAN_ORDER = MODULE_TIER_ORDER;
@@ -68,7 +63,7 @@ document.addEventListener("alpine:init", () => {
     return module.required_plan || moduleTierOf(module);
   }
   function isModuleLocked(module, userPlan) {
-    const plan = (userPlan || "free").toLowerCase();
+    const plan = (userPlan || "basic").toLowerCase();
     return PLAN_ORDER.indexOf(requiredPlanOf(module)) > PLAN_ORDER.indexOf(plan);
   }
 
@@ -196,7 +191,7 @@ Add supporting evidence references, screenshots, artifacts, and raw output refer
       moduleMap: MODULE_MAP,
       evidenceTypeLabels: EVIDENCE_TYPE_LABELS,
       moduleTierLabels: MODULE_TIER_LABELS,
-      userPlan: (userPlan || "free").toLowerCase(),
+      userPlan: (userPlan || "basic").toLowerCase(),
       _modulesByEvidence: {},
       modulesLoading: false,
       evidence: evidenceItems || [],
@@ -342,7 +337,7 @@ Add supporting evidence references, screenshots, artifacts, and raw output refer
 
       isModuleLocked(moduleId) { return isModuleLocked(this.moduleMap[moduleId], this.userPlan); },
       requiredPlanOf(moduleId) { return requiredPlanOf(this.moduleMap[moduleId]); },
-      isBatchable(moduleId) { return moduleTierOf(this.moduleMap[moduleId]) === "basic_triage"; },
+      isBatchable(moduleId) { return moduleTierOf(this.moduleMap[moduleId]) === "basic"; },
 
       openUpgradeDialog(moduleId) {
         this.lockedModule = this.moduleMap[moduleId];

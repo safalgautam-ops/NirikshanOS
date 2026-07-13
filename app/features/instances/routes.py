@@ -15,7 +15,7 @@ from app.features.instances.permissions import INSTANCE_EDIT, INSTANCE_VIEW
 instances_bp = Blueprint("instances", __name__, url_prefix="/admin/instances")
 
 _ID_RE = re.compile(r"^[a-z0-9_\-]{1,64}$")
-_QUEUE_NAMES = {"fast_queue", "standard_queue", "heavy_queue", "sandbox_queue"}
+_QUEUE_NAMES = {"light_queue", "medium_queue", "heavy_queue", "full_queue"}
 _CPU_RE = re.compile(r"^\d+(\.\d+)?$")
 _MEM_RE = re.compile(r"^\d+[mg]$", re.IGNORECASE)
 
@@ -38,7 +38,7 @@ def _validate_instance_fields(body: dict) -> tuple[dict | None, str | None]:
         pids_limit = int(body.get("pids_limit") or 128)
     except (TypeError, ValueError):
         return None, "PIDs limit must be a number"
-    queue_name = (body.get("queue_name") or "standard_queue").strip()
+    queue_name = (body.get("queue_name") or "medium_queue").strip()
     if queue_name not in _QUEUE_NAMES:
         return None, f"Invalid queue_name. Must be one of: {sorted(_QUEUE_NAMES)}"
     try:

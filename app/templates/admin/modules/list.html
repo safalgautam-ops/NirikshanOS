@@ -86,9 +86,9 @@
               <div class="mt-3 flex flex-wrap gap-1.5">
                 {{ badge(text=mod.tier, variant=(
                   "destructive" if mod.tier == "enterprise" else
-                  "warning" if mod.tier == "advanced" else
-                  "info" if mod.tier == "standard" else
-                  "secondary" if mod.tier == "basic_triage" else
+                  "warning" if mod.tier == "specialized_forensics" else
+                  "info" if mod.tier == "core_forensics" else
+                  "secondary" if mod.tier == "basic" else
                   "outline"
                 )) }}
               </div>
