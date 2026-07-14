@@ -103,7 +103,10 @@ async def initiate_payment(
         plan=plan, billing_period=billing_period, coupon_code=coupon_code, org_id=org_id
     )
     if pricing["total_amount"] <= 0:
-        raise PaymentError("This plan has no cost — assign it directly instead of paying.")
+        # The plan picker routes zero-cost plans to subscribe_free_view
+        # instead of here — reaching this means that branch was skipped
+        # (e.g. a stale page). Nothing sensitive to explain to the user.
+        raise PaymentError("This plan doesn't require payment. Please refresh the page and try again.")
 
     transaction_uuid = str(uuid.uuid4())
     transaction_id = await repository.create_transaction(

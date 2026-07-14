@@ -34,6 +34,23 @@ async def invalidate_subscription_cache(org_id: str) -> None:
     await r.delete(f"nirikshan:sub:{org_id}")
 
 
+async def _build_plan_snapshot(plan: dict) -> dict:
+    """Snapshot the full plan as of right now — immutable once written into a
+    subscription. If the plan is later edited or deleted, this org's access
+    stays as-was until ends_at (grandfathering). allowed_instance_ids follows
+    the same grandfathering rule as allowed_tiers: resolved once, from the
+    live plan_instances join table."""
+    return {
+        "id":                  plan["id"],
+        "display_name":        plan["display_name"],
+        "resources":           plan["resources"],
+        "allowed_tiers":       plan["allowed_tiers"],
+        "allowed_instance_ids": await repository.get_instance_ids_for_plan(plan["id"]),
+        "price_monthly":       str(plan["price_monthly"]),
+        "price_annual":        str(plan["price_annual"]),
+    }
+
+
 async def assign_plan(
     *,
     org_id: str,
@@ -52,20 +69,7 @@ async def assign_plan(
     if existing:
         await repository.cancel_subscription(existing["id"])
 
-    # Snapshot the full plan at subscription time — immutable after this point.
-    # If the plan is later edited or deleted, this org's access stays as-was
-    # until ends_at (grandfathering). allowed_instance_ids follows the same
-    # grandfathering rule as allowed_tiers: resolved once, here, from the
-    # live plan_instances join table.
-    snapshot = {
-        "id":                  plan["id"],
-        "display_name":        plan["display_name"],
-        "resources":           plan["resources"],
-        "allowed_tiers":       plan["allowed_tiers"],
-        "allowed_instance_ids": await repository.get_instance_ids_for_plan(plan_id),
-        "price_monthly":       str(plan["price_monthly"]),
-        "price_annual":        str(plan["price_annual"]),
-    }
+    snapshot = await _build_plan_snapshot(plan)
 
     sub_id = await repository.create_subscription(
         org_id=org_id,
@@ -78,6 +82,22 @@ async def assign_plan(
     )
     await invalidate_subscription_cache(org_id)
     return sub_id
+
+
+async def refresh_subscription_snapshot(sub_id: str, *, org_id: str, plan_id: str) -> None:
+    """Rebuild one subscription's plan_snapshot from the plan's current,
+    live definition. For repairing a subscription whose snapshot predates a
+    tier/instance vocabulary migration — plan_snapshot is normally immutable
+    by design (grandfathering against routine admin edits), but a renamed
+    vocabulary makes the old snapshot reference tiers that don't exist
+    anywhere else in the system anymore, which isn't a case grandfathering
+    is meant to protect."""
+    plan = await repository.get_plan(plan_id)
+    if plan is None:
+        raise ValueError(f"Plan '{plan_id}' not found.")
+    snapshot = await _build_plan_snapshot(plan)
+    await repository.update_subscription_snapshot(sub_id, snapshot)
+    await invalidate_subscription_cache(org_id)
 
 
 def get_allowed_tiers(sub: dict | None) -> list[str]:
@@ -93,6 +113,19 @@ def get_allowed_tiers(sub: dict | None) -> list[str]:
             tiers = []
     tiers = tiers if isinstance(tiers, list) else ["basic"]
     return tiers if tiers else ["basic"]
+
+
+def get_highest_allowed_tier(sub: dict | None) -> str:
+    """The single highest tier a subscription grants, ranked by KNOWN_TIERS
+    order — not by position in the allowed_tiers array. That array is built
+    by admins toggling checkboxes in whatever order they click them (see
+    admin/plans-list.js toggleTier(), a plain push/splice), so its last
+    element is not reliably the highest tier. Any tier name not recognized
+    in KNOWN_TIERS (e.g. a pre-migration snapshot using a retired tier
+    vocabulary) is ignored rather than allowed to rank as "highest"."""
+    tiers = get_allowed_tiers(sub)
+    ranked = [t for t in KNOWN_TIERS if t in tiers]
+    return ranked[-1] if ranked else "basic"
 
 
 def get_allowed_instance_ids(sub: dict | None) -> list[str]:

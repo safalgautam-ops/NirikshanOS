@@ -21,6 +21,8 @@ from app.features.organizations import repository as org_repository
 from app.features.organizations.choices import EMPLOYEE_COUNT_RANGES, ORG_TYPES
 from app.features.organizations.countries import COUNTRIES
 from app.features.organizations.service import slugify
+from app.features.plans import repository as plans_repository
+from app.features.plans import service as plans_service
 
 _ORG_TYPE_VALUES = {value for value, _label in ORG_TYPES}
 _COUNTRY_SET = set(COUNTRIES)
@@ -126,6 +128,23 @@ async def create_and_join(
     # from the Roles page and decides who gets what, instead of inheriting
     # a "Org Admin"/"Member" pair nobody asked for.
     await org_repository.add_member(org_id, created_by)
+
+    # Every new org starts on the zero-cost plan automatically — no payment
+    # step, no admin action needed. If no free-tier plan is configured yet
+    # (a fresh install before an admin has set one up), the org simply has
+    # no subscription until one is assigned later, same as before this
+    # existed - not a hard failure of org creation.
+    free_plan = await plans_repository.get_free_plan()
+    if free_plan:
+        await plans_service.assign_plan(
+            org_id=org_id,
+            plan_id=free_plan["id"],
+            billing_period="monthly",
+            ends_at=None,
+            notes="Auto-assigned on organization creation",
+            created_by=created_by,
+        )
+
     return org_id
 
 

@@ -705,15 +705,12 @@
             {% endcall %}
         {% endcall %}
 
-        {# Center: Output Viewer - only two tabs, Raw Output never mounts
-           until it's actually selected (see canvasTab in components.js). #}
+        {# Center: Output Viewer - shows raw stdout/stderr directly. No
+           parsed-summary view - modules write raw tool output only, there's
+           no parser stage to produce a summary/findings/IOCs from. #}
         {% call card() %}
             {% call card_header() %}
                 {{ card_title("Output Viewer") }}
-                <div class="mt-2 flex gap-1 border-b">
-                    <button type="button" @click="canvasTab = 'overview'" class="border-b-2 px-3 py-1.5 text-sm font-medium transition-colors" :class="canvasTab === 'overview' ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground'">Overview</button>
-                    <button type="button" @click="canvasTab = 'raw'" class="border-b-2 px-3 py-1.5 text-sm font-medium transition-colors" :class="canvasTab === 'raw' ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground'">Raw Output</button>
-                </div>
             {% endcall %}
             {% call card_panel(class="pt-0") %}
                 <div class="max-h-[28rem] overflow-y-auto">
@@ -721,61 +718,23 @@
                     <p class="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">Select a module on the left to view its output.</p>
                 </template>
 
-                <template x-if="canvasSelectedModuleId && canvasTab === 'overview'">
-                    <div class="space-y-4 text-sm">
-                        <template x-if="canvasSelectedOutput().status === 'not_run'">
-                            <p class="rounded-lg border border-dashed p-4 text-center text-muted-foreground">This module hasn't been run yet. Use Re-Analyze to queue it.</p>
-                        </template>
-                        <template x-if="canvasSelectedOutput().status === 'queued' || canvasSelectedOutput().status === 'running'">
-                            <div class="space-y-2">
-                                <p class="text-muted-foreground">Analysis in progress…</p>
-                                <div class="h-2 w-full overflow-hidden rounded-full bg-muted">
-                                    <div class="h-full bg-primary transition-all" :style="'width:' + canvasSelectedOutput().progress + '%'"></div>
-                                </div>
-                            </div>
-                        </template>
-                        <template x-if="canvasSelectedOutput().status === 'failed'">
-                            <p class="rounded-lg border border-destructive/36 bg-destructive/8 p-4 text-destructive-soft">This module failed to complete. Re-run it from the header, or check Raw Output for details.</p>
-                        </template>
-                        <template x-if="canvasSelectedOutput().status === 'completed'">
-                            <div class="space-y-4">
-                                <div>
-                                    <p class="mb-1 text-xs font-medium text-muted-foreground">Summary</p>
-                                    <p class="rounded-lg border bg-muted/40 p-3 text-muted-foreground" x-text="canvasSelectedOutput().summary"></p>
-                                </div>
-                                <div>
-                                    <p class="mb-1 text-xs font-medium text-muted-foreground">Key Findings</p>
-                                    <ul class="list-disc space-y-1 pl-5 text-muted-foreground">
-                                        <template x-for="(f, i) in canvasSelectedOutput().findings" :key="i">
-                                            <li x-text="f"></li>
-                                        </template>
-                                    </ul>
-                                </div>
-                                <div>
-                                    <p class="mb-1 text-xs font-medium text-muted-foreground">Extracted IOCs</p>
-                                    <div class="flex flex-wrap gap-1.5">
-                                        <template x-for="(ioc, i) in canvasSelectedOutput().iocs" :key="i">
-                                            <span class="rounded-sm bg-muted px-1.5 py-0.5 text-xs text-muted-foreground"><span class="font-medium uppercase" x-text="ioc.type"></span>: <span x-text="ioc.value"></span></span>
-                                        </template>
-                                        <p x-show="!canvasSelectedOutput().iocs.length" class="text-xs text-muted-foreground">No IOCs extracted.</p>
-                                    </div>
-                                </div>
-                                <div>
-                                    <p class="mb-1 text-xs font-medium text-muted-foreground">Artifacts</p>
-                                    <div class="divide-y rounded-lg border" x-show="canvasSelectedOutput().artifacts.length">
-                                        <template x-for="(a, i) in canvasSelectedOutput().artifacts" :key="i">
-                                            <p class="px-3 py-2 text-sm" x-text="a.name + ' (' + a.type + ')'"></p>
-                                        </template>
-                                    </div>
-                                    <p x-show="!canvasSelectedOutput().artifacts.length" class="rounded-lg border border-dashed p-3 text-center text-xs text-muted-foreground">No artifacts generated.</p>
-                                </div>
-                            </div>
-                        </template>
+                <template x-if="canvasSelectedModuleId && canvasSelectedOutput().status === 'not_run'">
+                    <p class="rounded-lg border border-dashed p-4 text-center text-sm text-muted-foreground">This module hasn't been run yet. Use Re-Analyze to queue it.</p>
+                </template>
+                <template x-if="canvasSelectedModuleId && (canvasSelectedOutput().status === 'queued' || canvasSelectedOutput().status === 'running')">
+                    <div class="space-y-2 text-sm">
+                        <p class="text-muted-foreground">Analysis in progress…</p>
+                        <div class="h-2 w-full overflow-hidden rounded-full bg-muted">
+                            <div class="h-full bg-primary transition-all" :style="'width:' + canvasSelectedOutput().progress + '%'"></div>
+                        </div>
                     </div>
                 </template>
 
-                <template x-if="canvasSelectedModuleId && canvasTab === 'raw'">
+                <template x-if="canvasSelectedModuleId && (canvasSelectedOutput().status === 'completed' || canvasSelectedOutput().status === 'failed')">
                     <div class="space-y-3 text-sm">
+                        <template x-if="canvasSelectedOutput().status === 'failed'">
+                            <p class="rounded-lg border border-destructive/36 bg-destructive/8 p-4 text-destructive-soft">This module failed to complete. See stderr below for details.</p>
+                        </template>
                         <div class="flex justify-end gap-2">
                             {% call button(variant="outline", size="sm", attrs={"@click": "copyRawOutput()"}) %}Copy{% endcall %}
                             {% call button(variant="outline", size="sm", attrs={"@click": "downloadRawOutput()"}) %}Download{% endcall %}

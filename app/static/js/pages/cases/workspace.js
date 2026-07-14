@@ -215,7 +215,6 @@ Add supporting evidence references, screenshots, artifacts, and raw output refer
       canvasEvidenceId: null,
       canvasEvidenceName: "",
       canvasSelectedModuleId: null,
-      canvasTab: "overview",
       canvasNoteDraft: "",
       notesByKey: {},
       savedIndicatorKeys: [],
@@ -669,7 +668,6 @@ Add supporting evidence references, screenshots, artifacts, and raw output refer
 
       selectCanvasModule(moduleId) {
         this.canvasSelectedModuleId = moduleId;
-        this.canvasTab = "overview";
         this.canvasNoteDraft = moduleId ? (this.notesByKey[this.canvasNoteKeyFor(moduleId)] || "") : "";
       },
 
@@ -767,25 +765,65 @@ Add supporting evidence references, screenshots, artifacts, and raw output refer
         URL.revokeObjectURL(url);
       },
 
-      reAnalyzeCurrentModule() {
+      async reAnalyzeCurrentModule() {
         if (!this.canvasSelectedModuleId || !this.canvasEvidenceId) return;
         const mod = this.moduleMap[this.canvasSelectedModuleId];
         if (!mod) return;
-        const item = this.evidence.find((e) => e.id === this.canvasEvidenceId);
+        const evidenceId = this.canvasEvidenceId;
+        const item = this.evidence.find((e) => e.id === evidenceId);
         const evidenceName = this.canvasEvidenceName || (item && item.filename) || "";
+        this.ensureOptions(mod.id);
+        const moduleOptions = {};
+        if (this.moduleOptionsByModule[mod.id]) moduleOptions[mod.id] = this.moduleOptionsByModule[mod.id];
+
+        // Same real endpoint the initial Analyze flow uses, scoped to just
+        // this one module — a container actually runs, this isn't a local
+        // UI simulation.
+        let data;
+        try {
+          const resp = await fetch(`/cases/${this.caseId}/evidence/${evidenceId}/analyze`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-CSRF-Token": this.csrfToken },
+            body: JSON.stringify({ module_ids: [mod.id], module_options: moduleOptions }),
+          });
+          if (!resp.ok) {
+            const err = await resp.json().catch(() => ({}));
+            this.flashCanvas(err.error || `Re-Analyze request failed (${resp.status})`);
+            return;
+          }
+          data = await resp.json();
+        } catch (e) {
+          console.error("[re-analyze] network error", e);
+          this.flashCanvas("Network error — Re-Analyze failed.");
+          return;
+        }
+
         this.queue.forEach((job) => {
-          if (job.evidenceId === this.canvasEvidenceId) job.tasks = job.tasks.filter((t) => t.moduleId !== mod.id);
+          if (job.evidenceId === evidenceId) job.tasks = job.tasks.filter((t) => t.moduleId !== mod.id);
         });
         this.queue = this.queue.filter((j) => j.tasks.length);
-        this.results = this.results.filter((r) => !(r.evidenceId === this.canvasEvidenceId && r.moduleId === mod.id));
-        this.ensureOptions(mod.id);
-        const tier = moduleTierOf(mod);
-        const jobId = this.canvasEvidenceId + ":" + tier + ":" + Date.now();
-        this.queue.push({
-          id: jobId, tier, tierLabel: MODULE_TIER_LABELS[tier],
-          evidenceId: this.canvasEvidenceId, evidenceName,
-          tasks: [{ id: jobId + ":" + mod.id, moduleId: mod.id, moduleName: mod.name, tool: mod.tool, outputType: mod.outputType, risk: mod.riskLevel, isolation: mod.isolationLevel, summary: this.optionsSummaryFor(mod.id), status: "Queued", progress: 0 }],
+        this.results = this.results.filter((r) => !(r.evidenceId === evidenceId && r.moduleId === mod.id));
+
+        const newJobIds = [];
+        (data.jobs || []).forEach((serverJob) => {
+          newJobIds.push(serverJob.job_id);
+          this.queue.push({
+            id: serverJob.job_id,
+            evidenceId, evidenceName,
+            tasks: (serverJob.tasks || []).map((t) => {
+              const m = this.moduleMap[t.module_id] || {};
+              return {
+                id: t.task_id, moduleId: t.module_id, moduleName: t.module_name,
+                tool: m.tool || "", outputType: m.outputType || "",
+                risk: m.riskLevel || "", isolation: m.isolationLevel || "",
+                summary: this.moduleOptionsByModule[t.module_id] ? this.optionsSummaryFor(t.module_id) : "",
+                status: "Queued", progress: 0,
+              };
+            }),
+          });
         });
+        this.activeProgressJobIds = [...new Set([...this.activeProgressJobIds, ...newJobIds])];
+        this._startPolling();
         this.flashCanvas("Re-Analyze queued.");
       },
 

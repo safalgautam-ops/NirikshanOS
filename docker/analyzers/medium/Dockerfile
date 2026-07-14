@@ -14,7 +14,11 @@ RUN apt-get update \
         sleuthkit \
         foremost \
         scalpel \
- && rm -rf /var/lib/apt/lists/*
+ && rm -rf /var/lib/apt/lists/* \
+ # scalpel's default config ships every file-type rule commented out — it
+ # would otherwise refuse to carve anything at all (verified: "configuration
+ # file didn't specify any file types to carve"). Enable the common ones.
+ && sed -i -E 's/^#(\s*(jpg|gif|png|pdf|zip)\s)/\1/' /etc/scalpel/scalpel.conf
 
 WORKDIR /analyzer
 COPY . /analyzer/

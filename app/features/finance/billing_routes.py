@@ -41,6 +41,33 @@ async def plan_picker_view():
     )
 
 
+@billing_bp.route("/subscribe-free", methods=["POST"])
+@require_org_permission(ORG_BILLING_MANAGE)
+async def subscribe_free_view():
+    """Activate a zero-cost plan directly — no eSewa involved. Re-validates
+    the plan is actually free server-side rather than trusting the form,
+    since this bypasses payment entirely."""
+    org = await get_user_organization(g.user_id)
+    if not org:
+        abort(404)
+    form = await request.form
+    plan_id = form.get("plan_id") or ""
+
+    plan = await plans_repository.get_plan(plan_id)
+    if not plan or float(plan["price_monthly"]) != 0 or float(plan["price_annual"]) != 0:
+        return redirect(url_for("billing.plan_picker_view") + "?error=That plan is not available without payment.")
+
+    await plans_service.assign_plan(
+        org_id=org["id"],
+        plan_id=plan_id,
+        billing_period=form.get("billing_period") or "monthly",
+        ends_at=None,
+        notes="Self-service switch to a zero-cost plan",
+        created_by=g.user_id,
+    )
+    return redirect(url_for("billing.plan_picker_view"))
+
+
 @billing_bp.route("/pay", methods=["POST"])
 @require_org_permission(ORG_BILLING_MANAGE)
 async def pay_view():

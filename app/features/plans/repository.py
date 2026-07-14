@@ -58,6 +58,24 @@ async def get_plan(plan_id: str) -> dict | None:
     return plan
 
 
+async def get_free_plan() -> dict | None:
+    """The active plan with zero cost — auto-assigned to a new org on
+    creation. Looked up by cost rather than a hardcoded id so it still works
+    if an admin renames/recreates the free-tier plan."""
+    row = await (
+        db.table("plans")
+        .where("is_active", 1)
+        .where("price_monthly", 0)
+        .order_by("sort_order", "asc")
+        .first()
+    )
+    if not row:
+        return None
+    plan = _parse_plan(dict(row))
+    plan["allowed_instance_ids"] = await get_instance_ids_for_plan(plan["id"])
+    return plan
+
+
 async def create_plan(
     *,
     plan_id: str,
@@ -195,3 +213,14 @@ async def create_subscription(
 
 async def cancel_subscription(sub_id: str) -> None:
     await db.table("org_subscriptions").where("id", sub_id).update({"status": "cancelled"})
+
+
+async def update_subscription_snapshot(sub_id: str, plan_snapshot: dict) -> None:
+    """Overwrite a subscription's frozen plan_snapshot in place — used to
+    repair subscriptions whose snapshot predates a tier/instance vocabulary
+    migration (grandfathering is meant to protect against routine admin plan
+    edits, not leave a subscription permanently referencing tier names that
+    no longer exist anywhere else in the system)."""
+    await db.table("org_subscriptions").where("id", sub_id).update(
+        {"plan_snapshot": json.dumps(plan_snapshot, default=str)}
+    )

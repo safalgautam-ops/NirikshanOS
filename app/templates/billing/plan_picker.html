@@ -12,7 +12,7 @@
 {% from "components/ui/radio-group.html" import radio %}
 
 {% block body %}
-<div x-data="planPicker()">
+<div x-data="planPicker({{ current_sub | tojson | forceescape }})">
 
   {{ sidebar(active="org_billing", visible_keys=visible_keys) }}
 
@@ -61,7 +61,7 @@
             </div>
           {% endcall %}
           {% call card_footer() %}
-            {% call button(class="w-full", attrs={"@click": "openDialog(%s)" % (plan | tojson)}) %}
+            {% call button(class="w-full", attrs={"@click": "openDialog(%s)" % (plan | tojson), "disabled": current_sub and current_sub.plan_id == plan.id}) %}
               {% if current_sub and current_sub.plan_id == plan.id %}Current Plan{% else %}Subscribe{% endif %}
             {% endcall %}
           {% endcall %}
@@ -77,7 +77,7 @@
     <div class="fixed inset-0 z-50 flex items-center justify-center p-4" @keydown.escape.window="open = false">
       <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="open = false"></div>
 
-      <form method="POST" action="{{ url_for('billing.pay_view') }}" class="relative z-10 w-full max-w-sm rounded-xl border bg-card shadow-xl overflow-hidden">
+      <form method="POST" :action="isFree ? '{{ url_for('billing.subscribe_free_view') }}' : '{{ url_for('billing.pay_view') }}'" class="relative z-10 w-full max-w-sm rounded-xl border bg-card shadow-xl overflow-hidden">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="plan_id" :value="plan.id">
 
@@ -105,20 +105,33 @@
             </div>
           </div>
 
-          <div class="space-y-1.5">
+          <div class="space-y-1.5" x-show="!isFree">
             {{ label(text="Coupon code (optional)", for_id="coupon-code") }}
             {{ input(type="text", placeholder="SAVE20", attrs={"id": "coupon-code", "name": "coupon_code"}) }}
           </div>
 
-          <p class="text-xs text-muted-foreground">
+          <template x-if="isSwitchingPlan">
+            <p class="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+              Your current plan (<span x-text="currentSub.plan_snapshot.display_name" class="font-medium"></span>) will be
+              <span class="font-medium">cancelled immediately</span> and replaced with
+              <span x-text="plan.display_name" class="font-medium"></span>. This cannot be undone.
+            </p>
+          </template>
+
+          <p class="text-xs text-muted-foreground" x-show="!isFree">
             You'll be redirected to eSewa to complete payment. The exact amount
             (after any discount) is confirmed on the next screen before you pay.
+          </p>
+          <p class="text-xs text-muted-foreground" x-show="isFree">
+            This plan has no cost — it activates immediately, no payment needed.
           </p>
         </div>
 
         <div class="flex justify-end gap-2 border-t px-6 py-4">
           {% call button(variant="outline", attrs={"@click": "open = false", "type": "button"}) %}Cancel{% endcall %}
-          {% call button(type="submit") %}Continue to Payment{% endcall %}
+          {% call button(type="submit") %}
+            <span x-text="isSwitchingPlan ? (isFree ? 'Cancel current plan & switch' : 'Cancel current plan & pay') : (isFree ? 'Activate plan' : 'Continue to Payment')"></span>
+          {% endcall %}
         </div>
       </form>
     </div>

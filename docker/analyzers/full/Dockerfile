@@ -18,10 +18,15 @@ RUN apt-get update \
         python3-pip \
         python3-dev \
         build-essential \
+        git \
  && rm -rf /var/lib/apt/lists/* \
  && pip3 install --no-cache-dir --break-system-packages \
         flare-capa \
-        flare-floss
+        flare-floss \
+ # capa's PyPI package ships no rule content (verified: capa/rules/ only has
+ # Python code) — the actual .yml rules are a separate repo it expects via -r.
+ && git clone --depth 1 https://github.com/mandiant/capa-rules /opt/capa-rules \
+ && rm -rf /opt/capa-rules/.git
 
 WORKDIR /analyzer
 COPY . /analyzer/
