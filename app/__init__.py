@@ -24,7 +24,7 @@ from app.core.security.organization_gate import needs_organization_onboarding
 from app.core.security.permission_registry import sync_to_db as sync_permissions_to_db
 from app.core.security.permissions import get_visible_nav_keys
 from app.core.security.sessions import apply_session_loader, login_required
-from app.core.templating import cn, html_attrs, read_input_css_for_browser_runtime
+from app.core.templating import asset_version, cn, html_attrs, read_input_css_for_browser_runtime
 from app.extensions import close_redis, get_redis, init_redis
 from app.features.analysis.routes import analysis_bp
 from app.features.auth.repository import get_user_by_id
@@ -36,6 +36,7 @@ from app.features.plans.routes import plans_bp
 from app.features.notes.routes import notes_bp
 from app.features.reports.routes import reports_bp
 from app.features.cases.routes import cases_bp
+from app.features.dashboard.service import get_admin_dashboard, get_org_dashboard
 from app.features.evidence.routes import evidence_bp
 from app.features.finance.routes import finance_bp
 from app.features.finance.billing_routes import billing_bp
@@ -58,6 +59,7 @@ def create_app() -> Quart:
     # components/ui/*.html macros call cn()/html_attrs() directly as globals.
     app.jinja_env.globals["cn"] = cn
     app.jinja_env.globals["html_attrs"] = html_attrs
+    app.jinja_env.globals["asset_version"] = asset_version
     # Jinja doesn't expose Python's builtin set() by default - templates need
     # it for `x in (value or set())` patterns against role_ids/etc.
     app.jinja_env.globals["set"] = set
@@ -201,8 +203,18 @@ def create_app() -> Quart:
     async def dashboard():
         user = await get_user_by_id(g.user_id)
         visible_keys = await get_visible_nav_keys(g.user_id)
+        # Platform staff get the admin-wide widgets; everyone else gets the
+        # org-scoped dashboard (or None if they belong to no organization
+        # yet - dashboard.html falls back to an onboarding nudge for that
+        # case, since this route itself isn't gated by organization_gate).
+        admin_dashboard = await get_admin_dashboard() if g.is_platform_staff else None
+        org_dashboard = None if g.is_platform_staff else await get_org_dashboard(g.user_id)
         return await render_template(
-            "dashboard/dashboard.html", user=user, visible_keys=visible_keys
+            "dashboard/dashboard.html",
+            user=user,
+            visible_keys=visible_keys,
+            admin=admin_dashboard,
+            org_dash=org_dashboard,
         )
 
     @app.route("/healthz")

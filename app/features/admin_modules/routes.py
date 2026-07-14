@@ -13,9 +13,10 @@ from app.core.security.permissions import get_visible_nav_keys, require_permissi
 from app.core.utils.ids import new_id
 from app.extensions import get_redis
 from app.features.admin_modules import repository
-from app.features.admin_modules.permissions import MODULE_EDIT, MODULE_VIEW
+from app.features.admin_modules.permissions import MODULE_DELETE, MODULE_EDIT, MODULE_VIEW
 from app.features.categories import repository as categories_repository
 from app.features.instances import repository as instances_repository
+from app.features.plans import repository as plans_repository
 from app.features.plans.service import KNOWN_TIERS
 
 admin_modules_bp = Blueprint("admin_modules", __name__, url_prefix="/admin/modules")
@@ -147,6 +148,13 @@ async def ide_view(module_id: str):
         "tier":         mod["tier"],
         "instance_id":  mod["instance_id"],
     }
+    # Plans don't reference a module directly - a plan grants tiers, and a
+    # module declares which tier it needs (see KNOWN_TIERS) - so "which
+    # plans would lose this module" is whichever plans currently grant its
+    # tier. Computed here (not client-side) so the delete-confirmation
+    # dialog can name real, current plans instead of a generic warning.
+    all_plans = await plans_repository.list_plans()
+    affected_plans = [p["display_name"] for p in all_plans if mod["tier"] in (p["allowed_tiers"] or [])]
     return await render_template(
         "admin/modules/ide.html",
         module=mod,
@@ -156,6 +164,7 @@ async def ide_view(module_id: str):
         instances=instances,
         instances_for_js=instances_for_js,
         known_tiers=KNOWN_TIERS,
+        affected_plans=affected_plans,
         visible_keys=visible_keys,
     )
 
@@ -189,6 +198,17 @@ async def toggle_view(module_id: str):
     new_state = not bool(mod["is_enabled"])
     await repository.set_enabled(module_id, new_state)
     return jsonify({"ok": True, "is_enabled": new_state})
+
+
+# ── Delete ────────────────────────────────────────────────────────────────────
+
+@admin_modules_bp.route("/<module_id>", methods=["DELETE"])
+@require_permission(MODULE_DELETE)
+async def delete_view(module_id: str):
+    if not await repository.get_module(module_id):
+        return jsonify({"error": "not found"}), 404
+    await repository.delete_module(module_id)
+    return jsonify({"ok": True})
 
 
 # ── Module file CRUD ──────────────────────────────────────────────────────────

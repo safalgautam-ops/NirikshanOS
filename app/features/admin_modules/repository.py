@@ -63,6 +63,15 @@ async def create_custom_module(
     })
 
 
+async def delete_module(module_id: str) -> None:
+    """Deletes the module definition - module_files and module_test_runs
+    cascade automatically (fk_module_files_module/fk_module_test_runs_module
+    are both ON DELETE CASCADE). analysis_tasks.module_id is a plain
+    denormalized string with no FK to this table, so historical job/result
+    history for this module is untouched."""
+    await db.table("analysis_module_defs").where("id", module_id).delete()
+
+
 async def set_enabled(module_id: str, enabled: bool) -> None:
     await db.table("analysis_module_defs").where("id", module_id).update(
         {"is_enabled": int(enabled)}

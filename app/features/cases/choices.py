@@ -15,6 +15,13 @@ CLASSIFICATIONS: list[tuple[str, str]] = [
     ("file_system_corruption", "File System Corruption"),
 ]
 
+CASE_STATUSES: list[tuple[str, str]] = [
+    ("open", "Open"),
+    ("active", "Active"),
+    ("closed", "Closed"),
+    ("archived", "Archived"),
+]
+
 SEVERITIES: list[tuple[str, str]] = [
     ("low", "Low"),
     ("medium", "Medium"),

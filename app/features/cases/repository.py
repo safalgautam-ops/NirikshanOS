@@ -47,6 +47,7 @@ async def update_case(
     classification: str,
     severity: str,
     forensic_status: str,
+    status: str,
 ) -> None:
     await (
         db.table("cases")
@@ -58,6 +59,7 @@ async def update_case(
                 "classification": classification,
                 "severity": severity,
                 "forensic_status": forensic_status,
+                "status": status,
             }
         )
     )

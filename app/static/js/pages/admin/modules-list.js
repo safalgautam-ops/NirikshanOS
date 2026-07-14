@@ -12,7 +12,7 @@ document.addEventListener("alpine:init", () => {
       display_name: "",
       description: "",
       category_id: "",
-      tier: "free",
+      tier: "basic",
       instance_id: "",
     },
 
@@ -28,7 +28,7 @@ document.addEventListener("alpine:init", () => {
         display_name: "",
         description: "",
         category_id: "",
-        tier: "free",
+        tier: "basic",
         instance_id: "",
       };
     },

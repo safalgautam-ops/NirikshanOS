@@ -15,13 +15,14 @@ from quart import Blueprint, abort, g, redirect, render_template, request, url_f
 
 from app.core.security.org_permissions import (
     get_user_org_membership,
+    get_user_org_permission_names,
     is_org_owner,
     require_org_permission,
 )
 from app.core.security.permissions import get_visible_nav_keys
 from app.core.security.sessions import login_required
 from app.features.audit import service as audit_service
-from app.features.cases.choices import CLASSIFICATIONS, FORENSIC_STATUSES, SEVERITIES
+from app.features.cases.choices import CASE_STATUSES, CLASSIFICATIONS, FORENSIC_STATUSES, SEVERITIES
 from app.features.cases.permissions import CASE_CREATE, CASE_DELETE, CASE_EDIT
 from app.features.cases.service import (
     CaseError,
@@ -187,6 +188,10 @@ async def detail_view(case_id: str):
     current_user = await get_user_by_id(g.user_id)
     current_user_name = current_user["name"] if current_user else "Analyst"
     visible_keys = await get_visible_nav_keys(g.user_id)
+    is_owner = await _is_owner()
+    granted_permissions = await get_user_org_permission_names(g.user_id)
+    can_edit = is_owner or CASE_EDIT.name in granted_permissions
+    can_delete = is_owner or CASE_DELETE.name in granted_permissions
     return await render_template(
         "cases/detail.html",
         case=case,
@@ -201,11 +206,15 @@ async def detail_view(case_id: str):
         classification_label=dict(CLASSIFICATIONS).get(case["classification"], case["classification"] or "—"),
         severity_label=dict(SEVERITIES).get(case["severity"], case["severity"]),
         forensic_status_label=dict(FORENSIC_STATUSES).get(case["forensic_status"], case["forensic_status"]),
+        case_status_label=dict(CASE_STATUSES).get(case["status"], case["status"]),
         classifications=CLASSIFICATIONS,
         severities=SEVERITIES,
         forensic_statuses=FORENSIC_STATUSES,
+        case_statuses=CASE_STATUSES,
         visible_keys=visible_keys,
-        is_owner=await _is_owner(),
+        is_owner=is_owner,
+        can_edit=can_edit,
+        can_delete=can_delete,
         just_created=request.args.get("created") == "1",
         error=request.args.get("error"),
     )
@@ -224,6 +233,7 @@ async def update_view(case_id: str):
             classification=form.get("classification", ""),
             severity=form.get("severity", ""),
             forensic_status=form.get("forensic_status", ""),
+            status=form.get("status", ""),
         )
     except CaseError as exc:
         await audit_service.record_case_activity(

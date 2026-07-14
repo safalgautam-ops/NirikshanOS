@@ -108,6 +108,9 @@ document.addEventListener("alpine:init", () => {
       editorTab: "code",
       saving: false,
       testDialogOpen: false,
+      deleteDialogOpen: false,
+      deleting: false,
+      deleteError: "",
       testFile: null,
       testRunning: false,
       testRunId: null,
@@ -129,7 +132,7 @@ document.addEventListener("alpine:init", () => {
         display_name: (moduleMeta && moduleMeta.display_name) || "",
         description:  (moduleMeta && moduleMeta.description)  || "",
         category_id:  (moduleMeta && moduleMeta.category_id)  || "",
-        tier:         (moduleMeta && moduleMeta.tier)         || "free",
+        tier:         (moduleMeta && moduleMeta.tier)         || "basic",
         instance_id:  (moduleMeta && moduleMeta.instance_id)  || "",
       },
       instances: instances || [],
@@ -293,6 +296,22 @@ document.addEventListener("alpine:init", () => {
         }).catch(() => null);
         if (resp && resp.ok) window.location.reload();
         else this._setFlash("Toggle failed.");
+      },
+
+      async deleteModule() {
+        this.deleting = true;
+        this.deleteError = "";
+        const resp = await fetch(`/admin/modules/${this.moduleId}`, {
+          method: "DELETE",
+          headers: { "X-CSRF-Token": this.csrf },
+        }).catch(() => null);
+        if (resp && resp.ok) {
+          window.location.href = "/admin/modules/";
+          return;
+        }
+        const d = resp ? await resp.json().catch(() => ({})) : {};
+        this.deleteError = d.error || "Delete failed.";
+        this.deleting = false;
       },
 
       openTestDialog() {

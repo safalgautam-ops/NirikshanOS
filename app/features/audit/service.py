@@ -80,8 +80,7 @@ async def record_case_activity(
     )
 
 
-async def get_case_activity_log(case_id: str, *, limit: int = 200) -> list[dict]:
-    rows = await audit_logger.list_entity_events("case", case_id, limit=limit)
+def _format_rows(rows: list[dict]) -> list[dict]:
     formatted = []
     for row in rows:
         metadata = row.get("metadata") or {}
@@ -100,3 +99,16 @@ async def get_case_activity_log(case_id: str, *, limit: int = 200) -> list[dict]
             }
         )
     return formatted
+
+
+async def get_case_activity_log(case_id: str, *, limit: int = 200) -> list[dict]:
+    rows = await audit_logger.list_entity_events("case", case_id, limit=limit)
+    return _format_rows(rows)
+
+
+async def get_activity_log_for_cases(case_ids: list[str], *, limit: int = 20) -> list[dict]:
+    """Merged, newest-first activity feed across several cases at once - the
+    dashboard's Recent Activity widget, scoped to whichever cases the
+    viewer can already see (see cases/service.py's list_cases_for_user)."""
+    rows = await audit_logger.list_events_for_entities("case", case_ids, limit=limit)
+    return _format_rows(rows)

@@ -3,22 +3,293 @@
 
 {% from "dashboard/components/sidebar.html" import sidebar %}
 {% from "dashboard/components/topbar.html" import topbar %}
+{% from "dashboard/components/stat_card.html" import stat_card %}
+{% from "components/ui/card.html" import card, card_header, card_title, card_description, card_panel %}
+{% from "components/ui/badge.html" import badge %}
+{% from "components/ui/button.html" import button %}
+{% from "components/ui/chart.html" import bar_chart, bar_chart_labeled, hbar_chart, line_chart, pie_chart, radar_chart, radial_chart %}
+{% from "components/ui/empty.html" import empty, empty_header, empty_media, empty_title, empty_description, empty_content %}
+{% import "components/ui/table.html" as table %}
+
+{% set verification_variant = {"approved": "success", "pending": "warning", "rejected": "error"} %}
+{% set sub_status_variant = {"active": "success", "grandfathered": "success", "expired": "secondary", "cancelled": "error"} %}
+{% set txn_status_variant = {"completed": "success", "failed": "error", "initiated": "secondary", "refunded": "warning"} %}
 
 {% block body %}
 {{ sidebar(active="dashboard", visible_keys=visible_keys) }}
 
-{# md:pl-60 leaves room for the fixed sidebar; sidebar is hidden below md #}
 <div class="flex flex-col md:pl-60">
     {{ topbar("Dashboard") }}
 
     <main class="flex-1 space-y-6 p-4 md:p-6">
         <div>
             <h2 class="text-xl font-semibold">Welcome, {{ user.name }}</h2>
-            <p class="text-sm text-muted-foreground">
-                Foundation is up: Quart + uvicorn behind nginx, MySQL and Redis connected.
-                Database connectivity check: <a class="underline" href="/healthz">/healthz</a>.
-            </p>
+            {% if not admin and not org_dash %}
+            <p class="text-sm text-muted-foreground">Foundation is up: Quart + uvicorn behind nginx, MySQL and Redis connected.</p>
+            {% endif %}
         </div>
+
+        {% if admin %}
+        {# ── System Admin / platform staff dashboard ──────────────────────── #}
+        <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {{ stat_card("Total Users", admin.stats.users_total) }}
+            {{ stat_card("Organizations", admin.stats.orgs_total, change=(admin.stats.orgs_pending ~ " pending review") if admin.stats.orgs_pending else "All verified") }}
+            {{ stat_card("Total Revenue", admin.stats.revenue_total_display, change="All-time, completed payments") }}
+            {{ stat_card("Active Subscriptions", admin.stats.active_subs) }}
+        </div>
+
+        <div class="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
+            {% call card() %}
+                {% call card_header() %}
+                    {{ card_title("Revenue (last 6 months)") }}
+                    {% call card_description() %}Completed eSewa payments, by month{% endcall %}
+                {% endcall %}
+                {% call card_panel() %}
+                    {{ bar_chart_labeled(admin.revenue_chart) }}
+                {% endcall %}
+            {% endcall %}
+
+            {% call card() %}
+                {% call card_header() %}
+                    {{ card_title("Platform traffic (last 3 months)") }}
+                    {% call card_description() %}Logins per day — {{ admin.traffic_chart.total_display }} total{% endcall %}
+                {% endcall %}
+                {% call card_panel() %}
+                    {{ line_chart(admin.traffic_chart) }}
+                {% endcall %}
+            {% endcall %}
+        </div>
+
+        <div class="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
+            {% call card() %}
+                {% call card_header() %}
+                    {{ card_title("Popular modules") }}
+                    {% call card_description() %}Most-run analysis modules, all-time{% endcall %}
+                {% endcall %}
+                {% call card_panel() %}
+                    {% if admin.popular_modules %}
+                        {{ radial_chart(admin.popular_modules) }}
+                    {% else %}
+                        <p class="text-sm text-muted-foreground">No analysis runs yet.</p>
+                    {% endif %}
+                {% endcall %}
+            {% endcall %}
+
+            {% call card() %}
+                {% call card_header() %}
+                    {{ card_title("Popular plans") }}
+                    {% call card_description() %}Active subscriptions by plan{% endcall %}
+                {% endcall %}
+                {% call card_panel() %}
+                    {% if admin.popular_plans.labels %}
+                        {{ radar_chart(admin.popular_plans) }}
+                    {% else %}
+                        <p class="text-sm text-muted-foreground">No plans configured yet.</p>
+                    {% endif %}
+                {% endcall %}
+            {% endcall %}
+        </div>
+
+        <div class="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
+            {% call card() %}
+                {% call card_header() %}
+                    {{ card_title("Recent organizations") }}
+                {% endcall %}
+                {% call card_panel(class="pt-0") %}
+                    {% call table.table() %}
+                        {% call table.table_header() %}
+                            {% call table.table_row() %}
+                                {{ table.table_head("Name") }}
+                                {{ table.table_head("Verification") }}
+                                {{ table.table_head("Created") }}
+                            {% endcall %}
+                        {% endcall %}
+                        {% call table.table_body() %}
+                            {% if not admin.recent_orgs %}
+                            {% call table.table_row() %}
+                                {% call table.table_cell(class="h-20 text-center text-muted-foreground", attrs={"colspan": "3"}) %}No organizations yet.{% endcall %}
+                            {% endcall %}
+                            {% else %}
+                            {% for o in admin.recent_orgs %}
+                            {% call table.table_row() %}
+                                {% call table.table_cell(class="font-medium") %}{{ o.name }}{% endcall %}
+                                {% call table.table_cell() %}{{ badge(text=o.verification_status, variant=verification_variant.get(o.verification_status, "outline")) }}{% endcall %}
+                                {% call table.table_cell(class="text-sm text-muted-foreground") %}{{ o.created_at }}{% endcall %}
+                            {% endcall %}
+                            {% endfor %}
+                            {% endif %}
+                        {% endcall %}
+                    {% endcall %}
+                {% endcall %}
+            {% endcall %}
+
+            {% call card() %}
+                {% call card_header() %}
+                    {{ card_title("Recent transactions") }}
+                {% endcall %}
+                {% call card_panel(class="pt-0") %}
+                    {% call table.table() %}
+                        {% call table.table_header() %}
+                            {% call table.table_row() %}
+                                {{ table.table_head("Organization") }}
+                                {{ table.table_head("Plan") }}
+                                {{ table.table_head("Amount") }}
+                                {{ table.table_head("Status") }}
+                            {% endcall %}
+                        {% endcall %}
+                        {% call table.table_body() %}
+                            {% if not admin.recent_transactions %}
+                            {% call table.table_row() %}
+                                {% call table.table_cell(class="h-20 text-center text-muted-foreground", attrs={"colspan": "4"}) %}No transactions yet.{% endcall %}
+                            {% endcall %}
+                            {% else %}
+                            {% for t in admin.recent_transactions %}
+                            {% call table.table_row() %}
+                                {% call table.table_cell(class="font-medium") %}{{ t.org_name }}{% endcall %}
+                                {% call table.table_cell() %}{{ t.plan_name }}{% endcall %}
+                                {% call table.table_cell(class="text-sm") %}Rs. {{ t.total_amount }}{% endcall %}
+                                {% call table.table_cell() %}{{ badge(text=t.status, variant=txn_status_variant.get(t.status, "outline")) }}{% endcall %}
+                            {% endcall %}
+                            {% endfor %}
+                            {% endif %}
+                        {% endcall %}
+                    {% endcall %}
+                {% endcall %}
+            {% endcall %}
+        </div>
+
+        {% elif org_dash %}
+        {# ── Organization member dashboard - widgets scoped by permission ──── #}
+        <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {{ stat_card(org_dash.stats.case_scope_label ~ " Cases", org_dash.stats.case_total) }}
+            {{ stat_card("Open Cases", org_dash.stats.open_count) }}
+            {% if org_dash.can_view_members %}
+                {{ stat_card("Members", org_dash.member_count) }}
+            {% else %}
+                {{ stat_card("Your Role", org_dash.role_label) }}
+            {% endif %}
+            {{ stat_card("Current Plan", org_dash.stats.plan_name or "No active plan", change=org_dash.stats.plan_status) }}
+        </div>
+
+        <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            {% call card(class="flex flex-col") %}
+                {% call card_header() %}
+                    {{ card_title("Case status breakdown") }}
+                    {% call card_description() %}{{ org_dash.stats.case_scope_label }} cases, by status{% endcall %}
+                {% endcall %}
+                {% call card_panel(class="flex flex-1 flex-col") %}
+                    {{ pie_chart(org_dash.case_status_chart, total_display=org_dash.stats.case_total) }}
+                {% endcall %}
+            {% endcall %}
+
+            {% call card() %}
+                {% call card_header() %}
+                    {{ card_title("Recent activity") }}
+                {% endcall %}
+                {% call card_panel(class="pt-0") %}
+                    {% if not org_dash.recent_activity %}
+                        <p class="rounded-lg border border-dashed p-4 text-center text-sm text-muted-foreground">No activity yet.</p>
+                    {% else %}
+                        <ul class="divide-y">
+                            {% for item in org_dash.recent_activity %}
+                            <li class="flex items-center justify-between gap-3 py-2.5 text-sm">
+                                <div class="min-w-0">
+                                    <p class="truncate font-medium">{{ item.action }} <span class="font-normal text-muted-foreground">— {{ item.target }}</span></p>
+                                    <p class="text-xs text-muted-foreground">{{ item.actor }} · {{ item.timestamp }}</p>
+                                </div>
+                                {{ badge(text=item.status, variant="success" if item.status == "Completed" else "error") }}
+                            </li>
+                            {% endfor %}
+                        </ul>
+                    {% endif %}
+                {% endcall %}
+            {% endcall %}
+        </div>
+
+        {% if org_dash.can_view_members %}
+        {% call card() %}
+            {% call card_header() %}
+                {{ card_title("Organization members") }}
+                {% call card_description() %}{{ org_dash.member_count }} total{% endcall %}
+            {% endcall %}
+            {% call card_panel(class="pt-0") %}
+                {% call table.table() %}
+                    {% call table.table_header() %}
+                        {% call table.table_row() %}
+                            {{ table.table_head("Name") }}
+                            {{ table.table_head("Email") }}
+                            {{ table.table_head("Role") }}
+                            {{ table.table_head("Joined") }}
+                        {% endcall %}
+                    {% endcall %}
+                    {% call table.table_body() %}
+                        {% for m in org_dash.members %}
+                        {% set role_label = "Owner" if m.id == org_dash.org.created_by else (m.role_name or "No role") %}
+                        {% call table.table_row() %}
+                            {% call table.table_cell(class="font-medium") %}{{ m.name }}{% endcall %}
+                            {% call table.table_cell(class="text-sm text-muted-foreground") %}{{ m.email }}{% endcall %}
+                            {% call table.table_cell() %}{{ badge(text=role_label) }}{% endcall %}
+                            {% call table.table_cell(class="text-sm text-muted-foreground") %}{{ m.joined_at }}{% endcall %}
+                        {% endcall %}
+                        {% endfor %}
+                    {% endcall %}
+                {% endcall %}
+            {% endcall %}
+        {% endcall %}
+        {% endif %}
+
+        {% if org_dash.can_view_billing %}
+        {% call card() %}
+            {% call card_header() %}
+                {{ card_title("Subscription history") }}
+                {% call card_description() %}Last 3 months{% endcall %}
+            {% endcall %}
+            {% call card_panel(class="pt-0") %}
+                {% if not org_dash.subscription_history %}
+                    <p class="rounded-lg border border-dashed p-4 text-center text-sm text-muted-foreground">No subscription history in the last 3 months.</p>
+                {% else %}
+                {% call table.table() %}
+                    {% call table.table_header() %}
+                        {% call table.table_row() %}
+                            {{ table.table_head("Plan") }}
+                            {{ table.table_head("Period") }}
+                            {{ table.table_head("Status") }}
+                            {{ table.table_head("Started") }}
+                            {{ table.table_head("Ends") }}
+                        {% endcall %}
+                    {% endcall %}
+                    {% call table.table_body() %}
+                        {% for s in org_dash.subscription_history %}
+                        {% call table.table_row() %}
+                            {% call table.table_cell(class="font-medium") %}{{ s.plan_snapshot.display_name if s.plan_snapshot else s.plan_id }}{% endcall %}
+                            {% call table.table_cell(class="text-sm text-muted-foreground") %}{{ s.billing_period }}{% endcall %}
+                            {% call table.table_cell() %}{{ badge(text=s.status, variant=sub_status_variant.get(s.status, "outline")) }}{% endcall %}
+                            {% call table.table_cell(class="text-sm text-muted-foreground") %}{{ s.starts_at }}{% endcall %}
+                            {% call table.table_cell(class="text-sm text-muted-foreground") %}{{ s.ends_at or "—" }}{% endcall %}
+                        {% endcall %}
+                        {% endfor %}
+                    {% endcall %}
+                {% endcall %}
+                {% endif %}
+            {% endcall %}
+        {% endcall %}
+        {% endif %}
+
+        {% else %}
+        {# ── No approved organization yet - onboarding nudge ──────────────── #}
+        {% call empty() %}
+            {% call empty_header() %}
+                {% call empty_media() %}
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 21h18"/><path d="M5 21V7l8-4v18"/><path d="M19 21V11l-6-4"/></svg>
+                {% endcall %}
+                {{ empty_title(text="Get started with your organization") }}
+                {{ empty_description(text="Create or join an organization to unlock cases, evidence analysis, and billing.") }}
+            {% endcall %}
+            {% call empty_content() %}
+                {% call button(attrs={"onclick": "window.location.href='%s'" % url_for('onboarding.index')}) %}Go to Organization{% endcall %}
+            {% endcall %}
+        {% endcall %}
+        {% endif %}
     </main>
 </div>
 {% endblock %}

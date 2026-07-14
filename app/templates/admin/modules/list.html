@@ -1,6 +1,6 @@
 {% extends "layouts/base.html" %}
 {% block title %}Modules — NirikshanOS{% endblock %}
-{% block scripts %}<script defer src="{{ url_for('static', filename='js/pages/admin/modules-list.js') }}"></script>{% endblock %}
+{% block scripts %}<script defer src="{{ url_for('static', filename='js/pages/admin/modules-list.js') }}?v={{ asset_version('js/pages/admin/modules-list.js') }}"></script>{% endblock %}
 
 {% from "dashboard/components/sidebar.html" import sidebar %}
 {% from "dashboard/components/topbar.html" import topbar %}

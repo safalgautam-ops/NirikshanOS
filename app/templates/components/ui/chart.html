@@ -1,0 +1,194 @@
+{# Dependency-free charts for dashboard widgets - no vendored JS, just CSS
+   height/width percentages and conic-gradient (same technique as
+   progress.html/meter.html), so they work under this app's strict CSP
+   without adding a charting library (e.g. recharts, which needs React -
+   this app is Jinja+Alpine). Callers precompute `pct`/`start`/`end`
+   (0-100) and `display` (pre-formatted label) per item in the service
+   layer - these macros never do math on raw values, matching how every
+   other macro here stays presentation-only.
+   bar_chart/hbar_chart item shape: {"label": str, "display": str, "pct": number}.
+   pie_chart slice shape: {"label": str, "display": str, "color": str (a CSS
+   color/var()), "start": number, "end": number} (0-100 conic-gradient stops).
+   line_chart series shape: {"points": [{"x": number, "y": number}, ...] (0-100,
+   y already inverted/padded), "labels": [{"x": number, "text": str}, ...]
+   (a sparser subset of points, so labels don't collide), "value_labels":
+   [{"x": number, "y": number, "text": str}, ...] (just the turning points -
+   local peaks/troughs plus both endpoints - each rendered as a dot + its
+   real value floating above the line).
+   bar_chart_labeled item shape: {"label": str, "display": str, "bar_pct": number}
+   - like bar_chart/hbar_chart's `pct`, but floored to a legible minimum
+   (see dashboard/service.py._bars_labeled) since the label renders inside
+   the bar itself, not beside it - a true zero/near-zero value still needs
+   a non-empty bar for its label to sit on. `display` (the real, unfloored
+   value) always renders outside the bar, so nothing is misrepresented.
+   radar_chart series shape: {"cx": number, "cy": number, "grid_rings":
+   [str, ...] (each a ready-made SVG <polygon points="..."> value),
+   "spokes": [{"x2": number, "y2": number}, ...] (center-to-edge axis
+   lines), "polygon_points": str (the data shape's own <polygon points>
+   value), "dots": [{"x": number, "y": number, "display": str}, ...],
+   "labels": [{"x": number, "y": number, "text": str}, ...] (outer axis
+   category names) - all in the same uniform-scale 0-100 square, since the
+   macro renders it inside an aspect-square container (unlike line_chart,
+   real SVG <circle>/<polygon> shapes here don't need the non-scaling-stroke
+   workaround - x and y always scale by the same factor).
+   radial_chart item shape: {"label": str, "display": str, "radius": number,
+   "thickness": number, "hit_thickness": number, "dash": number, "gap":
+   number, "color": str} (see dashboard/service.py._radial_bars - dash/gap
+   are real SVG stroke-dasharray lengths for that ring's own circumference,
+   not percentages, so each ring's arc is drawn with a plain <circle> +
+   stroke-dasharray instead of a hand-built arc <path>). Each ring's label
+   only appears on hover, via a plain CSS group/group-hover pair scoped to
+   that one ring's own wrapper div - intentionally not a Tailwind *named*
+   group (group/foo), since a per-index dynamic class name wouldn't survive
+   a real (non-dev-JIT) Tailwind build; every ring reuses the same static
+   "group"/"group-hover:" pair in its own independent wrapper instead.
+   Every ring's wrapper div AND its <svg> are pointer-events-none - an <svg>
+   is a normal box for hit-testing (unlike its shape children), so if left
+   auto it would swallow hover across its whole square regardless of what's
+   painted, and since rings stack in the same inset-0 box the topmost one
+   would always win. Only each ring's own invisible wide-stroke hit <circle>
+   re-enables pointer-events-auto, which - being an actual SVG shape, not a
+   viewport container - only responds within its own painted stroke area. #}
+
+{% macro bar_chart(items, class="") -%}
+<div class="{{ cn('flex items-end gap-1.5', class) }}" data-slot="bar-chart">
+  {% for item in items %}
+  <div class="flex flex-1 flex-col items-center gap-1 min-w-0">
+    <span class="text-[.625rem] font-medium text-muted-foreground tabular-nums whitespace-nowrap">{{ item.display }}</span>
+    <div class="flex h-20 w-full max-w-7 items-end overflow-hidden rounded-sm bg-input">
+      <div class="w-full rounded-sm bg-primary transition-all duration-300" style="height: {{ item.pct }}%"></div>
+    </div>
+    <span class="max-w-full truncate text-[.625rem] text-muted-foreground" title="{{ item.label }}">{{ item.label }}</span>
+  </div>
+  {% endfor %}
+</div>
+{%- endmacro %}
+
+{% macro pie_chart(slices, total_display="", class="") -%}
+<div class="{{ cn('flex flex-1 flex-col items-center justify-center gap-8 py-4 sm:flex-row sm:gap-10', class) }}" data-slot="pie-chart">
+  <div class="relative size-56 shrink-0 rounded-full" style="background: conic-gradient({% for s in slices %}{{ s.color }} {{ s.start }}% {{ s.end }}%{% if not loop.last %}, {% endif %}{% endfor %});">
+    <div class="absolute inset-[24%] flex flex-col items-center justify-center rounded-full bg-card text-center">
+      {% if total_display %}
+      <span class="text-3xl font-semibold tabular-nums">{{ total_display }}</span>
+      <span class="text-xs text-muted-foreground">Total</span>
+      {% endif %}
+    </div>
+  </div>
+  <div class="flex w-full max-w-56 min-w-0 flex-col gap-3">
+    {% for s in slices %}
+    <div class="flex items-center gap-2.5 text-sm">
+      <span class="size-3 shrink-0 rounded-full" style="background: {{ s.color }}"></span>
+      <span class="flex-1 truncate text-muted-foreground">{{ s.label }}</span>
+      <span class="font-medium tabular-nums">{{ s.display }}</span>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{%- endmacro %}
+
+{% macro line_chart(series, class="") -%}
+<div class="{{ cn('w-full', class) }}" data-slot="line-chart">
+  <div class="relative h-40 w-full">
+    <svg viewBox="0 0 100 100" preserveAspectRatio="none" class="absolute inset-0 h-full w-full overflow-visible">
+      <polyline
+        points="{% for p in series.points %}{{ p.x }},{{ p.y }}{% if not loop.last %} {% endif %}{% endfor %}"
+        fill="none"
+        stroke="var(--info)"
+        stroke-width="1.5"
+        stroke-linejoin="round"
+        stroke-linecap="round"
+        vector-effect="non-scaling-stroke"
+      ></polyline>
+    </svg>
+    {% for vl in series.value_labels %}
+    <span class="absolute -translate-x-1/2 -translate-y-full whitespace-nowrap pb-2 text-[.625rem] font-medium tabular-nums" style="left: {{ vl.x }}%; top: {{ vl.y }}%">{{ vl.text }}</span>
+    <span class="absolute size-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full" style="left: {{ vl.x }}%; top: {{ vl.y }}%; background: var(--info)"></span>
+    {% endfor %}
+  </div>
+  <div class="relative mt-2 h-4 w-full">
+    {% for lb in series.labels %}
+    <span class="absolute top-0 -translate-x-1/2 whitespace-nowrap text-[.625rem] text-muted-foreground" style="left: {{ lb.x }}%">{{ lb.text }}</span>
+    {% endfor %}
+  </div>
+</div>
+{%- endmacro %}
+
+{% macro bar_chart_labeled(items, class="") -%}
+<div class="{{ cn('flex flex-col gap-2', class) }}" data-slot="bar-chart-labeled">
+  {% for item in items %}
+  <div class="flex items-center gap-3">
+    <div class="relative h-8 flex-1 overflow-hidden rounded-md bg-input">
+      <div class="h-full rounded-md bg-primary transition-all duration-300" style="width: {{ item.bar_pct }}%"></div>
+      <span class="absolute inset-y-0 left-2.5 flex max-w-[calc(100%-1.25rem)] items-center truncate text-sm font-medium" style="color: var(--background)">{{ item.label }}</span>
+    </div>
+    <span class="w-16 shrink-0 text-right text-sm font-medium tabular-nums">{{ item.display }}</span>
+  </div>
+  {% endfor %}
+</div>
+{%- endmacro %}
+
+{% macro radar_chart(series, class="") -%}
+<div class="{{ cn('relative mx-auto aspect-square w-full max-w-72', class) }}" data-slot="radar-chart">
+  <svg viewBox="0 0 100 100" class="absolute inset-0 h-full w-full overflow-visible">
+    {% for ring in series.grid_rings %}
+    <polygon points="{{ ring }}" fill="none" stroke="var(--border)" stroke-width="0.5"></polygon>
+    {% endfor %}
+    {% for s in series.spokes %}
+    <line x1="{{ series.cx }}" y1="{{ series.cy }}" x2="{{ s.x2 }}" y2="{{ s.y2 }}" stroke="var(--border)" stroke-width="0.5"></line>
+    {% endfor %}
+    <polygon points="{{ series.polygon_points }}" fill="var(--info)" fill-opacity="0.5" stroke="var(--info)" stroke-width="1.5" stroke-linejoin="round"></polygon>
+    {% for d in series.dots %}
+    <circle cx="{{ d.x }}" cy="{{ d.y }}" r="1.6" fill="var(--info)"></circle>
+    {% endfor %}
+  </svg>
+  {% for d in series.dots %}
+  <span class="absolute -translate-x-1/2 -translate-y-[180%] whitespace-nowrap text-[.625rem] font-medium tabular-nums" style="left: {{ d.x }}%; top: {{ d.y }}%">{{ d.display }}</span>
+  {% endfor %}
+  {% for lb in series.labels %}
+  <span class="absolute max-w-16 -translate-x-1/2 -translate-y-1/2 truncate text-center text-[.625rem] text-muted-foreground" style="left: {{ lb.x }}%; top: {{ lb.y }}%">{{ lb.text }}</span>
+  {% endfor %}
+</div>
+{%- endmacro %}
+
+{% macro hbar_chart(items, class="") -%}
+<div class="{{ cn('flex flex-col gap-3', class) }}" data-slot="hbar-chart">
+  {% for item in items %}
+  <div class="flex items-center gap-3">
+    <span class="w-28 shrink-0 truncate text-sm text-muted-foreground" title="{{ item.label }}">{{ item.label }}</span>
+    <div class="h-2 flex-1 overflow-hidden rounded-full bg-input">
+      <div class="h-full rounded-full bg-primary transition-all duration-500" style="width: {{ item.pct }}%"></div>
+    </div>
+    <span class="w-14 shrink-0 text-right text-xs font-medium tabular-nums">{{ item.display }}</span>
+  </div>
+  {% endfor %}
+</div>
+{%- endmacro %}
+
+{% macro radial_chart(items, class="") -%}
+<div class="{{ cn('relative mx-auto aspect-square w-full max-w-64', class) }}" data-slot="radial-chart">
+  {% for item in items %}
+  <div class="group pointer-events-none absolute inset-0">
+    <svg viewBox="0 0 100 100" class="absolute inset-0 h-full w-full">
+      <circle cx="50" cy="50" r="{{ item.radius }}" fill="none" stroke="var(--border)" stroke-width="{{ item.thickness }}" opacity="0.35"></circle>
+      <circle
+        cx="50" cy="50" r="{{ item.radius }}"
+        fill="none"
+        stroke="{{ item.color }}"
+        stroke-width="{{ item.thickness }}"
+        stroke-linecap="round"
+        stroke-dasharray="{{ item.dash }} {{ item.gap }}"
+        transform="rotate(-90 50 50)"
+        class="transition-[stroke-dasharray] duration-300"
+      ></circle>
+      <circle cx="50" cy="50" r="{{ item.radius }}" fill="none" stroke="transparent" stroke-width="{{ item.hit_thickness }}" class="pointer-events-auto"></circle>
+    </svg>
+    <div class="pointer-events-none absolute inset-0 flex items-center justify-center opacity-0 transition-opacity duration-150 group-hover:opacity-100">
+      <div class="rounded-md border bg-popover px-2.5 py-1.5 text-center shadow-md">
+        <p class="max-w-32 truncate text-xs font-medium" title="{{ item.label }}">{{ item.label }}</p>
+        <p class="text-[.625rem] text-muted-foreground">{{ item.display }} runs</p>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{%- endmacro %}

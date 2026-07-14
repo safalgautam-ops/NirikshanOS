@@ -57,3 +57,23 @@ async def list_entity_events(
         .limit(limit)
         .all()
     )
+
+
+async def list_events_for_entities(
+    entity_type: str, entity_ids: list[str], *, limit: int = 200
+) -> list:
+    """Same as list_entity_events, but across several entities at once (e.g.
+    every case a dashboard viewer can see) instead of one - used to build a
+    single merged recent-activity feed without one query per entity."""
+    if not entity_ids:
+        return []
+    return (
+        await db.table("audit_logs")
+        .left_join("user", "audit_logs.actor_id", "user.id")
+        .where("audit_logs.entity_type", entity_type)
+        .where_in("audit_logs.entity_id", entity_ids)
+        .order_by("audit_logs.created_at", "DESC")
+        .select("audit_logs.*", "user.name as actor_name")
+        .limit(limit)
+        .all()
+    )

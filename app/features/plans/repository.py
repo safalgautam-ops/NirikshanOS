@@ -174,6 +174,18 @@ async def list_subscriptions() -> list[dict]:
     return [_parse_sub(dict(r)) for r in rows]
 
 
+async def list_subscriptions_for_org(org_id: str, *, since=None, limit: int = 10) -> list[dict]:
+    """This org's subscription history (current + recent past), newest
+    first - the dashboard's subscription-history widget. `since` narrows to
+    rows created at/after a cutoff without excluding the still-active one,
+    since that's the row a viewer most needs to see regardless of age."""
+    query = db.table("org_subscriptions").where("org_id", org_id)
+    if since is not None:
+        query = query.or_where([("created_at", ">=", since), ("status", "in", ["active", "grandfathered"])])
+    rows = await query.order_by("created_at", "desc").limit(limit).all()
+    return [_parse_sub(dict(r)) for r in rows]
+
+
 async def get_active_subscription_db(org_id: str) -> dict | None:
     row = await (
         db.table("org_subscriptions")

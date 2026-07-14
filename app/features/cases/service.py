@@ -6,19 +6,22 @@ queries this is built on)."""
 from __future__ import annotations
 
 from app.features.cases import repository
-from app.features.cases.choices import CLASSIFICATIONS, FORENSIC_STATUSES, SEVERITIES
+from app.features.cases.choices import CASE_STATUSES, CLASSIFICATIONS, FORENSIC_STATUSES, SEVERITIES
 from app.features.organizations import repository as org_repository
 
 _CLASSIFICATION_VALUES = {value for value, _label in CLASSIFICATIONS}
 _SEVERITY_VALUES = {value for value, _label in SEVERITIES}
 _FORENSIC_STATUS_VALUES = {value for value, _label in FORENSIC_STATUSES}
+_CASE_STATUS_VALUES = {value for value, _label in CASE_STATUSES}
 
 
 class CaseError(Exception):
     """A user-visible case failure - safe to display directly."""
 
 
-def _validate_fields(*, title: str, classification: str, severity: str, forensic_status: str) -> str:
+def _validate_fields(
+    *, title: str, classification: str, severity: str, forensic_status: str, status: str
+) -> str:
     title = title.strip()
     if not title:
         raise CaseError("Case title is required.")
@@ -28,6 +31,8 @@ def _validate_fields(*, title: str, classification: str, severity: str, forensic
         raise CaseError("Select a valid case severity.")
     if forensic_status not in _FORENSIC_STATUS_VALUES:
         raise CaseError("Select a valid forensic examination status.")
+    if status not in _CASE_STATUS_VALUES:
+        raise CaseError("Select a valid case status.")
     return title
 
 
@@ -67,7 +72,8 @@ async def create_case(
     member_ids: list[str],
 ) -> str:
     title = _validate_fields(
-        title=title, classification=classification, severity=severity, forensic_status=forensic_status
+        title=title, classification=classification, severity=severity,
+        forensic_status=forensic_status, status="open",
     )
     case_id = await repository.create_case(
         organization_id=organization_id,
@@ -93,9 +99,11 @@ async def update_case(
     classification: str,
     severity: str,
     forensic_status: str,
+    status: str,
 ) -> None:
     title = _validate_fields(
-        title=title, classification=classification, severity=severity, forensic_status=forensic_status
+        title=title, classification=classification, severity=severity,
+        forensic_status=forensic_status, status=status,
     )
     await repository.update_case(
         case_id,
@@ -104,6 +112,7 @@ async def update_case(
         classification=classification,
         severity=severity,
         forensic_status=forensic_status,
+        status=status,
     )
 
 
