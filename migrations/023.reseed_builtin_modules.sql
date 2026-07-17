@@ -71,7 +71,7 @@ SET `options_schema` = JSON_ARRAY(
     'key',         'include_unicode',
     'label',       'Include Unicode Strings',
     'type',        'checkbox',
-    'default',     JSON_LITERAL('false'),
+    'default',     CAST('false' AS JSON),
     'description', 'Also extract wide-char (UTF-16) strings'
   )
 )

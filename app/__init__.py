@@ -1,17 +1,17 @@
 """Application factory.
 
-create_app() builds the Quart instance, registers the security
-middleware/routes, and wires up startup/shutdown via Quart's lifespan
-hooks (before_serving / after_serving - these map directly onto the
-ASGI 'lifespan' protocol's startup/shutdown events when run under
-uvicorn).
+create_app() builds the Flask instance, registers the security
+middleware/routes, and wires up startup/shutdown through the application lifecycle
+hooks. Async database, Redis and object-storage clients are kept on one
+persistent event loop per Flask process.
 
-The actual ASGI app instance lives in run.py at the project root.
+The actual WSGI app instance lives in run.py at the project root.
 """
 
-from quart import Quart, g, render_template, request, url_for
+from flask import Flask, g, render_template, request, url_for
 
 from app.config import Config
+from app.core.async_runtime import AsyncFlask
 from app.core.db.pool import close_pool, get_pool, init_pool
 from app.core.object_storage import bootstrap_buckets
 from app.core.security.csrf import apply_csrf_protection
@@ -24,7 +24,7 @@ from app.core.security.organization_gate import needs_organization_onboarding
 from app.core.security.permission_registry import sync_to_db as sync_permissions_to_db
 from app.core.security.permissions import get_visible_nav_keys
 from app.core.security.sessions import apply_session_loader, login_required
-from app.core.templating import asset_version, cn, html_attrs, read_input_css_for_browser_runtime
+from app.core.templating import asset_version, cn, html_attrs
 from app.extensions import close_redis, get_redis, init_redis
 from app.features.analysis.routes import analysis_bp
 from app.features.auth.repository import get_user_by_id
@@ -48,12 +48,12 @@ from app.features.timeline.routes import timeline_bp
 from app.features.users.routes import users_bp
 
 
-def create_app() -> Quart:
+def create_app() -> Flask:
     # template_folder/static_folder are relative to this package (app/),
     # so this picks up app/templates and app/static automatically.
-    app = Quart(__name__, template_folder="templates", static_folder="static")
+    app = AsyncFlask(__name__, template_folder="templates", static_folder="static")
     # Loads SECRET_KEY, DB_*, REDIS_URL etc. from app/config.py (env-backed).
-    # Quart reads every uppercase attribute from the class and loads into app.config
+    # Flask reads every uppercase attribute from the class and loads it into app.config
     app.config.from_object(Config)
 
     # components/ui/*.html macros call cn()/html_attrs() directly as globals.
@@ -63,13 +63,6 @@ def create_app() -> Quart:
     # Jinja doesn't expose Python's builtin set() by default - templates need
     # it for `x in (value or set())` patterns against role_ids/etc.
     app.jinja_env.globals["set"] = set
-    # layouts/base.html uses these to pick the dev-only @tailwindcss/browser
-    # runtime (live, no build step) vs. the static built tailwind.css used in
-    # production - flip QUART_DEBUG=true/false in .env to switch.
-    app.jinja_env.globals["debug"] = app.config["DEBUG"]
-    app.jinja_env.globals["read_input_css_for_browser_runtime"] = (
-        read_input_css_for_browser_runtime
-    )
 
     # Registers the after_request hook that adds CSP/X-Frame-Options/etc.
     apply_security_headers(app)
@@ -162,7 +155,7 @@ def create_app() -> Quart:
 
     @app.before_serving
     async def startup() -> None:
-        """ASGI lifespan 'startup': open the DB pool and Redis client once."""
+        """Open the DB pool and Redis client once per Flask process."""
         # Opens the shared MySQL connection pool used by Model/QueryBuilder.
         await init_pool(
             host=app.config["DB_HOST"],
@@ -192,7 +185,7 @@ def create_app() -> Quart:
 
     @app.after_serving
     async def shutdown() -> None:
-        """ASGI lifespan 'shutdown': close the DB pool and Redis client."""
+        """Close the DB pool and Redis client at process shutdown."""
         # Releases pooled MySQL connections cleanly on server stop.
         await close_pool()
         # Closes the Redis connection cleanly on server stop.
@@ -200,7 +193,7 @@ def create_app() -> Quart:
 
     @app.route("/")
     async def home():
-        return await render_template(
+        return render_template(
             "home/index.html"
         )
 
@@ -215,7 +208,7 @@ def create_app() -> Quart:
         # case, since this route itself isn't gated by organization_gate).
         admin_dashboard = await get_admin_dashboard() if g.is_platform_staff else None
         org_dashboard = None if g.is_platform_staff else await get_org_dashboard(g.user_id)
-        return await render_template(
+        return render_template(
             "dashboard/dashboard.html",
             user=user,
             visible_keys=visible_keys,

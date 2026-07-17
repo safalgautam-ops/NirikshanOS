@@ -26,7 +26,7 @@ and once via the form field (manual) — and they must match.
 import hmac
 import secrets
 
-from quart import Quart, Response, abort, g, request
+from flask import Flask, Response, abort, g, request
 
 # they happen to share the string "csrf_token", but they name two different things --
 # one is where the cookie lives, the other is where the form value lives.
@@ -45,7 +45,7 @@ def csrf_token() -> str:
     return g.csrf_token
 
 
-def apply_csrf_protection(app: Quart) -> None:
+def apply_csrf_protection(app: Flask) -> None:
     @app.before_request
     async def check_csrf() -> None:
         # Reuse the existing cookie if present(sent by browser), otherwise mint a new token with secrets
@@ -53,7 +53,7 @@ def apply_csrf_protection(app: Quart) -> None:
         g.csrf_token = request.cookies.get(CSRF_COOKIE) or secrets.token_urlsafe(32)
         # enforcement only for state-changing requests (POST, PUT, PATCH, DELETE)
         if request.method not in SAFE_METHODS:
-            form = await request.form
+            form = request.form
             # Form submissions send the token in a hidden field.
             # JSON API calls (Content-Type: application/json) send it in
             # the X-CSRF-Token request header instead.
@@ -80,10 +80,13 @@ def apply_csrf_protection(app: Quart) -> None:
     # the CSRF token is persisted in a cookie so it can be used across requests.
     @app.after_request
     async def persist_csrf_cookie(response: Response) -> Response:
-        if not request.cookies.get(CSRF_COOKIE):
+        # A startup/before-request failure can skip check_csrf(). Do not mask
+        # the original exception with a second missing-g attribute error.
+        token = getattr(g, "csrf_token", None)
+        if token and not request.cookies.get(CSRF_COOKIE):
             response.set_cookie(
                 CSRF_COOKIE,
-                g.csrf_token,
+                token,
                 httponly=False,  # must be readable by JS for double-submit cookie pattern
                 samesite="Strict",
                 secure=False,  # set True behind TLS in production

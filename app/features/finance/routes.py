@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import re
 
-from quart import Blueprint, g, jsonify, render_template, request
+from flask import Blueprint, g, jsonify, render_template, request
 
 from app.core.db.orm import db
 from app.core.security.permissions import get_visible_nav_keys, require_permission
@@ -43,7 +43,7 @@ async def transactions_view():
     transactions = await repository.list_transactions(org_id=org_id, status=status)
     orgs = await db.table("organizations").order_by("name", "asc").all(allow_full_table=True)
     visible_keys = await get_visible_nav_keys(g.user_id)
-    return await render_template(
+    return render_template(
         "admin/finance/transactions.html",
         transactions=transactions,
         orgs=orgs,
@@ -60,7 +60,7 @@ async def transactions_view():
 async def coupons_view():
     coupons = await repository.list_coupons()
     visible_keys = await get_visible_nav_keys(g.user_id)
-    return await render_template(
+    return render_template(
         "admin/finance/coupons.html", coupons=coupons, visible_keys=visible_keys
     )
 
@@ -68,7 +68,7 @@ async def coupons_view():
 @finance_bp.route("/coupons", methods=["POST"])
 @require_permission(FINANCE_MANAGE)
 async def create_coupon_view():
-    body = await request.get_json(silent=True) or {}
+    body = request.get_json(silent=True) or {}
     code = (body.get("code") or "").strip().upper()
     if not code or not _CODE_RE.match(code):
         return jsonify({"error": "Code must be 3-64 uppercase letters/numbers/hyphens/underscores"}), 400
@@ -95,7 +95,7 @@ async def create_coupon_view():
 async def update_coupon_view(coupon_id: str):
     if not await repository.get_coupon(coupon_id):
         return jsonify({"error": "not found"}), 404
-    body = await request.get_json(silent=True) or {}
+    body = request.get_json(silent=True) or {}
     fields, error = _validate_discount_fields(body)
     if error:
         return jsonify({"error": error}), 400
@@ -128,7 +128,7 @@ async def discounts_view():
     discounts = await repository.list_org_discounts()
     orgs = await db.table("organizations").order_by("name", "asc").all(allow_full_table=True)
     visible_keys = await get_visible_nav_keys(g.user_id)
-    return await render_template(
+    return render_template(
         "admin/finance/discounts.html", discounts=discounts, orgs=orgs, visible_keys=visible_keys
     )
 
@@ -136,7 +136,7 @@ async def discounts_view():
 @finance_bp.route("/discounts", methods=["POST"])
 @require_permission(FINANCE_MANAGE)
 async def create_discount_view():
-    body = await request.get_json(silent=True) or {}
+    body = request.get_json(silent=True) or {}
     org_id = (body.get("org_id") or "").strip()
     if not org_id:
         return jsonify({"error": "org_id is required"}), 400
@@ -159,7 +159,7 @@ async def create_discount_view():
 async def update_discount_view(discount_id: str):
     if not await repository.get_org_discount(discount_id):
         return jsonify({"error": "not found"}), 404
-    body = await request.get_json(silent=True) or {}
+    body = request.get_json(silent=True) or {}
     fields, error = _validate_discount_fields(body)
     if error:
         return jsonify({"error": error}), 400

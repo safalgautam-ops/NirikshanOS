@@ -1,0 +1,139 @@
+{#
+  Sidebar primitives - Jinja port of shadcn/ui's components/ui/sidebar.tsx,
+  adapted for a server-rendered app with no client-side router/context:
+
+  - Desktop (md and up): a fixed, always-visible <aside> - same as shadcn's
+    Sidebar with collapsible="none" would render. This app doesn't support
+    collapsing the desktop rail, only the shadcn reference's mobile behavior.
+  - Mobile (below md): shadcn renders the sidebar inside a <Sheet>, opened by
+    a SidebarTrigger button. Ported the same way here - sidebar_mobile()
+    wraps components/ui/sheet.html's sheet() (side="left"), and
+    sidebar_trigger() is a button that opens it. Both reuse the existing
+    generic dialog-trigger/dialog-close click handling already wired up in
+    static/js/app.js (it operates on any <dialog>, not just data-slot="dialog"
+    ones) - no new JS was needed.
+
+  Usage (see dashboard/components/sidebar.html for the real example):
+    {% from "components/ui/sidebar.html" import sidebar, sidebar_header,
+       sidebar_content, sidebar_group, sidebar_group_label, sidebar_menu,
+       sidebar_menu_item, sidebar_menu_button, sidebar_footer, sidebar_trigger,
+       sidebar_mobile %}
+
+    {% call sidebar() %}
+      {% call sidebar_header() %}...{% endcall %}
+      {% call sidebar_content() %}
+        {% call sidebar_group() %}
+          {{ sidebar_group_label("Section") }}
+          {% call sidebar_menu() %}
+            {% call sidebar_menu_item() %}
+              {{ sidebar_menu_button("Label", href="/x", is_active=true) }}
+            {% endcall %}
+          {% endcall %}
+        {% endcall %}
+      {% endcall %}
+    {% endcall %}
+
+    (same inner content again, this time inside the mobile sheet:)
+    {% call sidebar_mobile() %}...{% endcall %}
+
+    (in the topbar, left of the page title:)
+    {{ sidebar_trigger() }}
+#}
+{% from "components/ui/sheet.html" import sheet %}
+{% from "components/ui/dialog.html" import dialog_trigger %}
+
+{% macro sidebar(mobile_id="mobile-sidebar", class="", attrs={}) %}
+<aside
+    data-slot="sidebar"
+    data-side="left"
+    class="{{ cn('hidden md:flex md:w-60 md:flex-col md:fixed md:inset-y-0 border-r border-sidebar-border bg-sidebar text-sidebar-foreground', class) }}"
+    {{ html_attrs(**attrs) }}
+>
+    {% if caller is defined %}{{ caller() }}{% endif %}
+</aside>
+{% endmacro %}
+
+{# Mobile counterpart of sidebar() - same content, rendered into a left-side
+   sheet instead of the fixed desktop rail. Opened via sidebar_trigger().
+
+   Captures caller() into a variable *before* the nested {% call sheet() %}
+   below - that inner call defines its own `caller` for sheet()'s use, which
+   would otherwise shadow this macro's own caller (Jinja's `caller` isn't
+   stacked/restored across nested {% call %} blocks, so referencing it after
+   entering the nested call silently renders nothing instead of erroring). #}
+{% macro sidebar_mobile(mobile_id="mobile-sidebar", class="", attrs={}) %}
+{% set nav_content %}{% if caller is defined %}{{ caller() }}{% endif %}{% endset %}
+{% call sheet(side="left", class=cn("p-0 md:hidden min-h-screen", class), attrs=dict({"id": mobile_id, "aria-label": "Sidebar"}, **attrs)) %}
+    <div class="flex h-full w-full flex-col bg-sidebar text-sidebar-foreground">
+        {{ nav_content }}
+    </div>
+{% endcall %}
+{% endmacro %}
+
+{% macro sidebar_trigger(target="mobile-sidebar", class="", attrs={}) %}
+{% call dialog_trigger(target="#" ~ target, class=cn("md:hidden inline-flex items-center justify-center rounded-md p-1.5 text-foreground hover:bg-accent hover:text-accent-foreground transition-colors", class), attrs=dict({"aria-label": "Toggle sidebar"}, **attrs)) %}
+    <svg class="size-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <rect width="18" height="18" x="3" y="3" rx="2" />
+        <path d="M9 3v18" />
+    </svg>
+{% endcall %}
+{% endmacro %}
+
+{% macro sidebar_header(class="", attrs={}) -%}
+<div data-slot="sidebar-header" class="{{ cn('flex h-14 shrink-0 items-center px-4 border-b border-sidebar-border', class) }}" {{ html_attrs(**attrs) }}>{% if caller is defined %}{{ caller() }}{% endif %}</div>
+{%- endmacro %}
+
+{% macro sidebar_content(class="", attrs={}) -%}
+<nav data-slot="sidebar-content" class="{{ cn('flex-1 overflow-y-auto p-2 space-y-4', class) }}" {{ html_attrs(**attrs) }}>{% if caller is defined %}{{ caller() }}{% endif %}</nav>
+{%- endmacro %}
+
+{% macro sidebar_footer(class="", attrs={}) -%}
+<div data-slot="sidebar-footer" class="{{ cn('flex flex-col gap-2 p-2 border-t border-sidebar-border', class) }}" {{ html_attrs(**attrs) }}>{% if caller is defined %}{{ caller() }}{% endif %}</div>
+{%- endmacro %}
+
+{% macro sidebar_group(class="", attrs={}) -%}
+<div data-slot="sidebar-group" class="{{ cn('space-y-1', class) }}" {{ html_attrs(**attrs) }}>{% if caller is defined %}{{ caller() }}{% endif %}</div>
+{%- endmacro %}
+
+{% macro sidebar_group_label(text="", class="", attrs={}) -%}
+<p data-slot="sidebar-group-label" class="{{ cn('px-3 text-[10px] text-sidebar-foreground/50 m-0', class) }}" {{ html_attrs(**attrs) }}>{% if caller is defined %}{{ caller() }}{% else %}{{ text }}{% endif %}</p>
+{%- endmacro %}
+
+{% macro sidebar_menu(class="", attrs={}) -%}
+<div data-slot="sidebar-menu" class="{{ cn('flex w-full min-w-0 flex-col gap-0.5', class) }}" {{ html_attrs(**attrs) }}>{% if caller is defined %}{{ caller() }}{% endif %}</div>
+{%- endmacro %}
+
+{% macro sidebar_menu_item(class="", attrs={}) -%}
+<div data-slot="sidebar-menu-item" class="{{ cn('group/menu-item relative', class) }}" {{ html_attrs(**attrs) }}>{% if caller is defined %}{{ caller() }}{% endif %}</div>
+{%- endmacro %}
+
+{# A single nav row. Renders a disabled <span> with a lock icon when
+   locked=true (organization-gated items before the user has an org - see
+   dashboard/components/sidebar.html), otherwise a normal <a>. #}
+{% macro sidebar_menu_button(label, href="#", is_active=false, locked=false, class="", attrs={}) %}
+{% if locked %}
+<span
+    data-slot="sidebar-menu-button"
+    data-locked="true"
+    class="{{ cn('flex items-center justify-between gap-2 rounded-md px-3 py-2 text-sm font-medium text-sidebar-foreground/40 cursor-not-allowed', class) }}"
+    title="Create or join an organization to unlock this"
+    {{ html_attrs(**attrs) }}
+>
+    {{ label }}
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="h-3.5 w-3.5 shrink-0">
+        <rect width="18" height="11" x="3" y="11" rx="2" ry="2"/>
+        <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+    </svg>
+</span>
+{% else %}
+<a
+    href="{{ href }}"
+    data-slot="sidebar-menu-button"
+    data-active="{{ 'true' if is_active else 'false' }}"
+    class="{{ cn('flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors', 'bg-sidebar-accent text-sidebar-accent-foreground' if is_active else 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground', class) }}"
+    {{ html_attrs(**attrs) }}
+>
+    {{ label }}
+</a>
+{% endif %}
+{% endmacro %}

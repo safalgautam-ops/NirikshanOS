@@ -1,8 +1,7 @@
 """Redis client.
 
-Mirrors app/core/db/pool.py: a single module-level async Redis client,
-used from Week 2 onward for sessions and rate limiting, and from Week 4
-for WebSocket pub/sub.
+Mirrors app/core/db/pool.py: a single module-level async Redis client used
+for sessions, rate limiting, queues, and transient runtime state.
 
 The client lives in a module-level variable (_redis) because a module is loaded once
 and lives in memory for the entire runtime of the app.

@@ -1,4 +1,3 @@
-{% include "components/ui/_runtime.html" %}
 {% macro autocomplete(class="", attrs={}) -%}
 <div class="{{ cn('relative', class) }}" data-slot="autocomplete" {{ html_attrs(**attrs) }}>
     {% if caller is defined %}

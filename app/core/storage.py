@@ -66,7 +66,7 @@ async def save_logo(file: FileStorage) -> str:
     ext = _extension(file.filename or "")
     if ext not in ALLOWED_LOGO_EXTENSIONS:
         raise ValueError("Logo must be a PNG, JPG, WEBP, or SVG image.")
-    # FileStorage.read() is plain Werkzeug, not Quart's async save()/load()
+    # FileStorage.read() is plain Werkzeug, not Flask's async save()/load()
     # overrides - it returns bytes directly, nothing to await.
     data = file.read()
     if len(data) > MAX_LOGO_SIZE_BYTES:
@@ -89,7 +89,7 @@ async def save_document(file: FileStorage) -> tuple[str, str]:
     ext = _extension(file.filename or "")
     if ext not in ALLOWED_DOCUMENT_EXTENSIONS:
         raise ValueError("Documents must be a PDF, PNG, or JPG file.")
-    # FileStorage.read() is plain Werkzeug, not Quart's async save()/load()
+    # FileStorage.read() is plain Werkzeug, not Flask's async save()/load()
     # overrides - it returns bytes directly, nothing to await.
     data = file.read()
     if len(data) > MAX_DOCUMENT_SIZE_BYTES:
@@ -109,7 +109,7 @@ async def save_avatar(file: FileStorage) -> str:
     ext = _extension(file.filename or "")
     if ext not in ALLOWED_AVATAR_EXTENSIONS:
         raise ValueError("Profile picture must be a PNG, JPG, or WEBP image.")
-    # FileStorage.read() is plain Werkzeug, not Quart's async save()/load()
+    # FileStorage.read() is plain Werkzeug, not Flask's async save()/load()
     # overrides - it returns bytes directly, nothing to await.
     data = file.read()
     if len(data) > MAX_AVATAR_SIZE_BYTES:

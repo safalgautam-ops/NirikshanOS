@@ -11,7 +11,7 @@ check, since those are real management actions, not viewing."""
 
 from __future__ import annotations
 
-from quart import Blueprint, abort, g, redirect, render_template, request, url_for
+from flask import Blueprint, abort, g, redirect, render_template, request, url_for
 
 from app.core.security.org_permissions import (
     get_user_org_membership,
@@ -83,7 +83,7 @@ async def list_view():
     all_cases = await list_cases_for_user(org_id, g.user_id, is_owner=is_owner)
     org_members = [m for m in await org_repository.list_members(org_id) if m["id"] != g.user_id]
     visible_keys = await get_visible_nav_keys(g.user_id)
-    return await render_template(
+    return render_template(
         "cases/list.html",
         recent_cases=recent_cases,
         all_cases=all_cases,
@@ -100,7 +100,7 @@ async def list_view():
 @require_org_permission(CASE_CREATE)
 async def create_view():
     org_id = await _require_org_id()
-    form = await request.form
+    form = request.form
     try:
         case_id = await create_case(
             organization_id=org_id,
@@ -170,7 +170,7 @@ async def detail_view(case_id: str):
     members = await get_case_members(case_id)
     evidence = await list_case_evidence(case_id)
     completed_evidence = [e for e in evidence if e["status"] == "completed"]
-    # Lightweight, JSON-safe subset for the Analyze tab's Alpine state - the
+    # Lightweight, JSON-safe subset for the Analyze tab's raw-JavaScript state - the
     # full evidence rows carry datetime columns (uploaded_at) that don't
     # belong baked into the page as JSON just to back a client-side planner.
     analyze_evidence = [
@@ -192,7 +192,7 @@ async def detail_view(case_id: str):
     granted_permissions = await get_user_org_permission_names(g.user_id)
     can_edit = is_owner or CASE_EDIT.name in granted_permissions
     can_delete = is_owner or CASE_DELETE.name in granted_permissions
-    return await render_template(
+    return render_template(
         "cases/detail.html",
         case=case,
         creator_name=creator_name,
@@ -224,7 +224,7 @@ async def detail_view(case_id: str):
 @require_org_permission(CASE_EDIT)
 async def update_view(case_id: str):
     await _require_visible_case(case_id)
-    form = await request.form
+    form = request.form
     try:
         await update_case(
             case_id,
@@ -275,7 +275,7 @@ async def delete_view(case_id: str):
 @require_org_permission(CASE_EDIT)
 async def add_member_view(case_id: str):
     await _require_visible_case(case_id)
-    form = await request.form
+    form = request.form
     user_id = form.get("user_id", "")
     try:
         if user_id:
@@ -329,4 +329,4 @@ async def search_members_view(case_id: str):
     org_id = await _require_org_id()
     search = request.args.get("q", "").strip()
     users = await search_addable_members(org_id, case_id, search)
-    return await render_template("cases/_member_options.html", users=users, case_id=case_id)
+    return render_template("cases/_member_options.html", users=users, case_id=case_id)

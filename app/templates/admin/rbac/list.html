@@ -1,4 +1,7 @@
-{% extends "layouts/base.html" %} {% block title %}Staff Roles - NirikshanOS{%
+{% extends "layouts/base.html" %}
+{% import "components/ui/form.html" as form_ui %}
+ {% block title %}Staff Roles - NirikshanOS{%
+
 endblock %} {% import "components/ui/frame.html" as frame %} {% import
 "components/ui/table.html" as table %} {% import
 "components/ui/input-group.html" as ig %} {% import "components/ui/badge.html"
@@ -6,7 +9,6 @@ as badge %} {% import "components/ui/button.html" as button %} {% import
 "components/ui/menu.html" as menu %} {% import "components/ui/dialog.html" as
 dialog %} {% from "dashboard/components/sidebar.html" import sidebar %} {% from
 "dashboard/components/topbar.html" import topbar %} {% from
-"components/ui/breadcrumb.html" import breadcrumb_trail %} {% from
 "components/ui/table-pagination.html" import table_pagination %} {% from
 "components/ui/toast.html" import flash %} {% from
 "macros/csrf.html" import csrf_field %} {% macro lock_icon() %}<svg
@@ -33,15 +35,13 @@ visible_keys=visible_keys) }}
 
 <div class="flex flex-col md:pl-60">
     {{ topbar("Staff Roles") }}
-    <main class="flex-1 p-4 md:p-6">
-        {{ breadcrumb_trail([("Dashboard", "/"), ("Staff Roles", None)]) }}
-
-        <div class="grid gap-4 p-3">
+    <main class="flex-1 p-2 md:p-4">
+        <div class="grid gap-4 p-2">
             {# Toolbar #}
             <div
                 class="grid gap-3 lg:grid-cols-[minmax(18rem,26rem)_minmax(1rem,1fr)_auto] md:items-center"
             >
-                <form method="get" action="{{ url_for('rbac.list_view') }}">
+                {% call form_ui.form(method="get", action=url_for('rbac.list_view'), unstyled=true) %}
                     {% call ig.input_group() %} {{ ig.input_group_input(
                     name="q", placeholder="Search roles…", value=search,
                     attrs={"type": "search", "aria-label": "Search roles"} ) }}
@@ -60,11 +60,11 @@ visible_keys=visible_keys) }}
                         <path d="m21 21-4.3-4.3" />
                     </svg>
                     {% endcall %} {% endcall %}
-                </form>
+                {% endcall %}
 
                 <div aria-hidden class="hidden lg:block"></div>
 
-                <form method="post" action="{{ url_for('rbac.create_view') }}">
+                {% call form_ui.form(method="post", action=url_for('rbac.create_view'), unstyled=true) %}
                     {{ csrf_field() }} {% call button.button(size="icon",
                     type="submit", attrs={"aria-label": "Create role"}) %}
                     <svg
@@ -82,7 +82,7 @@ visible_keys=visible_keys) }}
                         <path d="M12 5v14" />
                     </svg>
                     {% endcall %}
-                </form>
+                {% endcall %}
             </div>
 
             {{ flash("error", error) }} {# Table #} {% call frame.frame() %} {% call
@@ -157,12 +157,7 @@ visible_keys=visible_keys) }}
             <div class="flex justify-end">
                 {# Three-dot trigger — data-cs-menu uses fixed positioning,
                 escaping overflow clipping #}
-                <button
-                    type="button"
-                    data-cs-menu="role-menu-{{ role.id }}"
-                    class="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors sm:size-6"
-                    aria-label="More actions for {{ role.name }}"
-                >
+                {% call button.button(type="button", unstyled=true, class="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors sm:size-6", attrs={"data-cs-menu": "role-menu-" ~ (role.id), "aria-label": "More actions for " ~ (role.name)}) %}
                     <svg
                         class="pointer-events-none size-4"
                         xmlns="http://www.w3.org/2000/svg"
@@ -178,7 +173,7 @@ visible_keys=visible_keys) }}
                         <circle cx="5" cy="12" r="1" />
                         <circle cx="19" cy="12" r="1" />
                     </svg>
-                </button>
+                {% endcall %}
                 {# Fixed-position popup — position: fixed escapes overflow:auto
                 clipping #}
                 <div
@@ -211,15 +206,9 @@ visible_keys=visible_keys) }}
                         </svg>
                         Edit role
                     </a>
-                    <form
-                        method="post"
-                        action="{{ url_for('rbac.duplicate_view', role_id=role.id) }}"
-                    >
+                    {% call form_ui.form(method="post", action=url_for('rbac.duplicate_view', role_id=role.id), unstyled=true) %}
                         {{ csrf_field() }}
-                        <button
-                            type="submit"
-                            class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left hover:bg-accent hover:text-accent-foreground"
-                        >
+                        {% call button.button(type="submit", unstyled=true, class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left hover:bg-accent hover:text-accent-foreground") %}
                             <svg
                                 class="size-4"
                                 xmlns="http://www.w3.org/2000/svg"
@@ -244,17 +233,11 @@ visible_keys=visible_keys) }}
                                 />
                             </svg>
                             Duplicate role
-                        </button>
-                    </form>
+                        {% endcall %}
+                    {% endcall %}
                     <div class="my-1 h-px bg-border"></div>
                     {% if not role.is_system %}
-                    <button
-                        type="button"
-                        class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-destructive hover:bg-destructive/10"
-                        data-slot="dialog-trigger"
-                        data-target="#delete-role-{{ role.id }}"
-                        aria-controls="delete-role-{{ role.id }}"
-                    >
+                    {% call dialog.dialog_trigger(target="#delete-role-" ~ (role.id), class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-destructive hover:bg-destructive/10") %}
                         <svg
                             class="size-4"
                             xmlns="http://www.w3.org/2000/svg"
@@ -271,7 +254,7 @@ visible_keys=visible_keys) }}
                             <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
                         </svg>
                         Delete role
-                    </button>
+                    {% endcall %}
                     {% else %}
                     <div
                         class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-muted-foreground opacity-50"
@@ -301,15 +284,12 @@ visible_keys=visible_keys) }}
                 role?") }} {{ dialog.dialog_description('"' ~ role.name ~ '"
                 will be removed from all ' ~ role.member_count ~ ' member(s)
                 holding it.') }} {% endcall %}
-                <form
-                    method="post"
-                    action="{{ url_for('rbac.delete_view', role_id=role.id) }}"
-                >
+                {% call form_ui.form(method="post", action=url_for('rbac.delete_view', role_id=role.id), unstyled=true) %}
                     {{ csrf_field() }} {% call dialog.dialog_footer() %} {% call
                     dialog.dialog_close(class=cancel_classes) %}Cancel{% endcall
                     %} {% call button.button(variant="destructive",
                     type="submit") %}Delete{% endcall %} {% endcall %}
-                </form>
+                {% endcall %}
                 {% endcall %} {% endif %}
             </div>
             {% endcall %} {% endcall %}{# table_row #} {% endfor %} {% endif %}

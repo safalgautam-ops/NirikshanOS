@@ -10,7 +10,7 @@ current page.
 
 from __future__ import annotations
 
-from quart import Response, redirect, request
+from flask import Response, redirect, request
 
 
 def redirect_or_htmx(location: str):

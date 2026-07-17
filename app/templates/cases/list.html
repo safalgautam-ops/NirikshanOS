@@ -1,6 +1,10 @@
 {% extends "layouts/base.html" %}
+{% import "components/ui/form.html" as form_ui %}
+{% import "components/ui/button.html" as button_ui %}
+{% import "components/ui/input.html" as input_ui %}
+
 {% block title %}Cases - NirikshanOS{% endblock %}
-{% block scripts %}<script defer src="{{ url_for('static', filename='js/pages/cases/list.js') }}"></script>{% endblock %}
+
 {% from "components/ui/card.html" import card, card_header, card_title, card_description, card_panel %}
 {% from "components/ui/badge.html" import badge %}
 {% from "components/ui/button.html" import button %}
@@ -43,9 +47,9 @@
 {% block body %}
 {{ sidebar(active="case", visible_keys=visible_keys) }}
 
-<div class="flex flex-col md:pl-60" x-data="{ q: '' }">
+<div class="flex flex-col md:pl-60" data-list-filter>
     {{ topbar("Cases") }}
-    <main class="flex-1 p-4 md:p-6">
+    <main class="flex-1 p-2 md:p-4">
         {{ breadcrumb_trail([("Dashboard", "/"), ("Cases", None)]) }}
 
         {{ flash("error", error) }}
@@ -53,7 +57,7 @@
         <div class="grid gap-6 p-2">
             <div class="flex items-center justify-between gap-3">
                 {% call input_group(class="max-w-sm") %}
-                    {{ input_group_input(name="q", placeholder="Search cases…", attrs={"type": "search", "aria-label": "Search cases", "x-model": "q"}) }}
+                    {{ input_group_input(name="q", placeholder="Search cases…", attrs={"type": "search", "aria-label": "Search cases", "data-list-filter-input": true}) }}
                     {% call input_group_addon() %}
                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></svg>
                     {% endcall %}
@@ -83,7 +87,7 @@
                 {% else %}
                 <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3" data-case-grid>
                     {% for c in all_cases %}
-                    <div x-show="!q || {{ (c.title|lower)|tojson|forceescape }}.includes(q.toLowerCase())">
+                    <div data-filter-text="{{ c.title|lower|e }}">
                         {{ case_card(c) }}
                     </div>
                     {% endfor %}
@@ -99,16 +103,10 @@
         {{ dialog_title("Create a new case") }}
         {{ dialog_description("Set the case's details and decide who can access it. You'll upload evidence right after.") }}
     {% endcall %}
-    <form
-        x-data="caseCreateForm({{ org_members|tojson|forceescape }})"
-        method="post"
-        action="{{ url_for('cases.create_view') }}"
-        class="max-h-[60vh] overflow-y-auto"
-    >
+    {% call form_ui.form(method="post", action=url_for('cases.create_view'), class="max-h-[60vh] overflow-y-auto", unstyled=true, attrs={"data-case-create": true}) %}
         {{ csrf_field() }}
-        <template x-for="m in members" :key="m.id">
-            <input type="hidden" name="member_ids" :value="m.id">
-        </template>
+        <div data-case-member-inputs></div>
+        <script type="application/json" data-case-members>{{ org_members|tojson }}</script>
 
         {% call field_group() %}
             {% call field() %}
@@ -138,40 +136,11 @@
                 {{ field_label("Add members") }}
                 <p class="text-xs text-muted-foreground">Only you (the creator) and anyone added below will be able to see or manage this case.</p>
                 <div class="relative">
-                    <input
-                        type="text"
-                        x-model="query"
-                        @focus="open = true"
-                        @click.outside="open = false"
-                        placeholder="Search this organization's members…"
-                        class="flex h-9 w-full items-center rounded-lg border border-input bg-background px-3 text-sm shadow-xs/5 outline-none transition-shadow focus-visible:ring-2 focus-visible:ring-ring"
-                    >
-                    <div x-show="open && filtered().length" x-cloak class="absolute z-20 mt-1 max-h-48 w-full overflow-y-auto rounded-lg border bg-popover p-1 shadow-md">
-                        <template x-for="m in filtered()" :key="m.id">
-                            <button type="button" @click="addMember(m)" class="flex w-full items-center justify-between gap-2 rounded-md px-2.5 py-1.5 text-left text-sm hover:bg-accent hover:text-accent-foreground">
-                                <span>
-                                    <span x-text="m.name" class="font-medium"></span>
-                                    <span x-text="' — ' + m.email" class="text-muted-foreground"></span>
-                                </span>
-                            </button>
-                        </template>
-                    </div>
+                    {{ input_ui.input(type="text", bare=true, placeholder="Search this organization's members…", class="flex h-9 w-full items-center rounded-lg border border-input bg-background px-3 text-sm shadow-xs/5 outline-none transition-shadow focus-visible:ring-2 focus-visible:ring-ring", attrs={"data-case-member-search": true, "autocomplete": "off"}) }}
+                    <div data-case-member-suggestions hidden class="absolute z-20 mt-1 max-h-48 w-full overflow-y-auto rounded-lg border bg-popover p-1 shadow-md"></div>
                 </div>
 
-                <div class="mt-2 divide-y rounded-lg border" x-show="members.length" x-cloak>
-                    <template x-for="m in members" :key="m.id">
-                        <div class="flex items-center gap-3 px-3 py-2">
-                            <div class="min-w-0 flex-1">
-                                <div class="truncate text-sm font-medium" x-text="m.name"></div>
-                                <div class="truncate text-xs text-muted-foreground" x-text="m.email"></div>
-                            </div>
-                            <span class="text-xs text-muted-foreground" x-text="m.role_name || 'Member'"></span>
-                            <button type="button" @click="removeMember(m.id)" class="text-muted-foreground hover:text-destructive" aria-label="Remove">
-                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-4"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
-                            </button>
-                        </div>
-                    </template>
-                </div>
+                <div data-case-selected-members hidden class="mt-2 divide-y rounded-lg border"></div>
             {% endcall %}
         {% endcall %}
 
@@ -179,6 +148,10 @@
             {% call dialog_close(class=cancel_classes) %}Cancel{% endcall %}
             {% call button(type="submit") %}Next: Upload evidence{% endcall %}
         {% endcall %}
-    </form>
+    {% endcall %}
 {% endcall %}
+{% endblock %}
+
+{% block body_scripts %}
+<script src="{{ url_for('static', filename='js/pages/cases-list.js') }}"></script>
 {% endblock %}

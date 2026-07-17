@@ -1,7 +1,9 @@
 services:
-  # Minimal analyzer base image — built once so the worker can `docker run nirikshan/base:1.0`.
-  # Starts with no forensic tools; each module YAML declares what to install at runtime.
-  # Run:  docker compose --profile build-only build analyzer-base
+  # Minimal analyzer base image — built once so the worker can run
+  # `docker run nirikshan/base:1.0`.
+  #
+  # Build manually with:
+  # docker compose --profile build-only build analyzer-base
   analyzer-base:
     build:
       context: ./docker/analyzers/base
@@ -11,7 +13,8 @@ services:
     profiles:
       - build-only
 
-  # Public entrypoint - only this service is reachable from the host (port 80).
+  # Public entry point.
+  # Only Nginx is exposed on host port 80.
   nginx:
     image: nginx:alpine
     ports:
@@ -20,135 +23,353 @@ services:
       - ./docker/nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
       - ./app/static:/app/static:ro
     depends_on:
-      - web
+      web:
+        condition: service_started
+    restart: unless-stopped
 
+  # Flask web application.
   web:
     build:
       context: .
       dockerfile: docker/web/Dockerfile
-    # --reload watches the bind-mounted source for live local development.
-    command: uvicorn run:app --host 0.0.0.0 --port 8000 --reload
-    # Mirrors the local checkout into the container for live editing.
+
+    command:
+      - gunicorn
+      - --bind
+      - 0.0.0.0:8000
+      - --workers
+      - "1"
+      - --threads
+      - "8"
+      - --reload
+      - run:app
+
     volumes:
+      # Local source mount for development.
       - .:/app
-      # Job workspaces — read-only for the web container (serves raw output to the UI).
-      # Must be the same absolute path as on the host so get_task_output_view can find files.
+
+      # Job output is read-only for the web application.
       - ${JOBS_DIR:-/storage/jobs}:${JOBS_DIR:-/storage/jobs}:ro
+
     env_file:
       - .env
-    # Waits for MySQL/Redis/MinIO to report healthy, not just "started",
-    # before the app's startup hook tries to connect.
+
     depends_on:
       mysql:
         condition: service_healthy
+
+      # Web cannot start unless all migrations finish successfully.
+      migrate:
+        condition: service_completed_successfully
+
       redis:
         condition: service_healthy
+
       minio:
         condition: service_healthy
 
-  # Background job processor - separate container so a slow/crashed
-  # analyzer never blocks the web app.
+    restart: unless-stopped
+
+  # Background analysis worker.
   worker:
     build:
       context: .
       dockerfile: docker/worker/Dockerfile
-    command: python -m workers.worker_main
+
+    command:
+      - python
+      - -m
+      - workers.worker_main
+
     volumes:
       - .:/app
-      # Docker socket — lets docker_runner.py call `docker run` from inside the container.
+
+      # Allows the worker to start analyzer containers.
       - /var/run/docker.sock:/var/run/docker.sock
-      # Job workspaces — both sides of the bind mount must use the same absolute path.
-      # When the worker calls `docker run -v $JOBS_DIR/job_id/...`, Docker resolves
-      # that path on the HOST filesystem. If the container path differs from the host
-      # path, the bind mount passed to the inner container will point nowhere.
+
+      # Must use the same absolute host/container path because this path
+      # is passed to nested Docker containers.
       - ${JOBS_DIR:-/storage/jobs}:${JOBS_DIR:-/storage/jobs}
+
     env_file:
       - .env
+
     depends_on:
       mysql:
         condition: service_healthy
+
+      # Worker cannot query instances until migrations complete.
+      migrate:
+        condition: service_completed_successfully
+
       redis:
         condition: service_healthy
+
       minio:
         condition: service_healthy
 
+    restart: unless-stopped
+
+  # MySQL database.
   mysql:
     image: mysql:8.0
+
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
       MYSQL_DATABASE: ${MYSQL_DATABASE}
       MYSQL_USER: ${MYSQL_USER}
       MYSQL_PASSWORD: ${MYSQL_PASSWORD}
-    # Named volume so case/evidence data survives `docker compose down`.
+
     volumes:
       - mysql_data:/var/lib/mysql
-    # Lets `depends_on: condition: service_healthy` work for web/worker.
+
+    # Use TCP instead of localhost/socket so this becomes healthy only
+    # after the final MySQL server is listening on port 3306.
     healthcheck:
       test:
         [
-          "CMD",
-          "mysqladmin",
-          "ping",
-          "-h",
-          "localhost",
-          "-u",
-          "root",
-          "-p${MYSQL_ROOT_PASSWORD}",
+          "CMD-SHELL",
+          "mysqladmin ping -h 127.0.0.1 -uroot -p\"$${MYSQL_ROOT_PASSWORD}\" --silent",
         ]
       interval: 5s
       timeout: 5s
-      retries: 10
+      retries: 30
+      start_period: 20s
 
+    restart: unless-stopped
+
+  # One-shot database migration service.
+  #
+  # Behavior:
+  # - Empty database: applies every migrations/*.sql file in filename order.
+  # - Existing complete database: exits successfully without changing it.
+  # - Partially initialized database: exits with an error to avoid corruption.
+  migrate:
+    image: mysql:8.0
+
+    env_file:
+      - .env
+
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+    volumes:
+      - ./migrations:/migrations:ro
+
+    restart: "no"
+
+    entrypoint:
+      - /bin/sh
+      - -c
+
+    command:
+      - |
+        set -eu
+
+        export MYSQL_PWD="$${MYSQL_ROOT_PASSWORD}"
+
+        echo "[migrate] Checking database schema..."
+
+        existing_tables="$$(mysql \
+          --host=mysql \
+          --user=root \
+          --batch \
+          --skip-column-names \
+          --execute="
+            SELECT COUNT(*)
+            FROM information_schema.tables
+            WHERE table_schema = '$${MYSQL_DATABASE}';
+          ")"
+
+        required_tables="$$(mysql \
+          --host=mysql \
+          --user=root \
+          --batch \
+          --skip-column-names \
+          --execute="
+            SELECT COUNT(*)
+            FROM information_schema.tables
+            WHERE table_schema = '$${MYSQL_DATABASE}'
+              AND table_name IN ('permissions', 'instances');
+          ")"
+
+        if [ "$${existing_tables}" -eq 0 ]; then
+          echo "[migrate] Empty database detected."
+          echo "[migrate] Building migration bundle..."
+
+          migration_bundle="/tmp/nirikshan-migrations.sql"
+
+          : > "$${migration_bundle}"
+
+          printf '%s\n' \
+            'SET SESSION FOREIGN_KEY_CHECKS = 0;' \
+            >> "$${migration_bundle}"
+
+          for file in /migrations/*.sql; do
+            if [ ! -f "$${file}" ]; then
+              echo "[migrate] ERROR: No SQL migration files found." >&2
+              exit 1
+            fi
+
+            echo "[migrate] Adding $$(basename "$${file}")"
+
+            printf '\n-- BEGIN %s\n' "$$(basename "$${file}")" \
+              >> "$${migration_bundle}"
+
+            cat "$${file}" >> "$${migration_bundle}"
+
+            printf '\n-- END %s\n' "$$(basename "$${file}")" \
+              >> "$${migration_bundle}"
+          done
+
+          printf '%s\n' \
+            'SET SESSION FOREIGN_KEY_CHECKS = 1;' \
+            >> "$${migration_bundle}"
+
+          echo "[migrate] Applying migrations..."
+
+          mysql \
+            --host=mysql \
+            --user=root \
+            "$${MYSQL_DATABASE}" \
+            < "$${migration_bundle}"
+
+          echo "[migrate] Verifying required tables..."
+
+          required_tables="$$(mysql \
+            --host=mysql \
+            --user=root \
+            --batch \
+            --skip-column-names \
+            --execute="
+              SELECT COUNT(*)
+              FROM information_schema.tables
+              WHERE table_schema = '$${MYSQL_DATABASE}'
+                AND table_name IN ('permissions', 'instances');
+            ")"
+
+          total_tables="$$(mysql \
+            --host=mysql \
+            --user=root \
+            --batch \
+            --skip-column-names \
+            --execute="
+              SELECT COUNT(*)
+              FROM information_schema.tables
+              WHERE table_schema = '$${MYSQL_DATABASE}';
+            ")"
+
+          if [ "$${required_tables}" -ne 2 ]; then
+            echo "[migrate] ERROR: Required tables were not created." >&2
+            echo "[migrate] Expected permissions and instances tables." >&2
+            exit 1
+          fi
+
+          echo "[migrate] Migration completed successfully."
+          echo "[migrate] Total application tables: $${total_tables}"
+
+        elif [ "$${required_tables}" -eq 2 ]; then
+          echo "[migrate] Existing database schema detected."
+          echo "[migrate] Required tables already exist."
+          echo "[migrate] No migrations were applied."
+
+        else
+          echo "[migrate] ERROR: Partial database schema detected." >&2
+          echo "[migrate] Existing tables: $${existing_tables}" >&2
+          echo "[migrate] Required permissions/instances tables are missing." >&2
+          echo "[migrate] Refusing to run migrations over a partial schema." >&2
+          exit 1
+        fi
+
+  # Redis cache and session storage.
   redis:
     image: redis:7-alpine
+
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test:
+        - CMD
+        - redis-cli
+        - ping
       interval: 5s
       timeout: 5s
       retries: 10
 
-  # evidence all live here (MinIO -- a storage server that exactly behaves like Amazon s3)
-  # now instead of on local disk for storing user avatars, organization logos, documents, and case evidence.
-  # (app/core/object_storage.py). Web console at http://localhost:9001.
+    restart: unless-stopped
+
+  # S3-compatible object storage.
   minio:
-    image: minio/minio:latest # use the official MinIO program
+    image: minio/minio:latest
+
     environment:
-      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY} # admin username
-      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY} # admin password
-    command: server /data --console-address ":9001" # start the server, store the files in /data
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY}
+
+    command:
+      - server
+      - /data
+      - --console-address
+      - ":9001"
+
     ports:
-      - "9000:9000" # the API other programs talk to (S3 protocol)
-      - "9001:9001" # a web page you can open in a browser to manage files
+      - "9000:9000"
+      - "9001:9001"
+
     volumes:
-      - minio_data:/data # keeps files saved even if the container restarts
+      - minio_data:/data
+
     healthcheck:
-      test: ["CMD", "mc", "ready", "local"] # is MinIO actually ready?
+      test:
+        - CMD
+        - mc
+        - ready
+        - local
       interval: 10s
       timeout: 5s
       retries: 5
-    restart: unless-stopped # auto-restarts if it crashes
 
-  # a bucket is the top-level folder/container for files.
-  # this service creates two buckets and then exits
-  # public one (logo, avatars) is set to anonymous download so anyone can view those images without logging in
-  # private one (case evidence, documents) stays locked down -- only the app can access it.
-  # don't error if the bucket is already there, so re-running is safe
-  # $ gets interpreted by Compose itself;
-  # $$ escapes it so the actual shell inside the container sees a normal $ and reads the env correctly
+    restart: unless-stopped
+
+  # Creates the required MinIO buckets and exits.
   minio-init:
     image: minio/mc:latest
+
     depends_on:
       minio:
-        condition: service_healthy # wait until MinIO passes its healthcheck
+        condition: service_healthy
+
     env_file:
       - .env
-    entrypoint: >
-      /bin/sh -c "
-      mc alias set local http://minio:9000 $$MINIO_ACCESS_KEY $$MINIO_SECRET_KEY &&
-      mc mb --ignore-existing local/$$MINIO_BUCKET_PUBLIC &&
-      mc mb --ignore-existing local/$$MINIO_BUCKET_PRIVATE &&
-      mc anonymous set download local/$$MINIO_BUCKET_PUBLIC
-      "
+
+    restart: "no"
+
+    entrypoint:
+      - /bin/sh
+      - -c
+
+    command:
+      - |
+        set -eu
+
+        mc alias set \
+          local \
+          http://minio:9000 \
+          "$${MINIO_ACCESS_KEY}" \
+          "$${MINIO_SECRET_KEY}"
+
+        mc mb \
+          --ignore-existing \
+          "local/$${MINIO_BUCKET_PUBLIC}"
+
+        mc mb \
+          --ignore-existing \
+          "local/$${MINIO_BUCKET_PRIVATE}"
+
+        mc anonymous set \
+          download \
+          "local/$${MINIO_BUCKET_PUBLIC}"
+
+        echo "[minio-init] Required buckets are ready."
 
 volumes:
   mysql_data:

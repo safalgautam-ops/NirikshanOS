@@ -1,4 +1,7 @@
 {% extends "layouts/base.html" %}
+{% import "components/ui/form.html" as form_ui %}
+{% import "components/ui/select-native.html" as select_ui %}
+
 {% block title %}Transactions — NirikshanOS{% endblock %}
 
 {% from "dashboard/components/sidebar.html" import sidebar %}
@@ -10,34 +13,29 @@
 {% set _status_variants = {"completed": "success", "initiated": "outline", "failed": "destructive", "refunded": "secondary"} %}
 
 {% block body %}
-<div x-data="{ submitFilters() { $refs.filterForm.submit(); } }">
+<div>
 
   {{ sidebar(active="admin_transactions", visible_keys=visible_keys) }}
 
   <div class="flex flex-col md:pl-60">
     {{ topbar("Transactions") }}
 
-    <main class="flex-1 overflow-y-auto p-6 space-y-8">
+    <main class="flex-1 overflow-y-auto p-6 space-y-4">
 
-      <div>
-        <h1 class="text-xl font-semibold">Payment Transactions</h1>
-        <p class="mt-1 text-sm text-muted-foreground">Ledger of every eSewa payment attempt, verified server-side before any plan is activated.</p>
-      </div>
-
-      <form x-ref="filterForm" method="GET" class="flex flex-wrap items-center gap-3">
-        <select name="org_id" @change="submitFilters()" class="flex h-9 rounded-lg border border-input bg-popover px-3 text-sm sm:h-8">
+      {% call form_ui.form(method="GET", class="flex flex-wrap items-center gap-3", unstyled=true, attrs={"id": "transaction-filters"}) %}
+        {% call select_ui.select_native(unstyled=true, name="org_id", class="flex h-9 rounded-lg border border-input bg-popover px-3 text-sm sm:h-8", attrs={"data-submit-form": "transaction-filters"}) %}
           <option value="">All organizations</option>
           {% for org in orgs %}
           <option value="{{ org.id }}" {% if org.id == selected_org_id %}selected{% endif %}>{{ org.name }}</option>
           {% endfor %}
-        </select>
-        <select name="status" @change="submitFilters()" class="flex h-9 rounded-lg border border-input bg-popover px-3 text-sm sm:h-8">
+        {% endcall %}
+        {% call select_ui.select_native(unstyled=true, name="status", class="flex h-9 rounded-lg border border-input bg-popover px-3 text-sm sm:h-8", attrs={"data-submit-form": "transaction-filters"}) %}
           <option value="">All statuses</option>
           {% for s in ("initiated", "completed", "failed", "refunded") %}
           <option value="{{ s }}" {% if s == selected_status %}selected{% endif %}>{{ s|capitalize }}</option>
           {% endfor %}
-        </select>
-      </form>
+        {% endcall %}
+      {% endcall %}
 
       {% call frame.frame() %}
       {% call table.table(variant="card") %}

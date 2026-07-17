@@ -1,4 +1,5 @@
 {% extends "layouts/base.html" %}
+{% import "components/ui/form.html" as form_ui %}
 {% import "components/ui/frame.html" as frame %}
 {% import "components/ui/table.html" as table %}
 {% import "components/ui/badge.html" as badge %}
@@ -9,6 +10,7 @@
 {% from "components/ui/breadcrumb.html" import breadcrumb_trail %}
 {% from "components/ui/toast.html" import flash %}
 {% from "macros/csrf.html" import csrf_field %}
+
 
 {% set cancel_classes = "relative inline-flex h-9 shrink-0 cursor-pointer items-center justify-center gap-2 whitespace-nowrap rounded-lg border border-input bg-popover px-[calc(--spacing(3)-1px)] text-sm text-foreground shadow-xs/5 outline-none transition-shadow hover:bg-accent/50 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-64 sm:h-8" %}
 
@@ -21,17 +23,17 @@
 
 <div class="flex flex-col md:pl-60">
     {{ topbar("Organization Roles") }}
-    <main class="flex-1 p-4 md:p-6">
+    <main class="flex-1 p-2 md:p-4">
         {{ breadcrumb_trail([("Dashboard", "/"), ("Organization Roles", None)]) }}
 
         <div class="grid gap-4 p-3">
             <div class="flex items-center justify-end">
-                <form method="post" action="{{ url_for('onboarding.org_roles_create_view') }}">
+                {% call form_ui.form(method="post", action=url_for('onboarding.org_roles_create_view'), unstyled=true) %}
                     {{ csrf_field() }}
                     {% call button.button(size="icon", type="submit", attrs={"aria-label": "Create role"}) %}
                     <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
                     {% endcall %}
-                </form>
+                {% endcall %}
             </div>
 
             {{ flash("error", error) }}
@@ -70,28 +72,28 @@
                         {% call table.table_cell(class="text-right tabular-nums") %}{{ role.priority }}{% endcall %}
                         {% call table.table_cell() %}
                         <div class="flex items-center justify-end gap-1">
-                            <form method="post" action="{{ url_for('onboarding.org_roles_duplicate_view', role_id=role.id) }}">
+                            {% call form_ui.form(method="post", action=url_for('onboarding.org_roles_duplicate_view', role_id=role.id), unstyled=true) %}
                                 {{ csrf_field() }}
                                 {% call button.button(type="submit", variant="ghost", size="icon-xs", class="text-muted-foreground", attrs={"aria-label": "Duplicate " ~ role.name}) %}
                                 <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
                                 {% endcall %}
-                            </form>
+                            {% endcall %}
                             {% if can_delete %}
-                            <button type="button" class="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-destructive/10 hover:text-destructive sm:size-6" data-slot="dialog-trigger" data-target="#delete-role-{{ role.id }}" aria-controls="delete-role-{{ role.id }}" aria-label="Delete {{ role.name }}">
+                            {% call dialog.dialog_trigger(target="#delete-role-" ~ (role.id), class="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-destructive/10 hover:text-destructive sm:size-6", attrs={"aria-label": "Delete " ~ (role.name)}) %}
                                 <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
-                            </button>
+                            {% endcall %}
                             {% call dialog.dialog(attrs={"id": "delete-role-" ~ role.id}) %}
                                 {% call dialog.dialog_header() %}
                                     {{ dialog.dialog_title("Delete role?") }}
                                     {{ dialog.dialog_description('"' ~ role.name ~ '" will be removed from all ' ~ role.member_count ~ ' member(s) holding it.') }}
                                 {% endcall %}
-                                <form method="post" action="{{ url_for('onboarding.org_roles_delete_view', role_id=role.id) }}">
+                                {% call form_ui.form(method="post", action=url_for('onboarding.org_roles_delete_view', role_id=role.id), unstyled=true) %}
                                     {{ csrf_field() }}
                                     {% call dialog.dialog_footer() %}
                                         {% call dialog.dialog_close(class=cancel_classes) %}Cancel{% endcall %}
                                         {% call button.button(variant="destructive", type="submit") %}Delete{% endcall %}
                                     {% endcall %}
-                                </form>
+                                {% endcall %}
                             {% endcall %}
                             {% endif %}
                         </div>

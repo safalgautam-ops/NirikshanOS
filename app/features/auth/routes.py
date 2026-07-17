@@ -1,12 +1,12 @@
 """Auth routes.
 
-Thin Quart views — all business logic lives in service.py.
+Thin Flask views — all business logic lives in service.py.
 Each route's only job: read the request, call the service, pick a response.
 """
 
 from __future__ import annotations
 
-from quart import (
+from flask import (
     Blueprint,
     abort,
     current_app,
@@ -87,7 +87,7 @@ def _safe_next(value: str | None) -> str | None:
 
 async def _full_login(user_id: str, next_url: str | None = None):
     token = await create_session(user_id, _ip(), _ua())
-    resp = await make_response(redirect(_safe_next(next_url) or url_for("dashboard")))
+    resp = make_response(redirect(_safe_next(next_url) or url_for("dashboard")))
     set_session_cookie(resp, token)
     return resp
 
@@ -97,12 +97,14 @@ async def _full_login(user_id: str, next_url: str | None = None):
 
 @auth_bp.route("/login", methods=["GET", "POST"])
 async def login():
+    if g.user_id is not None:
+        return redirect(url_for("dashboard"))
     error = None
     activated = request.args.get("activated")
     reset_done = request.args.get("reset")
     next_url = _safe_next(request.args.get("next"))
     if request.method == "POST":
-        form = await request.form
+        form = request.form
         email = form.get("email", "").strip().lower()
         password = form.get("password", "")
         next_url = _safe_next(form.get("next")) or next_url
@@ -116,7 +118,7 @@ async def login():
             pending = create_pending_2fa_token(
                 exc.user_id, current_app.config["SECRET_KEY"]
             )
-            resp = await make_response(redirect(url_for("auth.verify_2fa_view")))
+            resp = make_response(redirect(url_for("auth.verify_2fa_view")))
             resp.set_cookie(
                 PENDING_2FA_COOKIE, pending, max_age=300, httponly=True, samesite="Lax"
             )
@@ -125,7 +127,7 @@ async def login():
             error = str(exc)
         else:
             return await _full_login(user_id, next_url)
-    return await render_template(
+    return render_template(
         "auth/login.html",
         error=error,
         activated=activated,
@@ -139,7 +141,7 @@ async def logout():
     token = request.cookies.get(SESSION_COOKIE)
     if token:
         await delete_session(token)
-    resp = await make_response(redirect(url_for("auth.login")))
+    resp = make_response(redirect(url_for("auth.login")))
     clear_session_cookie(resp)
     return resp
 
@@ -149,10 +151,12 @@ async def logout():
 
 @auth_bp.route("/register", methods=["GET", "POST"])
 async def register_view():
+    if g.user_id is not None:
+        return redirect(url_for("dashboard"))
     error = None
     next_url = _safe_next(request.args.get("next"))
     if request.method == "POST":
-        form = await request.form
+        form = request.form
         name = form.get("name", "").strip()
         email = form.get("email", "").strip().lower()
         password = form.get("password", "")
@@ -173,7 +177,7 @@ async def register_view():
             else:
                 next_qs = f"&next={next_url}" if next_url else ""
                 return redirect(url_for("auth.activate") + f"?email={email}{next_qs}")
-    return await render_template("auth/register.html", error=error, next_url=next_url)
+    return render_template("auth/register.html", error=error, next_url=next_url)
 
 
 @auth_bp.route("/activate", methods=["GET", "POST"])
@@ -183,7 +187,7 @@ async def activate():
     error = None
     next_url = _safe_next(request.args.get("next"))
     if request.method == "POST":
-        form = await request.form
+        form = request.form
         email = form.get("email", "").strip().lower()
         code = form.get("code", "").strip()
         next_url = _safe_next(form.get("next")) or next_url
@@ -195,14 +199,14 @@ async def activate():
         else:
             next_qs = f"&next={next_url}" if next_url else ""
             return redirect(url_for("auth.login") + f"?activated=1{next_qs}")
-    return await render_template(
+    return render_template(
         "auth/activate.html", email=email, error=error, resent=resent, next_url=next_url
     )
 
 
 @auth_bp.route("/resend-activation", methods=["POST"])
 async def resend_activation_view():
-    form = await request.form
+    form = request.form
     email = form.get("email", "").strip().lower()
     await resend_activation(email)
     return redirect(url_for("auth.activate") + f"?email={email}&resent=1")
@@ -214,11 +218,11 @@ async def resend_activation_view():
 @auth_bp.route("/forgot-password", methods=["GET", "POST"])
 async def forgot_password_view():
     if request.method == "POST":
-        form = await request.form
+        form = request.form
         email = form.get("email", "").strip().lower()
         await forgot_password(email)
         return redirect(url_for("auth.reset_password_view") + f"?email={email}")
-    return await render_template("auth/forgot_password.html")
+    return render_template("auth/forgot_password.html")
 
 
 @auth_bp.route("/reset-password", methods=["GET", "POST"])
@@ -229,7 +233,7 @@ async def reset_password_view():
     # start with no error. if validation fails later, we'll set this to a message.
     error = None
     if request.method == "POST":
-        form = await request.form
+        form = request.form
         email = form.get("email", "").strip().lower()
         code = form.get("code", "").strip()
         new_pw = form.get("password", "")
@@ -249,7 +253,7 @@ async def reset_password_view():
                 # reset=1 indicates that the password was successfully reset to let the login template know about it
                 return redirect(url_for("auth.login") + "?reset=1")
     # if there was an error, render the reset password template with the error message
-    return await render_template("auth/reset_password.html", email=email, error=error)
+    return render_template("auth/reset_password.html", email=email, error=error)
 
 
 @auth_bp.route("/change-password", methods=["GET", "POST"])
@@ -260,7 +264,7 @@ async def change_password_view():
     gate). Already authenticated, so no code/old-password is needed."""
     error = None
     if request.method == "POST":
-        form = await request.form
+        form = request.form
         new_pw = form.get("password", "")
         confirm = form.get("confirm_password", "")
         if len(new_pw) < 8:
@@ -270,7 +274,7 @@ async def change_password_view():
         else:
             await change_own_password(g.user_id, new_pw)
             return redirect(url_for("dashboard"))
-    return await render_template("auth/change_password.html", error=error)
+    return render_template("auth/change_password.html", error=error)
 
 
 # ── Google OAuth ──────────────────────────────────────────────────────────────
@@ -306,7 +310,7 @@ async def google_callback():
     try:
         user_id = await oauth_authenticate("google", user_info)
     except AuthError as exc:
-        return await render_template("auth/login.html", error=str(exc))
+        return render_template("auth/login.html", error=str(exc))
     return await _full_login(user_id)
 
 
@@ -343,7 +347,7 @@ async def github_callback():
     try:
         user_id = await oauth_authenticate("github", user_info)
     except AuthError as exc:
-        return await render_template("auth/login.html", error=str(exc))
+        return render_template("auth/login.html", error=str(exc))
     return await _full_login(user_id)
 
 
@@ -359,7 +363,7 @@ async def verify_2fa_view():
 
     error = None
     if request.method == "POST":
-        form = await request.form
+        form = request.form
         code = form.get("code", "").strip()
         await check_rate_limit(f"rate:2fa:{token[:16]}", max_attempts=5, window_seconds=900)
         try:
@@ -367,12 +371,12 @@ async def verify_2fa_view():
         except AuthError as exc:
             error = str(exc)
         else:
-            resp = await make_response(redirect(url_for("dashboard")))
+            resp = make_response(redirect(url_for("dashboard")))
             resp.delete_cookie(PENDING_2FA_COOKIE)
             real_token = await create_session(user_id, _ip(), _ua())
             set_session_cookie(resp, real_token)
             return resp
-    return await render_template("auth/2fa/verify.html", error=error)
+    return render_template("auth/2fa/verify.html", error=error)
 
 
 # ── 2FA setup (settings) ─────────────────────────────────────────────────────
@@ -387,7 +391,7 @@ async def setup_2fa():
 
     error = None
     if request.method == "POST":
-        form = await request.form
+        form = request.form
         secret = form.get("secret", "")
         code = form.get("code", "").strip()
         try:
@@ -398,13 +402,13 @@ async def setup_2fa():
             from app.features.auth.totp import qr_base64
 
             qr = qr_base64(secret, user["email"])
-            return await render_template(
+            return render_template(
                 "auth/2fa/setup.html", secret=secret, qr=qr, error=error
             )
-        return await render_template("auth/2fa/backup_codes.html", codes=plain_codes)
+        return render_template("auth/2fa/backup_codes.html", codes=plain_codes)
 
     secret, qr = await begin_totp_setup(g.user_id)
-    return await render_template(
+    return render_template(
         "auth/2fa/setup.html", secret=secret, qr=qr, error=None
     )
 
@@ -412,7 +416,7 @@ async def setup_2fa():
 @auth_bp.route("/2fa/disable", methods=["POST"])
 @login_required
 async def disable_2fa():
-    form = await request.form
+    form = request.form
     code = form.get("code", "").strip()
     if not code:
         return redirect(url_for("auth.settings_connections", tab="security",
@@ -443,7 +447,7 @@ async def settings_connections():
     connected = {a["providerId"] for a in accounts}
     has_password = any(a["providerId"] == "credential" for a in accounts)
     visible_keys = await get_visible_nav_keys(g.user_id)
-    return await render_template(
+    return render_template(
         "auth/settings/connections.html",
         user=user,
         accounts=accounts,
@@ -460,8 +464,8 @@ async def settings_connections():
 @auth_bp.route("/settings/profile", methods=["POST"])
 @login_required
 async def update_profile_view():
-    form = await request.form
-    files = await request.files
+    form = request.form
+    files = request.files
     try:
         await update_profile(g.user_id, name=form.get("name", ""), avatar=files.get("avatar"))
     except AuthError as exc:
@@ -472,7 +476,7 @@ async def update_profile_view():
 @auth_bp.route("/settings/password", methods=["POST"])
 @login_required
 async def change_password_settings_view():
-    form = await request.form
+    form = request.form
     current_pw = form.get("current_password", "")
     new_pw = form.get("new_password", "")
     confirm = form.get("confirm_password", "")

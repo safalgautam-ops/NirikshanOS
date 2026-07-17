@@ -1,39 +1,9 @@
-<!doctype html>
-<html lang="en" class="dark">
-    <head>
-        <meta charset="utf-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <meta name="csrf-token" content="{{ csrf_token() }}" />
-        <title>{% block title %}NirikshanOS{% endblock %}</title>
-        <link
-            rel="icon"
-            href="/static/img/favlogo.ico"
-            type="image/x-icon"
-            h-24
-        />
-        <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
-        <link
-            rel="stylesheet"
-            flex
-            flex-col
-            p-10
-            justify-between
-            gap-20
-            items-center
-            md:items-start
-            href="{{ url_for('static', filename='css/tailwind.css') }}"
-        />
-        <link
-            rel="stylesheet"
-            href="{{ url_for('static', filename='css/home-font.css') }}?v={{ asset_version('css/home-font.css') }}"
-        />
-        <link
-            rel="stylesheet"
-            href="{{ url_for('static', filename='css/hero-animation.css') }}?v={{ asset_version('css/hero-animation.css') }}"
-        />
-    </head>
-    <body class="min-h-screen bg-background text-foreground antialiased">
-        <header
+{% extends "layouts/base.html" %}
+{% block title %}NirikshanOS — Digital Forensics Platform{% endblock %}
+{% block head %}
+{% endblock %}
+{% block body %}
+<header
             class="wrapper px-6 py-5 flex items-center justify-between relative border-b border-stroke border-nickel"
         >
             <div class="flex gap-10 self-stretch h-[40px]">
@@ -206,9 +176,7 @@
             </p>
             <div class="gap-10 text-sm hidden md:flex"></div>
         </section>
-        <script
-            type="module"
-            src="{{ url_for('static', filename='js/pages/home/hero-animation.js') }}?v={{ asset_version('js/pages/home/hero-animation.js') }}"
-        ></script>
-    </body>
-</html>
+{% endblock %}
+{% block body_scripts %}
+<script type="module" src="{{ url_for('static', filename='js/pages/home.js') }}?v={{ asset_version('js/pages/home.js') }}"></script>
+{% endblock %}

@@ -7,7 +7,7 @@ both will call EXPIRE, and the second just resets the TTL to the same value.
 """
 from __future__ import annotations
 
-from quart import abort
+from flask import abort
 
 from app.extensions import get_redis
 

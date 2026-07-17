@@ -1,72 +1,26 @@
 <!doctype html>
-{# Dark mode is the default (hardcoded into HTML) - the inline script below only
-removes `.dark` if the user explicitly chose light. #}
 <html lang="en" class="dark">
-    <head>
-        <meta charset="utf-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <meta name="csrf-token" content="{{ csrf_token() }}">
-        <title>{% block title %}NirikshanOS{% endblock %}</title>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+    <title>{% block title %}NirikshanOS{% endblock %}</title>
+    <link rel="icon" href="{{ url_for('static', filename='img/favlogo.ico') }}" type="image/x-icon">
 
-        {% if debug %} {# Dev only: live-compiles input.css in the browser, no
-        build step - see app/core/security/headers.py for the matching CSP
-        allowance. Flip QUART_DEBUG=false (or omit it) before shipping to
-        production, which uses the static built tailwind.css below instead. #}
-        <link
-            rel="icon"
-            href="/static/img/favlogo.ico"
-            type="image/x-icon"
-            h-24
-        />
-        <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
-        <style type="text/tailwindcss">
-            {{ read_input_css_for_browser_runtime() }}
-        </style>
-        {% else %}
-        <link
-            rel="stylesheet"
-            href="{{ url_for('static', filename='css/tailwind.css') }}"
-        />
-        {% endif %} {# Inline
-        <script>
-            blocks are blocked by CSP script-src 'self' (no
-                   'unsafe-inline'), so this lives in its own same-origin file. Not
-                   deferred: runs immediately, before paint, to avoid a theme flash. #}
-                   <script src="{{ url_for('static', filename='js/theme.js') }}">
-        </script>
+    {# Same no-build Tailwind setup used by the CodeSandbox reference. #}
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <style type="text/tailwindcss">
+      {% include "style.css" %}
+    </style>
 
-        {# Vendored locally so CSP can stay `default-src 'self'`. Plugins must
-        load before Alpine core - defer preserves this script-tag order. #}
-        <script
-            defer
-            src="{{ url_for('static', filename='js/vendor/alpine-collapse.min.js') }}"
-        ></script>
-        <script
-            defer
-            src="{{ url_for('static', filename='js/vendor/alpine-focus.min.js') }}"
-        ></script>
-        <script
-            defer
-            src="{{ url_for('static', filename='js/vendor/alpine-anchor.min.js') }}"
-        ></script>
-        {# Page-specific Alpine components load here — BEFORE alpine.min.js so
-        their alpine:init listeners are registered before Alpine fires the event.
-        All deferred scripts execute in document order after DOM parsing. #}
-        {% block scripts %}{% endblock %}
-        {# Universal runtime: ui-runtime + toast + file-validate + pageSearch Alpine component. #}
-        <script
-            defer
-            src="{{ url_for('static', filename='js/runtime.js') }}"
-        ></script>
-        {# @alpinejs/csp build — no 'unsafe-eval' needed; works under strict CSP. #}
-        <script
-            defer
-            src="{{ url_for('static', filename='js/vendor/alpine.min.js') }}"
-        ></script>
-        <script src="{{ url_for('static', filename='js/vendor/htmx.min.js') }}"></script>
-        {% block head %}{% endblock %}
-    </head>
-    <body class="min-h-screen bg-background text-foreground antialiased">
-        {% block body %}{% endblock %}
-    </body>
+    {# One small shared runtime: theme, CSRF, UI macros, toast and file validation. #}
+    <script src="{{ url_for('static', filename='js/app.js') }}?v={{ asset_version('js/app.js') }}"></script>
+    {% block scripts %}{% endblock %}
+
+    {% block head %}{% endblock %}
+  </head>
+  <body class="min-h-screen bg-background text-foreground antialiased">
+    {% block body %}{% endblock %}
+    {% block body_scripts %}{% endblock %}
+  </body>
 </html>

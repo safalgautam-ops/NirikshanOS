@@ -1,6 +1,6 @@
 {% extends "layouts/base.html" %}
 {% block title %}Instances — NirikshanOS{% endblock %}
-{% block scripts %}<script defer src="{{ url_for('static', filename='js/pages/admin/instances-list.js') }}"></script>{% endblock %}
+
 
 {% from "dashboard/components/sidebar.html" import sidebar %}
 {% from "dashboard/components/topbar.html" import topbar %}
@@ -13,25 +13,17 @@
 {% from "components/ui/select-native.html" import select_native %}
 
 {% block body %}
-<div x-data="instancesPage()">
+<div data-instances-page>
 
   {{ sidebar(active="admin_instances", visible_keys=visible_keys) }}
 
   <div class="flex flex-col md:pl-60">
     {{ topbar("Instances") }}
 
-    <main class="flex-1 overflow-y-auto p-6 space-y-8">
+    <main class="flex-1 overflow-y-auto p-6 space-y-4">
 
-      <div class="flex items-start justify-between gap-4">
-        <div>
-          <h1 class="text-xl font-semibold">Registered Instances</h1>
-          <p class="mt-1 text-sm text-muted-foreground">
-            Container runtimes tools can be assigned to. Build the image on the host first
-            (<code class="font-mono bg-muted px-1 rounded">docker build -t &lt;image_tag&gt; &lt;path&gt;</code>),
-            then register it here and click Recheck.
-          </p>
-        </div>
-        {% call button(attrs={"@click": "openDialog()"}) %}
+      <div class="flex items-start justify-end gap-4">
+        {% call button(attrs={"data-instance-new": true}) %}
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
           New Instance
         {% endcall %}
@@ -47,7 +39,7 @@
           {{ empty_description(text="Register the container runtime your tools should run in.") }}
         {% endcall %}
         {% call empty_content() %}
-          {% call button(attrs={"@click": "openDialog()"}) %}Register Instance{% endcall %}
+          {% call button(attrs={"data-instance-new": true}) %}Register Instance{% endcall %}
         {% endcall %}
       {% endcall %}
 
@@ -89,16 +81,16 @@
           {% call card_footer() %}
             <div class="flex flex-col gap-2 w-full">
               <div class="flex gap-2">
-                {% call button(variant="outline", size="sm", class="flex-1", attrs={"@click": "recheck('%s')" % inst.id}) %}Recheck{% endcall %}
-                {% call button(variant="outline", size="sm", class="flex-1", attrs={"@click": "openDialog(%s)" % (inst | tojson)}) %}Edit{% endcall %}
+                {% call button(variant="outline", size="sm", class="flex-1", attrs={"data-instance-recheck": inst.id}) %}Recheck{% endcall %}
+                {% call button(variant="outline", size="sm", class="flex-1", attrs={"data-instance-edit": inst|tojson|forceescape}) %}Edit{% endcall %}
               </div>
               <div class="flex gap-2">
                 {% if inst.is_active %}
-                {% call button(variant="outline", size="sm", class="flex-1", attrs={"@click": "toggleActive(%s)" % (inst | tojson)}) %}Deactivate{% endcall %}
+                {% call button(variant="outline", size="sm", class="flex-1", attrs={"data-instance-toggle": inst|tojson|forceescape}) %}Deactivate{% endcall %}
                 {% else %}
-                {% call button(variant="outline", size="sm", class="flex-1", attrs={"@click": "toggleActive(%s)" % (inst | tojson)}) %}Activate{% endcall %}
+                {% call button(variant="outline", size="sm", class="flex-1", attrs={"data-instance-toggle": inst|tojson|forceescape}) %}Activate{% endcall %}
                 {% endif %}
-                {% call button(variant="destructive-outline", size="sm", class="flex-1", attrs={"@click": "openDeleteDialog(%s)" % (inst | tojson)}) %}Delete{% endcall %}
+                {% call button(variant="destructive-outline", size="sm", class="flex-1", attrs={"data-instance-delete-open": inst|tojson|forceescape}) %}Delete{% endcall %}
               </div>
             </div>
           {% endcall %}
@@ -110,138 +102,66 @@
   </div>
 
   {# ── Create/Edit Instance dialog ──────────────────────────────────────────── #}
-  <template x-if="open">
-    <div class="fixed inset-0 z-50 flex items-center justify-center p-4" @keydown.escape.window="open = false">
-      <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="open = false"></div>
-
-      <div class="relative z-10 w-full max-w-md rounded-xl border bg-card shadow-xl overflow-hidden">
-
-        <div class="flex items-center justify-between border-b px-6 py-4">
-          <div>
-            <h2 class="font-semibold text-base" x-text="editingId ? 'Edit Instance' : 'New Instance'"></h2>
-            <p class="text-xs text-muted-foreground mt-0.5">The image must already exist on the host's Docker daemon.</p>
-          </div>
-          {% call button(variant="ghost", size="icon-sm", attrs={"@click": "open = false"}) %}
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" x2="6" y1="6" y2="18"/><line x1="6" x2="18" y1="6" y2="18"/></svg>
-          {% endcall %}
+  <div data-instance-dialog hidden class="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" data-instance-close></div>
+    <div class="relative z-10 w-full max-w-md rounded-xl border bg-card shadow-xl overflow-hidden">
+      <div class="flex items-center justify-between border-b px-6 py-4">
+        <div><h2 class="font-semibold text-base" data-instance-title>New Instance</h2><p class="text-xs text-muted-foreground mt-0.5">The image must already exist on the host's Docker daemon.</p></div>
+        {% call button(variant="ghost", size="icon-sm", attrs={"data-instance-close": true}) %}<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" x2="6" y1="6" y2="18"/><line x1="6" x2="18" y1="6" y2="18"/></svg>{% endcall %}
+      </div>
+      <div class="px-6 py-5 space-y-4">
+        <p data-instance-error hidden class="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive"></p>
+        <div class="grid grid-cols-2 gap-4">
+          <div class="space-y-1.5">{{ label(text="Instance ID", for_id="inst-id") }}{{ input(type="text", placeholder="base_python", attrs={"id":"inst-id","data-instance-field":"id","autocomplete":"off"}) }}</div>
+          <div class="space-y-1.5">{{ label(text="Display Name", for_id="inst-name") }}{{ input(type="text", placeholder="Base Python", attrs={"id":"inst-name","data-instance-field":"display_name"}) }}</div>
         </div>
-
-        <div class="px-6 py-5 space-y-4">
-          <template x-if="error">
-            <p class="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive" x-text="error"></p>
-          </template>
-
-          <div class="grid grid-cols-2 gap-4">
-            <div class="space-y-1.5">
-              {{ label(text="Instance ID", for_id="inst-id") }}
-              {{ input(type="text", placeholder="base_python", attrs={"id": "inst-id", "x-model": "form.id", ":disabled": "!!editingId", "autocomplete": "off"}) }}
-            </div>
-            <div class="space-y-1.5">
-              {{ label(text="Display Name", for_id="inst-name") }}
-              {{ input(type="text", placeholder="Base Python", attrs={"id": "inst-name", "x-model": "form.display_name"}) }}
-            </div>
-          </div>
-
-          <div class="space-y-1.5">
-            {{ label(text="Image Tag", for_id="inst-img") }}
-            {{ input(type="text", placeholder="nirikshan/base:1.0", attrs={"id": "inst-img", "x-model": "form.image_tag"}) }}
-          </div>
-
-          <div class="grid grid-cols-3 gap-4">
-            <div class="space-y-1.5">
-              {{ label(text="CPU limit", for_id="inst-cpu") }}
-              {{ input(type="text", placeholder="1.0", attrs={"id": "inst-cpu", "x-model": "form.cpu_limit"}) }}
-            </div>
-            <div class="space-y-1.5">
-              {{ label(text="Memory", for_id="inst-mem") }}
-              {{ input(type="text", placeholder="512m", attrs={"id": "inst-mem", "x-model": "form.memory_limit"}) }}
-            </div>
-            <div class="space-y-1.5">
-              {{ label(text="PIDs", for_id="inst-pids") }}
-              {{ input(type="text", placeholder="128", attrs={"id": "inst-pids", "x-model": "form.pids_limit"}) }}
-            </div>
-          </div>
-
-          <div class="grid grid-cols-2 gap-4">
-            <div class="space-y-1.5">
-              {{ label(text="Queue", for_id="inst-queue") }}
-              {% call select_native(name="queue_name", attrs={"id": "inst-queue", "x-model": "form.queue_name"}) %}
-                <option value="light_queue">light_queue</option>
-                <option value="medium_queue">medium_queue</option>
-                <option value="heavy_queue">heavy_queue</option>
-                <option value="full_queue">full_queue</option>
-              {% endcall %}
-            </div>
-            <div class="space-y-1.5">
-              {{ label(text="Timeout (s)", for_id="inst-timeout") }}
-              {{ input(type="text", placeholder="120", attrs={"id": "inst-timeout", "x-model": "form.default_timeout_seconds"}) }}
-            </div>
-          </div>
+        <div class="space-y-1.5">{{ label(text="Image Tag", for_id="inst-img") }}{{ input(type="text", placeholder="nirikshan/base:1.0", attrs={"id":"inst-img","data-instance-field":"image_tag"}) }}</div>
+        <div class="grid grid-cols-3 gap-4">
+          <div class="space-y-1.5">{{ label(text="CPU limit", for_id="inst-cpu") }}{{ input(type="text", placeholder="1.0", attrs={"id":"inst-cpu","data-instance-field":"cpu_limit"}) }}</div>
+          <div class="space-y-1.5">{{ label(text="Memory", for_id="inst-mem") }}{{ input(type="text", placeholder="512m", attrs={"id":"inst-mem","data-instance-field":"memory_limit"}) }}</div>
+          <div class="space-y-1.5">{{ label(text="PIDs", for_id="inst-pids") }}{{ input(type="text", placeholder="128", attrs={"id":"inst-pids","data-instance-field":"pids_limit"}) }}</div>
         </div>
-
-        <div class="flex justify-end gap-2 border-t px-6 py-4">
-          {% call button(variant="outline", attrs={"@click": "open = false"}) %}Cancel{% endcall %}
-          {% call button(attrs={"@click": "submit()", ":disabled": "saving"}) %}
-            <span x-text="saving ? 'Saving…' : (editingId ? 'Save' : 'Register')"></span>
-          {% endcall %}
+        <div class="grid grid-cols-2 gap-4">
+          <div class="space-y-1.5">{{ label(text="Queue", for_id="inst-queue") }}{% call select_native(name="queue_name", attrs={"id":"inst-queue","data-instance-field":"queue_name"}) %}<option value="light_queue">light_queue</option><option value="medium_queue">medium_queue</option><option value="heavy_queue">heavy_queue</option><option value="full_queue">full_queue</option>{% endcall %}</div>
+          <div class="space-y-1.5">{{ label(text="Timeout (s)", for_id="inst-timeout") }}{{ input(type="text", placeholder="120", attrs={"id":"inst-timeout","data-instance-field":"default_timeout_seconds"}) }}</div>
         </div>
-
+      </div>
+      <div class="flex justify-end gap-2 border-t px-6 py-4">
+        {% call button(variant="outline", attrs={"data-instance-close": true}) %}Cancel{% endcall %}
+        {% call button(attrs={"data-instance-save": true}) %}<span data-instance-save-label>Register</span>{% endcall %}
       </div>
     </div>
-  </template>
+  </div>
 
-  {# ── Delete confirmation dialog — shows the blast radius before committing ── #}
-  <template x-if="deleteOpen">
-    <div class="fixed inset-0 z-50 flex items-center justify-center p-4" @keydown.escape.window="deleteOpen = false">
-      <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="deleteOpen = false"></div>
-
-      <div class="relative z-10 w-full max-w-sm rounded-xl border bg-card shadow-xl overflow-hidden">
-
-        <div class="flex items-center justify-between border-b px-6 py-4">
-          <h2 class="font-semibold text-base">Delete <span x-text="deleteTarget?.display_name"></span>?</h2>
-          {% call button(variant="ghost", size="icon-sm", attrs={"@click": "deleteOpen = false"}) %}
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" x2="6" y1="6" y2="18"/><line x1="6" x2="18" y1="6" y2="18"/></svg>
-          {% endcall %}
+  {# ── Delete confirmation dialog ───────────────────────────────────────────── #}
+  <div data-instance-delete-dialog hidden class="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" data-instance-delete-close></div>
+    <div class="relative z-10 w-full max-w-sm rounded-xl border bg-card shadow-xl overflow-hidden">
+      <div class="flex items-center justify-between border-b px-6 py-4">
+        <h2 class="font-semibold text-base">Delete <span data-instance-delete-name></span>?</h2>
+        {% call button(variant="ghost", size="icon-sm", attrs={"data-instance-delete-close": true}) %}<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" x2="6" y1="6" y2="18"/><line x1="6" x2="18" y1="6" y2="18"/></svg>{% endcall %}
+      </div>
+      <div class="px-6 py-5 space-y-3">
+        <p data-instance-delete-error hidden class="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive"></p>
+        <p data-instance-delete-loading class="text-sm text-muted-foreground">Checking what uses this instance…</p>
+        <div data-instance-delete-usage hidden class="space-y-2">
+          <div data-instance-test-runs-block hidden class="space-y-2">
+            <p class="text-sm text-destructive">Can't delete — <span data-instance-test-runs></span> test run(s) reference this instance.</p>
+            {% call button(variant="outline", size="sm", attrs={"data-instance-clear-runs": true}) %}<span data-instance-clear-label>Clear test run history</span>{% endcall %}
+          </div>
+          <p data-instance-delete-impact class="text-sm text-muted-foreground"></p>
         </div>
-
-        <div class="px-6 py-5 space-y-3">
-          <template x-if="deleteError">
-            <p class="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive" x-text="deleteError"></p>
-          </template>
-
-          <template x-if="deleteLoadingUsage">
-            <p class="text-sm text-muted-foreground">Checking what uses this instance…</p>
-          </template>
-
-          <template x-if="!deleteLoadingUsage && deleteUsage">
-            <div class="space-y-2">
-              <template x-if="deleteUsage.test_runs > 0">
-                <div class="space-y-2">
-                  <p class="text-sm text-destructive">
-                    Can't delete — <span x-text="deleteUsage.test_runs"></span> test run(s) reference this instance.
-                  </p>
-                  {% call button(variant="outline", size="sm", attrs={"@click": "clearTestRuns()", ":disabled": "clearingRuns"}) %}
-                    <span x-text="clearingRuns ? 'Clearing…' : 'Clear test run history'"></span>
-                  {% endcall %}
-                </div>
-              </template>
-              <template x-if="deleteUsage.test_runs === 0">
-                <p class="text-sm text-muted-foreground" x-text="deleteImpactText()"></p>
-              </template>
-            </div>
-          </template>
-        </div>
-
-        <div class="flex justify-end gap-2 border-t px-6 py-4">
-          {% call button(variant="outline", attrs={"@click": "deleteOpen = false"}) %}Cancel{% endcall %}
-          {% call button(variant="destructive", attrs={"@click": "confirmDelete()", ":disabled": "deleteLoadingUsage || deleteConfirming || (deleteUsage && deleteUsage.test_runs > 0)"}) %}
-            <span x-text="deleteConfirming ? 'Deleting…' : 'Delete'"></span>
-          {% endcall %}
-        </div>
-
+      </div>
+      <div class="flex justify-end gap-2 border-t px-6 py-4">
+        {% call button(variant="outline", attrs={"data-instance-delete-close": true}) %}Cancel{% endcall %}
+        {% call button(variant="destructive", attrs={"data-instance-delete-confirm": true}) %}<span data-instance-delete-label>Delete</span>{% endcall %}
       </div>
     </div>
-  </template>
+  </div>
 
 </div>
+{% endblock %}
+
+{% block body_scripts %}
+<script src="{{ url_for('static', filename='js/pages/admin-instances.js') }}"></script>
 {% endblock %}

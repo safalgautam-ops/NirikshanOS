@@ -1,6 +1,6 @@
 {% extends "layouts/base.html" %}
 {% block title %}Modules — NirikshanOS{% endblock %}
-{% block scripts %}<script defer src="{{ url_for('static', filename='js/pages/admin/modules-list.js') }}?v={{ asset_version('js/pages/admin/modules-list.js') }}"></script>{% endblock %}
+
 
 {% from "dashboard/components/sidebar.html" import sidebar %}
 {% from "dashboard/components/topbar.html" import topbar %}
@@ -16,22 +16,18 @@
 
 {% block body %}
 {# Wrap everything in createModuleDialog so the top-bar button and the dialog share scope #}
-<div x-data="createModuleDialog()">
+<div data-modules-page>
 
   {{ sidebar(active="admin_modules", visible_keys=visible_keys) }}
 
   <div class="flex flex-col md:pl-60">
     {{ topbar("Modules") }}
 
-    <main class="flex-1 overflow-y-auto p-6 space-y-8">
+    <main class="flex-1 overflow-y-auto p-6 space-y-4">
 
       {# Page header #}
-      <div class="flex items-start justify-between gap-4">
-        <div>
-          <h1 class="text-xl font-semibold">Modules Available</h1>
-          <p class="mt-1 text-sm text-muted-foreground">Custom analysis tools. Click a module to open its full IDE.</p>
-        </div>
-        {% call button(attrs={"@click": "openDialog()"}) %}
+      <div class="flex items-start justify-end gap-4">
+        {% call button(attrs={"data-module-new": true}) %}
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
           New Module
         {% endcall %}
@@ -48,7 +44,7 @@
           {{ empty_description(text="Create your first custom analysis module to get started.") }}
         {% endcall %}
         {% call empty_content() %}
-          {% call button(attrs={"@click": "openDialog()"}) %}Create Module{% endcall %}
+          {% call button(attrs={"data-module-new": true}) %}Create Module{% endcall %}
         {% endcall %}
       {% endcall %}
 
@@ -114,88 +110,36 @@
   </div>
 
   {# ── Create Module dialog ──────────────────────────────────────────────────── #}
-  <template x-if="open">
-    <div class="fixed inset-0 z-50 flex items-center justify-center p-4" @keydown.escape.window="open = false">
-      <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="open = false"></div>
-
-      <div class="relative z-10 w-full max-w-md rounded-xl border bg-card shadow-xl overflow-hidden">
-
-        <div class="flex items-center justify-between border-b px-6 py-4">
-          <div>
-            <h2 class="font-semibold text-base">New Module</h2>
-            <p class="text-xs text-muted-foreground mt-0.5">You can add files in the IDE after creation.</p>
-          </div>
-          {% call button(variant="ghost", size="icon-sm", attrs={"@click": "open = false"}) %}
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" x2="6" y1="6" y2="18"/><line x1="6" x2="18" y1="6" y2="18"/></svg>
-          {% endcall %}
+  <div data-module-dialog hidden class="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" data-module-close></div>
+    <div class="relative z-10 w-full max-w-md rounded-xl border bg-card shadow-xl overflow-hidden">
+      <div class="flex items-center justify-between border-b px-6 py-4">
+        <div><h2 class="font-semibold text-base">New Module</h2><p class="text-xs text-muted-foreground mt-0.5">You can add files in the IDE after creation.</p></div>
+        {% call button(variant="ghost", size="icon-sm", attrs={"data-module-close": true}) %}<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" x2="6" y1="6" y2="18"/><line x1="6" x2="18" y1="6" y2="18"/></svg>{% endcall %}
+      </div>
+      <div class="px-6 py-5 space-y-4">
+        <p data-module-error hidden class="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive"></p>
+        <div class="grid grid-cols-2 gap-4">
+          <div class="space-y-1.5">{{ label(text="Module ID", for_id="mod-id") }}{{ input(type="text", placeholder="my_module", attrs={"id":"mod-id","data-module-field":"id","autocomplete":"off"}) }}<p class="text-[11px] text-muted-foreground">Lowercase, underscores or hyphens</p></div>
+          <div class="space-y-1.5">{{ label(text="Display Name", for_id="mod-name") }}{{ input(type="text", placeholder="My Module", attrs={"id":"mod-name","data-module-field":"display_name"}) }}</div>
         </div>
-
-        <div class="px-6 py-5 space-y-4">
-          <template x-if="error">
-            <p class="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive" x-text="error"></p>
-          </template>
-
-          <div class="grid grid-cols-2 gap-4">
-            <div class="space-y-1.5">
-              {{ label(text="Module ID", for_id="mod-id") }}
-              {{ input(type="text", placeholder="my_module", attrs={"id": "mod-id", "x-model": "form.id", "autocomplete": "off"}) }}
-              <p class="text-[11px] text-muted-foreground">Lowercase, underscores or hyphens</p>
-            </div>
-            <div class="space-y-1.5">
-              {{ label(text="Display Name", for_id="mod-name") }}
-              {{ input(type="text", placeholder="My Module", attrs={"id": "mod-name", "x-model": "form.display_name"}) }}
-            </div>
-          </div>
-
-          <div class="space-y-1.5">
-            {{ label(text="Description", for_id="mod-desc") }}
-            {{ textarea(placeholder="What this module does…", rows=2, attrs={"id": "mod-desc", "x-model": "form.description"}) }}
-          </div>
-
-          <div class="grid grid-cols-2 gap-4">
-            <div class="space-y-1.5">
-              {{ label(text="Category", for_id="mod-cat") }}
-              {% call select_native(name="category_id", attrs={"id": "mod-cat", "x-model": "form.category_id"}) %}
-                <option value="">Uncategorized</option>
-                {% for cat in categories %}
-                <option value="{{ cat.id }}">{{ cat.name }}</option>
-                {% endfor %}
-              {% endcall %}
-            </div>
-            <div class="space-y-1.5">
-              {{ label(text="Tier", for_id="mod-tier") }}
-              {% call select_native(name="tier", attrs={"id": "mod-tier", "x-model": "form.tier"}) %}
-                {% for t in known_tiers %}
-                <option value="{{ t }}">{{ t.replace("_", " ").title() }}</option>
-                {% endfor %}
-              {% endcall %}
-            </div>
-          </div>
-
-          <div class="space-y-1.5">
-            {{ label(text="Instance", for_id="mod-instance") }}
-            {% if not instances %}
-            <p class="text-xs text-destructive">No active instances registered — <a class="underline" href="{{ url_for('instances.list_view') }}">register one</a> before creating a module.</p>
-            {% else %}
-            {% call select_native(name="instance_id", attrs={"id": "mod-instance", "x-model": "form.instance_id"}) %}
-              {% for inst in instances %}
-              <option value="{{ inst.id }}">{{ inst.display_name }} ({{ inst.image_tag }})</option>
-              {% endfor %}
-            {% endcall %}
-            {% endif %}
-          </div>
+        <div class="space-y-1.5">{{ label(text="Description", for_id="mod-desc") }}{{ textarea(placeholder="What this module does…", rows=2, attrs={"id":"mod-desc","data-module-field":"description"}) }}</div>
+        <div class="grid grid-cols-2 gap-4">
+          <div class="space-y-1.5">{{ label(text="Category", for_id="mod-cat") }}{% call select_native(name="category_id", attrs={"id":"mod-cat","data-module-field":"category_id"}) %}<option value="">Uncategorized</option>{% for cat in categories %}<option value="{{ cat.id }}">{{ cat.name }}</option>{% endfor %}{% endcall %}</div>
+          <div class="space-y-1.5">{{ label(text="Tier", for_id="mod-tier") }}{% call select_native(name="tier", attrs={"id":"mod-tier","data-module-field":"tier"}) %}{% for t in known_tiers %}<option value="{{ t }}">{{ t.replace("_", " ").title() }}</option>{% endfor %}{% endcall %}</div>
         </div>
-
-        <div class="flex justify-end gap-2 border-t px-6 py-4">
-          {% call button(variant="outline", attrs={"@click": "open = false"}) %}Cancel{% endcall %}
-          {% call button(attrs={"@click": "submit()", ":disabled": "saving"}) %}
-            <span x-text="saving ? 'Creating…' : 'Create Module'"></span>
-          {% endcall %}
-        </div>
-
+        <div class="space-y-1.5">{{ label(text="Instance", for_id="mod-instance") }}{% if not instances %}<p class="text-xs text-destructive">No active instances registered — <a class="underline" href="{{ url_for('instances.list_view') }}">register one</a> before creating a module.</p>{% else %}{% call select_native(name="instance_id", attrs={"id":"mod-instance","data-module-field":"instance_id"}) %}{% for inst in instances %}<option value="{{ inst.id }}">{{ inst.display_name }} ({{ inst.image_tag }})</option>{% endfor %}{% endcall %}{% endif %}</div>
+      </div>
+      <div class="flex justify-end gap-2 border-t px-6 py-4">
+        {% call button(variant="outline", attrs={"data-module-close": true}) %}Cancel{% endcall %}
+        {% call button(attrs={"data-module-save": true}) %}<span data-module-save-label>Create Module</span>{% endcall %}
       </div>
     </div>
-  </template>
+  </div>
 
 </div>
+{% endblock %}
+
+{% block body_scripts %}
+<script src="{{ url_for('static', filename='js/pages/admin-modules.js') }}?v={{ asset_version('js/pages/admin-modules.js') }}"></script>
 {% endblock %}

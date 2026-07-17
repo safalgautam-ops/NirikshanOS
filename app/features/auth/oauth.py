@@ -12,7 +12,7 @@ import secrets
 from urllib.parse import urlencode
 
 import httpx
-from quart import current_app
+from flask import current_app
 
 from app.extensions import get_redis
 

@@ -1,18 +1,18 @@
 {% extends "layouts/base.html" %}
+{% import "components/ui/button.html" as button_ui %}
+{% import "components/ui/input.html" as input_ui %}
+{% import "components/ui/select-native.html" as select_ui %}
+{% import "components/ui/textarea.html" as textarea_ui %}
+
 {% block title %}{{ module.display_name }} — IDE{% endblock %}
-{% block scripts %}<script defer src="{{ url_for('static', filename='js/pages/admin/module-ide.js') }}?v={{ asset_version('js/pages/admin/module-ide.js') }}"></script>{% endblock %}
+
 
 {% from "dashboard/components/sidebar.html" import sidebar %}
 {% from "components/ui/button.html" import button, button_link %}
 {% from "components/ui/badge.html" import badge %}
 {% from "components/ui/separator.html" import separator %}
 {% from "components/ui/label.html" import label %}
-{% from "components/ui/input.html" import input %}
-{% from "components/ui/textarea.html" import textarea %}
-{% from "components/ui/select-native.html" import select_native %}
 
-{# CodeMirror vendored locally — no CDN, no CSP issues. Scripts are synchronous
-   (no defer) so window.CodeMirror is defined before Alpine's deferred init fires. #}
 {% block head %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/vendor/codemirror.min.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/vendor/cm-material-darker.css') }}">
@@ -21,456 +21,85 @@
 <script src="{{ url_for('static', filename='js/vendor/cm-mode-yaml.js') }}"></script>
 <script src="{{ url_for('static', filename='js/vendor/cm-mode-shell.js') }}"></script>
 <script src="{{ url_for('static', filename='js/vendor/cm-mode-javascript.js') }}"></script>
-<style>
-  .CodeMirror        { height: 100% !important; font-size: 13px; font-family: 'JetBrains Mono', ui-monospace, monospace; }
-  .CodeMirror-scroll { height: 100% !important; }
-</style>
+<style>.CodeMirror{height:100%!important;font-size:13px;font-family:'JetBrains Mono',ui-monospace,monospace}.CodeMirror-scroll{height:100%!important}</style>
 {% endblock %}
 
 {% block body %}
 {{ sidebar(active="admin_modules", visible_keys=visible_keys) }}
+<script type="application/json" id="module-ide-data">{{ {
+  "moduleId": module.id,
+  "files": files,
+  "schema": module.options_schema,
+  "pipeline": module.pipeline_spec,
+  "meta": module_meta,
+  "instances": instances_for_js
+}|tojson }}</script>
 
-{# Full-height IDE layout offset by sidebar #}
-<div class="flex flex-col md:pl-60 h-screen overflow-hidden"
-     x-data="ideEditor({{ module.id | tojson | forceescape }}, {{ module.options_schema | tojson | forceescape }}, {{ module_meta | tojson | forceescape }}, {{ instances_for_js | tojson | forceescape }}, {{ module.pipeline_spec | tojson | forceescape }})"
-     @file-opened.window="loadFileContent($event.detail)">
-
-  {# ── Topbar ──────────────────────────────────────────────────────────────── #}
+<div class="flex flex-col md:pl-60 h-screen overflow-hidden" data-module-ide>
   <div class="flex h-12 shrink-0 items-center gap-2 border-b bg-background px-3 overflow-x-auto">
-
-    {% call button_link(href=url_for('admin_modules.list_view'), variant="ghost", size="sm") %}
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m15 18-6-6 6-6"/></svg>
-      Modules
-    {% endcall %}
-
+    {% call button_link(href=url_for('admin_modules.list_view'), variant="ghost", size="sm") %}<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m15 18-6-6 6-6"/></svg>Modules{% endcall %}
     {{ separator(orientation="vertical", class="h-5 mx-1") }}
-
     <span class="font-semibold text-sm truncate">{{ module.display_name }}</span>
     {{ badge(text=module.source, variant="outline") }}
-    <span x-text="settings.tier" class="inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium"></span>
-    {% if module.is_enabled %}
-      {{ badge(text="enabled", variant="success") }}
-    {% else %}
-      {{ badge(text="disabled", variant="warning") }}
-    {% endif %}
-
+    <span id="ide-tier-badge" class="inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium">{{ module.tier }}</span>
+    {% if module.is_enabled %}{{ badge(text="enabled", variant="success") }}{% else %}{{ badge(text="disabled", variant="warning") }}{% endif %}
     <span class="flex-1 min-w-2"></span>
-
-    <span x-show="flash" x-text="flash" class="text-xs text-muted-foreground shrink-0 px-1" x-cloak></span>
-    <span x-show="isDirty && !flash" class="text-xs text-amber-500 shrink-0 px-1">Unsaved</span>
-
-    {% call button(variant="outline", size="sm", attrs={"@click": "openTestDialog()"}) %}
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-      Test
-    {% endcall %}
-
-    {% call button(size="sm", attrs={"@click": "save()", ":disabled": "saving || (editorTab === 'code' && !activeFileId)"}) %}
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
-      <span x-text="saving ? 'Saving…' : 'Save'"></span>
-    {% endcall %}
-
-    {% if module.is_enabled %}
-      {% call button(variant="destructive-outline", size="sm", attrs={"@click": "toggleEnabled()"}) %}Disable{% endcall %}
-    {% else %}
-      {% call button(variant="outline", size="sm", attrs={"@click": "toggleEnabled()"}) %}Enable{% endcall %}
-    {% endif %}
-
+    <span id="ide-flash" class="text-xs text-muted-foreground shrink-0 px-1" hidden></span>
+    <span id="ide-dirty" class="text-xs text-amber-500 shrink-0 px-1" hidden>Unsaved</span>
+    {% call button(variant="outline", size="sm", attrs={"data-ide-test":""}) %}<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>Test{% endcall %}
+    {% call button(size="sm", attrs={"data-ide-save":""}) %}<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/></svg><span data-ide-save-label>Save</span>{% endcall %}
+    {% if module.is_enabled %}{% call button(variant="destructive-outline", size="sm", attrs={"data-ide-toggle":""}) %}Disable{% endcall %}{% else %}{% call button(variant="outline", size="sm", attrs={"data-ide-toggle":""}) %}Enable{% endcall %}{% endif %}
   </div>
 
-  {# ── Body: file tree + editor ─────────────────────────────────────────────── #}
   <div class="flex flex-1 overflow-hidden min-h-0">
-
-    {# ── File tree ─────────────────────────────────────────────────────────── #}
-    <div class="flex w-52 shrink-0 flex-col border-r bg-muted/20 overflow-hidden"
-         x-data="fileTree({{ module.id | tojson | forceescape }}, {{ files | tojson | forceescape }})">
-
-      <div class="flex h-10 shrink-0 items-center justify-between border-b px-3">
-        <span class="text-xs font-semibold uppercase tracking-wide text-muted-foreground select-none">Files</span>
-        {% call button(variant="ghost", size="icon-xs", attrs={"@click": "promptNewFile()", "title": "New file"}) %}
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
-        {% endcall %}
+    <aside class="flex w-52 shrink-0 flex-col border-r bg-muted/20 overflow-hidden">
+      <div class="flex h-10 shrink-0 items-center justify-between border-b px-3"><span class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Files</span>{% call button(variant="ghost", size="icon-xs", attrs={"data-file-new":"", "title":"New file"}) %}+{% endcall %}</div>
+      <div id="ide-file-list" class="flex-1 min-h-0 overflow-y-auto py-1"></div>
+      <div id="ide-new-file" class="border-t p-2 space-y-1.5 shrink-0" hidden>
+        {{ input_ui.input(type="text", bare=true, placeholder="main.py", class="w-full rounded-md border bg-background px-2 py-1.5 text-xs font-mono", attrs={"id":"ide-new-filename"}) }}
+        <div class="flex gap-1">{% call button(size="xs", class="flex-1", attrs={"data-file-create":""}) %}Create{% endcall %}{% call button(variant="outline", size="xs", class="flex-1", attrs={"data-file-new-cancel":""}) %}Cancel{% endcall %}</div>
+        <p id="ide-new-file-error" class="text-[11px] text-destructive" hidden></p>
       </div>
+    </aside>
 
-      <div class="flex-1 min-h-0 overflow-y-auto py-1">
-        <template x-if="fileList.length === 0 && !showNewFile">
-          <p class="px-3 py-6 text-xs text-muted-foreground text-center">No files yet.<br>Click + to create one.</p>
-        </template>
-
-        <template x-for="f in fileList" :key="f.id">
-          <div class="group flex items-center gap-1.5 px-2 py-1.5 rounded-md mx-1 cursor-pointer transition-colors"
-               :class="activeFileId === f.id ? 'bg-accent text-accent-foreground' : 'text-foreground hover:bg-accent/60'"
-               @click="openFile(f.id)">
-
-            <span class="shrink-0 w-5 text-center text-[11px] font-mono text-muted-foreground select-none"
-                  x-text="fileIcon(f.filename)"></span>
-
-            <span class="flex-1 min-w-0 truncate text-xs font-mono" x-text="f.filename"></span>
-
-            <template x-if="f.is_entry_point">
-              <svg class="size-3 shrink-0 text-amber-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
-                <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
-              </svg>
-            </template>
-
-            <div class="flex shrink-0 items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-              <template x-if="!f.is_entry_point">
-                <button @click.stop="setEntryPoint(f.id)"
-                        class="rounded p-0.5 text-muted-foreground hover:text-amber-400 hover:bg-amber-400/10"
-                        title="Set entry point">
-                  <svg class="size-3" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
-                  </svg>
-                </button>
-              </template>
-              <button @click.stop="deleteFile(f.id, f.filename)"
-                      class="rounded p-0.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                      title="Delete file">
-                <svg class="size-3" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/>
-                  <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>
-                </svg>
-              </button>
-            </div>
-          </div>
-        </template>
-      </div>
-
-      {# New-file inline input #}
-      <div x-show="showNewFile" class="border-t p-2 space-y-1.5 shrink-0" x-cloak>
-        <input x-ref="newFilename"
-               x-model="newFilename"
-               placeholder="main.py"
-               class="w-full rounded-md border bg-background px-2 py-1.5 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-ring"
-               @keydown.enter="createFile()"
-               @keydown.escape="showNewFile = false">
-        <div class="flex gap-1">
-          {% call button(size="xs", class="flex-1", attrs={"@click": "createFile()"}) %}Create{% endcall %}
-          {% call button(variant="outline", size="xs", class="flex-1", attrs={"@click": "showNewFile = false"}) %}Cancel{% endcall %}
-        </div>
-        <p x-show="newFileError" x-text="newFileError" class="text-[11px] text-destructive"></p>
-      </div>
-
-    </div>
-
-    {# ── Editor panel ──────────────────────────────────────────────────────── #}
-    <div class="flex flex-1 min-w-0 flex-col overflow-hidden">
-
-      {# Tab strip #}
+    <section class="flex flex-1 min-w-0 flex-col overflow-hidden">
       <div class="flex shrink-0 items-center border-b bg-background px-3 gap-1">
-        <button class="px-3 py-2.5 text-xs font-medium border-b-2 transition-colors"
-                :class="editorTab === 'code' ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground'"
-                @click="switchTab('code')">
-          Code
-        </button>
-        <button class="px-3 py-2.5 text-xs font-medium border-b-2 transition-colors"
-                :class="editorTab === 'schema' ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground'"
-                @click="switchTab('schema')">
-          Parameters
-        </button>
-        <button class="px-3 py-2.5 text-xs font-medium border-b-2 transition-colors"
-                :class="editorTab === 'pipeline' ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground'"
-                @click="switchTab('pipeline')">
-          Pipeline
-        </button>
-        <button class="px-3 py-2.5 text-xs font-medium border-b-2 transition-colors"
-                :class="editorTab === 'settings' ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground'"
-                @click="switchTab('settings')">
-          Settings
-        </button>
-        <span class="flex-1"></span>
-        <code class="text-[11px] text-muted-foreground font-mono mr-2" x-text="instanceLabel"></code>
-        <span x-show="activeFilename && editorTab === 'code'" x-text="activeFilename"
-              class="text-[11px] text-muted-foreground font-mono border-l pl-2"></span>
+        {% for tab, label_text in [("code","Code"),("schema","Parameters"),("pipeline","Pipeline"),("settings","Settings")] %}{% call button_ui.button(type="button", unstyled=true, class="px-3 py-2.5 text-xs font-medium border-b-2 " ~ ("border-primary" if tab == "code" else "border-transparent text-muted-foreground"), attrs={"data-ide-tab":tab}) %}{{ label_text }}{% endcall %}{% endfor %}
+        <span class="flex-1"></span><code id="ide-instance-label" class="text-[11px] text-muted-foreground font-mono mr-2"></code><span id="ide-active-filename" class="text-xs text-muted-foreground font-mono" hidden></span>
       </div>
 
-      {# Code editor #}
-      <div class="flex-1 min-h-0 overflow-hidden relative" x-show="editorTab === 'code'">
-        <div id="cm-wrapper" class="absolute inset-0"></div>
-        <div class="absolute inset-0 flex flex-col items-center justify-center gap-3 pointer-events-none"
-             x-show="!activeFileId">
-          <svg class="size-10 text-muted-foreground/25" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-            <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/>
-            <polyline points="14 2 14 8 20 8"/>
-          </svg>
-          <p class="text-sm text-muted-foreground">Select a file to edit</p>
+      <div class="flex-1 min-h-0 overflow-hidden relative" data-ide-panel="code"><div id="cm-wrapper" class="absolute inset-0"></div><div id="ide-no-file" class="absolute inset-0 flex items-center justify-center text-sm text-muted-foreground bg-background/80">Select or create a file.</div></div>
+      <div class="flex-1 min-h-0 flex flex-col overflow-hidden" data-ide-panel="schema" hidden><div class="px-4 py-2 border-b text-xs text-muted-foreground">JSON array describing user-configurable module options.</div><div id="cm-schema-wrapper" class="flex-1 min-h-0"></div><p id="ide-schema-error" class="px-4 py-2 text-xs text-destructive" hidden></p></div>
+      <div class="flex-1 min-h-0 flex flex-col overflow-hidden" data-ide-panel="pipeline" hidden><div class="px-4 py-2 border-b text-xs text-muted-foreground">JSON pipeline with a <code>steps</code> array.</div><div id="cm-pipeline-wrapper" class="flex-1 min-h-0"></div><p id="ide-pipeline-error" class="px-4 py-2 text-xs text-destructive" hidden></p></div>
+      <div class="flex-1 min-h-0 overflow-y-auto p-6" data-ide-panel="settings" hidden>
+        <div class="max-w-xl space-y-5">
+          <p id="ide-settings-error" class="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive" hidden></p>
+          <div class="grid gap-4 sm:grid-cols-2">
+            <div class="space-y-1.5">{{ label(text="Display Name") }}{{ input_ui.input(type="text", bare=true, class="w-full rounded-md border bg-background px-3 py-2 text-sm", attrs={"id":"ide-display-name"}) }}</div>
+            <div class="space-y-1.5">{{ label(text="Category") }}{% call select_ui.select_native(unstyled=true, class="w-full rounded-md border bg-background px-3 py-2 text-sm", attrs={"id":"ide-category"}) %}<option value="">Uncategorized</option>{% for category in categories %}<option value="{{ category.id }}">{{ category.name }}</option>{% endfor %}{% endcall %}</div>
+          </div>
+          <div class="space-y-1.5">{{ label(text="Description") }}{% call textarea_ui.textarea(bare=true, rows="3", class="w-full rounded-md border bg-background px-3 py-2 text-sm resize-none", attrs={"id":"ide-description"}) %}{% endcall %}</div>
+          <div class="grid gap-4 sm:grid-cols-2">
+            <div class="space-y-1.5">{{ label(text="Tier") }}{% call select_ui.select_native(unstyled=true, class="w-full rounded-md border bg-background px-3 py-2 text-sm", attrs={"id":"ide-tier"}) %}{% for tier in tiers %}<option value="{{ tier }}">{{ tier.replace('_',' ')|title }}</option>{% endfor %}{% endcall %}</div>
+            <div class="space-y-1.5">{{ label(text="Module ID") }}{{ input_ui.input(type="text", bare=true, value=module.id, disabled=true, class="w-full rounded-md border bg-muted/50 px-3 py-2 text-sm text-muted-foreground") }}</div>
+          </div>
+          <div class="space-y-1.5">{{ label(text="Instance") }}{% call select_ui.select_native(unstyled=true, class="w-full rounded-md border bg-background px-3 py-2 text-sm", attrs={"id":"ide-instance"}) %}<option value="">No instance assigned</option>{% for inst in instances %}<option value="{{ inst.id }}">{{ inst.display_name }} ({{ inst.image_tag }}){% if inst.image_status != "ready" %} — not built{% endif %}</option>{% endfor %}{% endcall %}</div>
+          <div class="rounded-lg border border-destructive/30 p-4 space-y-3"><div><h3 class="text-sm font-semibold text-destructive">Danger Zone</h3><p class="text-xs text-muted-foreground">Permanently delete this module and its source files.</p></div>{% call button(variant="destructive-outline", size="sm", attrs={"data-ide-delete-open":""}) %}Delete Module{% endcall %}</div>
         </div>
       </div>
-
-      {# Parameters (options schema) editor #}
-      <div class="flex-1 min-h-0 flex flex-col overflow-hidden" x-show="editorTab === 'schema'">
-        <div class="shrink-0 border-b bg-muted/30 px-4 py-2 text-xs text-muted-foreground">
-          JSON array defining form fields shown in the Analyze dialog.
-          Each object needs <code class="font-mono bg-muted px-1 rounded">key</code>,
-          <code class="font-mono bg-muted px-1 rounded">label</code>,
-          <code class="font-mono bg-muted px-1 rounded">type</code>
-          (<code class="font-mono bg-muted px-1 rounded">text</code> /
-          <code class="font-mono bg-muted px-1 rounded">checkbox</code> /
-          <code class="font-mono bg-muted px-1 rounded">select</code>),
-          optional <code class="font-mono bg-muted px-1 rounded">default</code> and
-          <code class="font-mono bg-muted px-1 rounded">description</code>.
-        </div>
-        <div class="flex-1 min-h-0 relative overflow-hidden">
-          <div id="cm-schema-wrapper" class="absolute inset-0"></div>
-        </div>
-        <div x-show="schemaError" x-text="schemaError"
-             class="shrink-0 border-t bg-destructive/10 px-4 py-2 text-xs text-destructive"></div>
-      </div>
-
-      {# Pipeline (multi-step chain) editor #}
-      <div class="flex-1 min-h-0 flex flex-col overflow-hidden" x-show="editorTab === 'pipeline'">
-        <div class="shrink-0 border-b bg-muted/30 px-4 py-2 text-xs text-muted-foreground">
-          Optional. Leave empty to run the entry point file as a single step (default).
-          A JSON object with a <code class="font-mono bg-muted px-1 rounded">steps</code> array —
-          each step has <code class="font-mono bg-muted px-1 rounded">id</code>,
-          <code class="font-mono bg-muted px-1 rounded">run</code>
-          (<code class="font-mono bg-muted px-1 rounded">{"argv": [...]}</code> or
-          <code class="font-mono bg-muted px-1 rounded">{"script": "..."}</code>),
-          optional <code class="font-mono bg-muted px-1 rounded">depends_on</code> (array of step ids)
-          and <code class="font-mono bg-muted px-1 rounded">continue_on_error</code>.
-          Steps run in the same container, in dependency order; a script step can call
-          <code class="font-mono bg-muted px-1 rounded">previous_output("step_id")</code>
-          to read an earlier step's stdout.
-        </div>
-        <div class="flex-1 min-h-0 relative overflow-hidden">
-          <div id="cm-pipeline-wrapper" class="absolute inset-0"></div>
-        </div>
-        <div x-show="pipelineError" x-text="pipelineError"
-             class="shrink-0 border-t bg-destructive/10 px-4 py-2 text-xs text-destructive"></div>
-      </div>
-
-      {# Settings tab #}
-      <div class="flex-1 min-h-0 overflow-y-auto p-6" x-show="editorTab === 'settings'">
-        <div class="max-w-lg space-y-5">
-
-          <div>
-            <h2 class="text-sm font-semibold">Module Settings</h2>
-            <p class="text-xs text-muted-foreground mt-0.5">Edit metadata and container configuration. Click Save in the topbar to apply.</p>
-          </div>
-
-          <div x-show="settingsError" x-text="settingsError"
-               class="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive"></div>
-
-          <div class="grid grid-cols-2 gap-4">
-            <div class="space-y-1.5">
-              {{ label(text="Display Name") }}
-              <input x-model="settings.display_name"
-                     class="w-full rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
-                     placeholder="My Module"
-                     @input="isDirty = true">
-            </div>
-            <div class="space-y-1.5">
-              {{ label(text="Category") }}
-              <select x-model="settings.category_id"
-                      class="w-full rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
-                      @change="isDirty = true">
-                <option value="">Uncategorized</option>
-                {% for cat in categories %}
-                <option value="{{ cat.id }}">{{ cat.name }}</option>
-                {% endfor %}
-              </select>
-            </div>
-          </div>
-
-          <div class="space-y-1.5">
-            {{ label(text="Description") }}
-            <textarea x-model="settings.description"
-                      rows="3"
-                      class="w-full rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring resize-none"
-                      placeholder="What this module does…"
-                      @input="isDirty = true"></textarea>
-          </div>
-
-          <div class="grid grid-cols-2 gap-4">
-            <div class="space-y-1.5">
-              {{ label(text="Tier") }}
-              <select x-model="settings.tier"
-                      class="w-full rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
-                      @change="isDirty = true">
-                {% for t in known_tiers %}
-                <option value="{{ t }}">{{ t.replace("_", " ").title() }}</option>
-                {% endfor %}
-              </select>
-            </div>
-            <div class="space-y-1.5">
-              {{ label(text="Module ID") }}
-              <input value="{{ module.id }}"
-                     class="w-full rounded-md border bg-muted/50 px-3 py-2 text-sm text-muted-foreground cursor-not-allowed"
-                     disabled>
-              <p class="text-[11px] text-muted-foreground">Cannot be changed after creation.</p>
-            </div>
-          </div>
-
-          <div class="space-y-1.5">
-            {{ label(text="Instance") }}
-            {% if not instances %}
-            <p class="text-sm text-destructive">No active instances registered — <a class="underline" href="{{ url_for('instances.list_view') }}">register one</a> before enabling this module.</p>
-            {% else %}
-            <select x-model="settings.instance_id"
-                    class="w-full rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
-                    @change="isDirty = true">
-              <option value="">No instance assigned</option>
-              {% for inst in instances %}
-              <option value="{{ inst.id }}">{{ inst.display_name }} ({{ inst.image_tag }}){% if inst.image_status != "ready" %} — not built, cannot run{% endif %}</option>
-              {% endfor %}
-            </select>
-            {% endif %}
-            <p class="text-[11px] text-muted-foreground">
-              The container this tool runs in. Manage instances at
-              <a class="underline" href="{{ url_for('instances.list_view') }}">/admin/instances</a>.
-            </p>
-          </div>
-
-          <div class="pt-1 border-t">
-            <div class="mt-3 space-y-1 text-xs text-muted-foreground">
-              <p>Source: <code class="font-mono">{{ module.source }}</code></p>
-              <p>Created: {{ module.created_at }}</p>
-            </div>
-          </div>
-
-          <div class="rounded-lg border border-destructive/30 p-4 space-y-3">
-            <div>
-              <h3 class="text-sm font-semibold text-destructive">Danger Zone</h3>
-              <p class="text-xs text-muted-foreground mt-0.5">Permanently delete this module, its source files, and test-run history.</p>
-            </div>
-            {% call button(variant="destructive-outline", size="sm", attrs={"@click": "deleteDialogOpen = true"}) %}Delete Module{% endcall %}
-          </div>
-
-        </div>
-      </div>
-
-    </div>
+    </section>
   </div>
 
-  {# ── Delete confirmation dialog ─────────────────────────────────────────── #}
-  <template x-if="deleteDialogOpen">
-    <div class="fixed inset-0 z-50 flex items-center justify-center p-4" @keydown.escape.window="!deleting && (deleteDialogOpen = false)">
-      <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="!deleting && (deleteDialogOpen = false)"></div>
-      <div class="relative z-10 w-full max-w-sm rounded-xl border bg-card shadow-xl overflow-hidden">
-        <div class="flex items-center justify-between border-b px-6 py-4">
-          <h2 class="font-semibold text-base">Delete "{{ module.display_name }}"?</h2>
-          {% call button(variant="ghost", size="icon-sm", attrs={"@click": "deleteDialogOpen = false", ":disabled": "deleting"}) %}
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" x2="6" y1="6" y2="18"/><line x1="6" x2="18" y1="6" y2="18"/></svg>
-          {% endcall %}
-        </div>
-        <div class="px-6 py-5 space-y-3">
-          <p class="text-sm text-muted-foreground">This permanently deletes the module definition, its source files, and test-run history. This cannot be undone.</p>
-          {% if affected_plans %}
-          <div class="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">
-            <p class="font-medium">It will no longer be available under these plans:</p>
-            <ul class="mt-1 list-disc pl-4">
-              {% for plan_name in affected_plans %}
-              <li>{{ plan_name }}</li>
-              {% endfor %}
-            </ul>
-          </div>
-          {% else %}
-          <p class="text-xs text-muted-foreground">No plan currently grants this module's tier.</p>
-          {% endif %}
-          <template x-if="deleteError">
-            <p class="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive" x-text="deleteError"></p>
-          </template>
-        </div>
-        <div class="flex justify-end gap-2 border-t px-6 py-4">
-          {% call button(variant="outline", attrs={"@click": "deleteDialogOpen = false", ":disabled": "deleting"}) %}Cancel{% endcall %}
-          {% call button(variant="destructive", attrs={"@click": "deleteModule()", ":disabled": "deleting"}) %}
-            <span x-text="deleting ? 'Deleting…' : 'Delete'">Delete</span>
-          {% endcall %}
-        </div>
-      </div>
-    </div>
-  </template>
+  <div id="ide-delete-dialog" class="fixed inset-0 z-50 flex items-center justify-center p-4" hidden>
+    <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" data-ide-delete-close></div><div class="relative z-10 w-full max-w-sm rounded-xl border bg-card shadow-xl overflow-hidden"><div class="border-b px-6 py-4"><h2 class="font-semibold">Delete “{{ module.display_name }}”?</h2></div><div class="px-6 py-5 space-y-3"><p class="text-sm text-muted-foreground">This permanently deletes the module, source files, and test history.</p>{% if affected_plans %}<p class="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">Affected plans: {{ affected_plans|join(', ') }}</p>{% endif %}<p id="ide-delete-error" class="text-sm text-destructive" hidden></p></div><div class="flex justify-end gap-2 border-t px-6 py-4">{% call button(variant="outline", attrs={"data-ide-delete-close":""}) %}Cancel{% endcall %}{% call button(variant="destructive", attrs={"data-ide-delete-confirm":""}) %}<span data-ide-delete-label>Delete</span>{% endcall %}</div></div>
+  </div>
 
-  {# ── Test dialog ──────────────────────────────────────────────────────────── #}
-  <template x-if="testDialogOpen">
-    <div class="fixed inset-0 z-50 flex items-center justify-center p-4" @keydown.escape.window="testDialogOpen = false">
-      <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="!testRunning && (testDialogOpen = false)"></div>
-
-      <div class="relative z-10 w-full max-w-lg rounded-xl border bg-card shadow-xl overflow-hidden max-h-[80vh] flex flex-col">
-
-        <div class="flex items-center justify-between border-b px-6 py-4 shrink-0">
-          <div>
-            <h2 class="font-semibold text-base">Test Module</h2>
-            <p class="text-xs text-muted-foreground mt-0.5">Runs for real, in the configured instance, against the file you upload here.</p>
-          </div>
-          {% call button(variant="ghost", size="icon-sm", attrs={"@click": "testDialogOpen = false", ":disabled": "testRunning"}) %}
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" x2="6" y1="6" y2="18"/><line x1="6" x2="18" y1="6" y2="18"/></svg>
-          {% endcall %}
-        </div>
-
-        <div class="px-6 py-5 space-y-4 overflow-y-auto">
-
-          <template x-if="testError">
-            <p class="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive" x-text="testError"></p>
-          </template>
-
-          <template x-if="!settings.instance_id">
-            <p class="rounded-lg bg-amber-500/10 px-3 py-2 text-sm text-amber-600">Assign an instance in Settings before testing.</p>
-          </template>
-
-          <template x-if="!testRunId">
-            <div class="space-y-1.5">
-              {{ label(text="Sample file") }}
-              <input type="file" x-ref="testFileInput" @change="onTestFileChange($event)"
-                     class="w-full rounded-md border bg-background px-3 py-2 text-sm file:mr-3 file:rounded file:border-0 file:bg-muted file:px-2 file:py-1 file:text-xs">
-              <p class="text-[11px] text-muted-foreground">Max 200MB. Uploaded straight to this test run — not saved as evidence.</p>
-            </div>
-          </template>
-
-          <template x-if="testRunId">
-            <div class="space-y-3">
-              <div class="flex items-center gap-2 text-sm">
-                <span class="size-2 rounded-full"
-                      :class="{
-                        'bg-amber-400 animate-pulse': testStatus === 'queued' || testStatus === 'running',
-                        'bg-green-500': testStatus === 'completed',
-                        'bg-destructive': testStatus === 'failed',
-                      }"></span>
-                <span class="font-medium capitalize" x-text="testStatus"></span>
-              </div>
-
-              <template x-if="testResult">
-                <div class="space-y-3">
-                  <template x-if="testResult.stdout">
-                    <div>
-                      <p class="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground mb-1">stdout</p>
-                      <pre class="rounded-md bg-muted p-3 text-xs font-mono overflow-x-auto max-h-48 overflow-y-auto whitespace-pre-wrap" x-text="testResult.stdout"></pre>
-                    </div>
-                  </template>
-                  <template x-if="testResult.stderr">
-                    <div>
-                      <p class="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground mb-1">stderr</p>
-                      <pre class="rounded-md bg-destructive/10 p-3 text-xs font-mono overflow-x-auto max-h-48 overflow-y-auto whitespace-pre-wrap" x-text="testResult.stderr"></pre>
-                    </div>
-                  </template>
-                  <p class="text-[11px] text-muted-foreground">
-                    exit code <span x-text="testResult.exit_code"></span> · <span x-text="testResult.execution_time"></span>s
-                  </p>
-                </div>
-              </template>
-
-              <template x-if="testErrorMessage">
-                <p class="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive" x-text="testErrorMessage"></p>
-              </template>
-            </div>
-          </template>
-
-        </div>
-
-        <div class="flex justify-end gap-2 border-t px-6 py-4 shrink-0">
-          {% call button(variant="outline", attrs={"@click": "testDialogOpen = false", ":disabled": "testRunning"}) %}Close{% endcall %}
-          <template x-if="testRunId && !testRunning">
-            {% call button(variant="outline", attrs={"@click": "resetTestDialog()"}) %}Test Again{% endcall %}
-          </template>
-          <template x-if="!testRunId">
-            {% call button(attrs={"@click": "runTest()", ":disabled": "testRunning || !testFile || !settings.instance_id"}) %}
-              <span x-text="testRunning ? 'Uploading…' : 'Run Test'"></span>
-            {% endcall %}
-          </template>
-        </div>
-
-      </div>
-    </div>
-  </template>
-
+  <div id="ide-test-dialog" class="fixed inset-0 z-50 flex items-center justify-center p-4" hidden>
+    <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" data-ide-test-close></div><div class="relative z-10 w-full max-w-lg rounded-xl border bg-card shadow-xl overflow-hidden max-h-[80vh] flex flex-col"><div class="border-b px-6 py-4"><h2 class="font-semibold">Test Module</h2><p class="text-xs text-muted-foreground">Runs in the configured instance against an uploaded sample.</p></div><div class="px-6 py-5 space-y-4 overflow-y-auto"><p id="ide-test-error" class="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive" hidden></p><p id="ide-test-no-instance" class="rounded-lg bg-amber-500/10 px-3 py-2 text-sm text-amber-600" hidden>Assign an instance in Settings before testing.</p><div id="ide-test-upload" class="space-y-1.5">{{ label(text="Sample file") }}{{ input_ui.file_input(class="w-full rounded-md border bg-background px-3 py-2 text-sm", attrs={"id":"ide-test-file"}) }}<p class="text-[11px] text-muted-foreground">Max 200MB. Used only for this test run.</p></div><div id="ide-test-result" class="space-y-3" hidden><div class="flex items-center gap-2 text-sm"><span id="ide-test-dot" class="size-2 rounded-full"></span><span id="ide-test-status" class="font-medium capitalize"></span></div><div id="ide-test-stdout-wrap" hidden><p class="text-[11px] font-semibold uppercase text-muted-foreground">stdout</p><pre id="ide-test-stdout" class="rounded-md bg-muted p-3 text-xs font-mono overflow-auto max-h-48 whitespace-pre-wrap"></pre></div><div id="ide-test-stderr-wrap" hidden><p class="text-[11px] font-semibold uppercase text-muted-foreground">stderr</p><pre id="ide-test-stderr" class="rounded-md bg-destructive/10 p-3 text-xs font-mono overflow-auto max-h-48 whitespace-pre-wrap"></pre></div><p id="ide-test-meta" class="text-[11px] text-muted-foreground"></p><p id="ide-test-message" class="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive" hidden></p></div></div><div class="flex justify-end gap-2 border-t px-6 py-4">{% call button(variant="outline", attrs={"data-ide-test-close":""}) %}Close{% endcall %}{% call button(variant="outline", attrs={"data-ide-test-reset":"", "hidden":true}) %}Test Again{% endcall %}{% call button(attrs={"data-ide-test-run":""}) %}<span data-ide-test-run-label>Run Test</span>{% endcall %}</div></div>
+  </div>
 </div>
+{% endblock %}
+
+{% block body_scripts %}
+<script src="{{ url_for('static', filename='js/pages/admin-module-ide.js') }}?v={{ asset_version('js/pages/admin-module-ide.js') }}"></script>
 {% endblock %}

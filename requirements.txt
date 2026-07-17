@@ -1,8 +1,9 @@
-# Web framework (ASGI) and server
-quart
-uvicorn[standard]
+# Web framework (WSGI) and production server
+Flask>=3.1,<4
+gunicorn>=23,<27
 
-# MySQL wire-protocol driver only - no ORM (see structure.md)
+# Existing asynchronous data/service layer. Flask routes are dispatched to the
+# application's persistent asyncio runtime (app/core/async_runtime.py).
 asyncmy
 
 # Required by asyncmy for MySQL 8's default caching_sha2_password auth
@@ -31,6 +32,5 @@ webauthn
 # documents, and case evidence (see app/core/object_storage.py)
 aioboto3
 
-# YAML parsing for module execution specs (worker reads .yaml entry points
-# from DB and builds execution_spec dicts for the analyzer container)
+# YAML parsing for module execution specs
 PyYAML

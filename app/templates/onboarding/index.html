@@ -1,4 +1,5 @@
 {% extends "layouts/base.html" %}
+{% import "components/ui/form.html" as form_ui %}
 {% from "components/ui/card.html" import card, card_panel %}
 {% from "components/ui/field.html" import field_group, field, field_label %}
 {% from "components/ui/input.html" import input %}
@@ -8,8 +9,10 @@
 {% from "components/ui/toast.html" import flash %}
 {% from "macros/csrf.html" import csrf_field %}
 
+{% import "components/ui/select-native.html" as select_ui %}
+
 {% block title %}Set up your organization - NirikshanOS{% endblock %}
-{% block scripts %}<script defer src="{{ url_for('static', filename='js/pages/onboarding/wizard.js') }}"></script>{% endblock %}
+
 
 {% block body %}
 {% set join_active = code or (error and "code" in error|lower) %}
@@ -33,26 +36,21 @@
           {% endcall %}
 
           {% call tabs_panel(value="create", active=not join_active, class="mt-6") %}
-            <form
-              x-data="orgWizard()"
-              method="post"
-              enctype="multipart/form-data"
-              action="{{ url_for('onboarding.create_view') }}"
-            >
+            {% call form_ui.form(method="post", action=url_for('onboarding.create_view'), unstyled=true, attrs={"data-org-wizard": true, "enctype": "multipart/form-data"}) %}
               {{ csrf_field() }}
 
               <div class="mb-6 grid grid-cols-3 gap-2">
                 {% for n in [1, 2, 3] %}
                 <div class="h-1.5 overflow-hidden rounded-full bg-muted">
-                  <div class="h-full bg-primary" x-show="step >= {{ n }}" x-cloak></div>
+                  <div class="h-full bg-primary" data-wizard-progress="{{ n }}"></div>
                 </div>
                 {% endfor %}
               </div>
 
-              <p x-show="error" x-cloak x-text="error" class="mb-4 rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive"></p>
+              <p data-wizard-error hidden class="mb-4 rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive"></p>
 
               {# ── Step 1: organization details ──────────────────────────── #}
-              <div data-wizard-step="1" x-show="step === 1">
+              <div data-wizard-step="1">
                 <p class="mb-4 text-sm font-medium text-muted-foreground">Step 1 of 3 &middot; Organization details</p>
                 {% call field_group() %}
                   {% call field() %}
@@ -70,23 +68,21 @@
                   <div class="grid gap-4 sm:grid-cols-2">
                     {% call field() %}
                       {{ field_label("Organization type", for_id="org-type") }}
-                      <select id="org-type" name="org_type" required data-required="true"
-                        class="flex h-9 w-full items-center rounded-lg border border-input bg-background px-3 text-sm shadow-xs/5 outline-none transition-shadow focus-visible:ring-2 focus-visible:ring-ring dark:bg-input/32">
+                      {% call select_ui.select_native(unstyled=true, name="org_type", class="flex h-9 w-full items-center rounded-lg border border-input bg-background px-3 text-sm shadow-xs/5 outline-none transition-shadow focus-visible:ring-2 focus-visible:ring-ring dark:bg-input/32", attrs={"id": "org-type", "required": true, "data-required": "true"}) %}
                         <option value="" disabled selected>Select a type</option>
                         {% for value, label in org_types %}
                         <option value="{{ value }}">{{ label }}</option>
                         {% endfor %}
-                      </select>
+                      {% endcall %}
                     {% endcall %}
                     {% call field() %}
                       {{ field_label("Number of employees", for_id="employee-count") }}
-                      <select id="employee-count" name="employee_count" required data-required="true"
-                        class="flex h-9 w-full items-center rounded-lg border border-input bg-background px-3 text-sm shadow-xs/5 outline-none transition-shadow focus-visible:ring-2 focus-visible:ring-ring dark:bg-input/32">
+                      {% call select_ui.select_native(unstyled=true, name="employee_count", class="flex h-9 w-full items-center rounded-lg border border-input bg-background px-3 text-sm shadow-xs/5 outline-none transition-shadow focus-visible:ring-2 focus-visible:ring-ring dark:bg-input/32", attrs={"id": "employee-count", "required": true, "data-required": "true"}) %}
                         <option value="" disabled selected>Select a range</option>
                         {% for value in employee_count_ranges %}
                         <option value="{{ value }}">{{ value }}</option>
                         {% endfor %}
-                      </select>
+                      {% endcall %}
                     {% endcall %}
                   </div>
                   {% call field() %}
@@ -94,24 +90,23 @@
                     {{ input(name="address", placeholder="Street, building, area", required=True, attrs={"id": "org-address", "data-required": "true"}) }}
                   {% endcall %}
                   {% call field() %}
-                    {% call button(type="button", class="w-full", attrs={"@click": "next()"}) %}Next: Location{% endcall %}
+                    {% call button(type="button", class="w-full", attrs={"data-wizard-next": true}) %}Next: Location{% endcall %}
                   {% endcall %}
                 {% endcall %}
               </div>
 
               {# ── Step 2: location ───────────────────────────────────────── #}
-              <div data-wizard-step="2" x-show="step === 2" x-cloak>
+              <div data-wizard-step="2" hidden>
                 <p class="mb-4 text-sm font-medium text-muted-foreground">Step 2 of 3 &middot; Location</p>
                 {% call field_group() %}
                   {% call field() %}
                     {{ field_label("Country", for_id="org-country") }}
-                    <select id="org-country" name="country" required data-required="true"
-                      class="flex h-9 w-full items-center rounded-lg border border-input bg-background px-3 text-sm shadow-xs/5 outline-none transition-shadow focus-visible:ring-2 focus-visible:ring-ring dark:bg-input/32">
+                    {% call select_ui.select_native(unstyled=true, name="country", class="flex h-9 w-full items-center rounded-lg border border-input bg-background px-3 text-sm shadow-xs/5 outline-none transition-shadow focus-visible:ring-2 focus-visible:ring-ring dark:bg-input/32", attrs={"id": "org-country", "required": true, "data-required": "true"}) %}
                       <option value="" disabled selected>Select a country</option>
                       {% for c in countries %}
                       <option value="{{ c }}">{{ c }}</option>
                       {% endfor %}
-                    </select>
+                    {% endcall %}
                   {% endcall %}
                   <div class="grid gap-4 sm:grid-cols-2">
                     {% call field() %}
@@ -128,14 +123,14 @@
                     {{ input(name="postal_code", placeholder="Postal / ZIP code", attrs={"id": "org-postal"}) }}
                   {% endcall %}
                   <div class="flex gap-2">
-                    {% call button(type="button", variant="outline", class="flex-1", attrs={"@click": "back()"}) %}Back{% endcall %}
-                    {% call button(type="button", class="flex-1", attrs={"@click": "next()"}) %}Next: Documents{% endcall %}
+                    {% call button(type="button", variant="outline", class="flex-1", attrs={"data-wizard-back": true}) %}Back{% endcall %}
+                    {% call button(type="button", class="flex-1", attrs={"data-wizard-next": true}) %}Next: Documents{% endcall %}
                   </div>
                 {% endcall %}
               </div>
 
               {# ── Step 3: government documents ───────────────────────────── #}
-              <div data-wizard-step="3" x-show="step === 3" x-cloak>
+              <div data-wizard-step="3" hidden>
                 <p class="mb-4 text-sm font-medium text-muted-foreground">Step 3 of 3 &middot; Government documents</p>
                 {% call field_group() %}
                   <div class="grid gap-4 sm:grid-cols-2">
@@ -158,16 +153,16 @@
                     <p class="text-xs text-muted-foreground">Registration certificate, PAN card, or owner ID. PDF, PNG, or JPG.</p>
                   {% endcall %}
                   <div class="flex gap-2">
-                    {% call button(type="button", variant="outline", class="flex-1", attrs={"@click": "back()"}) %}Back{% endcall %}
+                    {% call button(type="button", variant="outline", class="flex-1", attrs={"data-wizard-back": true}) %}Back{% endcall %}
                     {% call button(type="submit", class="flex-1") %}Submit for registration{% endcall %}
                   </div>
                 {% endcall %}
               </div>
-            </form>
+            {% endcall %}
           {% endcall %}
 
           {% call tabs_panel(value="join", active=join_active, class="mt-6") %}
-            <form method="post" action="{{ url_for('onboarding.join_view') }}">
+            {% call form_ui.form(method="post", action=url_for('onboarding.join_view'), unstyled=true) %}
               {{ csrf_field() }}
               {% call field_group() %}
                 {% call field() %}
@@ -178,11 +173,15 @@
                   {% call button(type="submit", variant="secondary", class="w-full") %}Join organization{% endcall %}
                 {% endcall %}
               {% endcall %}
-            </form>
+            {% endcall %}
           {% endcall %}
         {% endcall %}
       {% endcall %}
     {% endcall %}
   </div>
 </div>
+{% endblock %}
+
+{% block body_scripts %}
+<script src="{{ url_for('static', filename='js/pages/onboarding.js') }}"></script>
 {% endblock %}

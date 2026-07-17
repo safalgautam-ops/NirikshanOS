@@ -8,7 +8,7 @@ stays org-gated.
 
 from __future__ import annotations
 
-from quart import Blueprint, abort, g, redirect, render_template, request, url_for
+from flask import Blueprint, abort, g, redirect, render_template, request, url_for
 
 from app.config import Config
 from app.core.security.org_permissions import require_org_permission
@@ -32,7 +32,7 @@ async def plan_picker_view():
     plans = [p for p in all_plans if p["is_active"]]
     current_sub = await plans_service.get_active_subscription(org["id"])
     visible_keys = await get_visible_nav_keys(g.user_id)
-    return await render_template(
+    return render_template(
         "billing/plan_picker.html",
         org=org,
         visible_keys=visible_keys,
@@ -50,7 +50,7 @@ async def subscribe_free_view():
     org = await get_user_organization(g.user_id)
     if not org:
         abort(404)
-    form = await request.form
+    form = request.form
     plan_id = form.get("plan_id") or ""
 
     plan = await plans_repository.get_plan(plan_id)
@@ -74,7 +74,7 @@ async def pay_view():
     org = await get_user_organization(g.user_id)
     if not org:
         abort(404)
-    form = await request.form
+    form = request.form
     plan_id = form.get("plan_id") or ""
     billing_period = form.get("billing_period") or "monthly"
     coupon_code = form.get("coupon_code") or None
@@ -94,7 +94,7 @@ async def pay_view():
 
     # Same-origin auto-submitting form POSTing straight to eSewa — the
     # server built and signed every field; the browser only carries it over.
-    return await render_template(
+    return render_template(
         "billing/esewa_redirect.html",
         form_action=result["form_action"],
         form_fields=result["form_fields"],
@@ -111,7 +111,7 @@ async def pay_view():
 async def esewa_success_view():
     raw_payload = request.args.get("data", "")
     success, message = await finance_service.handle_success_callback(raw_payload)
-    return await render_template("billing/esewa_result.html", success=success, message=message)
+    return render_template("billing/esewa_result.html", success=success, message=message)
 
 
 @billing_bp.route("/esewa/failure")
@@ -134,6 +134,6 @@ async def esewa_failure_view():
 
     if transaction_uuid:
         await finance_service.handle_failure_callback(transaction_uuid)
-    return await render_template(
+    return render_template(
         "billing/esewa_result.html", success=False, message="Payment was cancelled or failed."
     )

@@ -1,7 +1,8 @@
 {% extends "layouts/base.html" %}
-{% block title %}Redirecting to eSewa — NirikshanOS{% endblock %}
-{% block scripts %}<script defer src="{{ url_for('static', filename='js/pages/billing/esewa-redirect.js') }}"></script>{% endblock %}
+{% import "components/ui/form.html" as form_ui %}
+{% import "components/ui/input.html" as input_ui %}
 
+{% block title %}Redirecting to eSewa — NirikshanOS{% endblock %}
 {% block body %}
 <div class="flex min-h-screen items-center justify-center p-6">
   <div class="text-center space-y-3">
@@ -13,9 +14,9 @@
 {# Every field here was built and signed server-side (see finance/service.py's
 initiate_payment) - this form only carries them over, it never lets the
 browser choose or edit a value. #}
-<form id="esewa-form" method="POST" action="{{ form_action }}">
+{% call form_ui.form(id="esewa-form", method="POST", action=form_action, unstyled=true, attrs={"data-auto-submit": true}) %}
   {% for name, value in form_fields.items() %}
-  <input type="hidden" name="{{ name }}" value="{{ value }}">
+  {{ input_ui.hidden_input(name=name, value=value) }}
   {% endfor %}
-</form>
+{% endcall %}
 {% endblock %}

@@ -1,4 +1,6 @@
 {% extends "layouts/base.html" %}
+{% import "components/ui/form.html" as form_ui %}
+{% import "components/ui/label.html" as label_ui %}
 {% block title %}Application Staff - NirikshanOS{% endblock %}
 
 {% import "components/ui/frame.html" as frame %}
@@ -11,7 +13,6 @@
 {% import "components/ui/switch.html" as switch_ui %}
 {% from "dashboard/components/sidebar.html" import sidebar %}
 {% from "dashboard/components/topbar.html" import topbar %}
-{% from "components/ui/breadcrumb.html" import breadcrumb_trail %}
 {% from "components/ui/toast.html" import flash %}
 {% from "macros/csrf.html" import csrf_field %}
 
@@ -20,7 +21,7 @@
 
 <div class="flex flex-col md:pl-60">
   {{ topbar("Application Staff") }}
-  <main class="flex-1 p-4 md:p-6">
+  <main class="flex-1 p-2 md:p-4">
 
     {% if selected_member is defined and selected_member is not none %}
     {# ══════════════════ SPLIT PANEL EDITOR ══════════════════ #}
@@ -85,11 +86,9 @@
 
         {# Form #}
         <div class="min-h-0 flex-1 overflow-y-auto">
-          <form id="staff-form" method="post"
-                action="{{ url_for('staff.create_view') if is_new else url_for('staff.save_view', member_id=selected_member.id) }}"
-                class="grid gap-6 p-4">
+          {% call form_ui.form(id="staff-form", method="post", action=url_for('staff.create_view') if is_new else url_for('staff.save_view', member_id=selected_member.id), class="grid gap-6 p-4", unstyled=true) %}
             {{ csrf_field() }}
-            {% if not is_new %}<input type="hidden" name="member_id" value="{{ selected_member.id }}">{% endif %}
+            {% if not is_new %}{{ input.hidden_input(name="member_id", value=selected_member.id) }}{% endif %}
 
             <div class="grid gap-4 md:grid-cols-2">
               {% call field.field() %}
@@ -110,7 +109,7 @@
 
             {# Role assignment #}
             <div>
-              <label class="mb-1.5 block text-sm font-medium">Assign Roles</label>
+              {% call label_ui.label(class="mb-1.5 block text-sm font-medium", unstyled=true) %}Assign Roles{% endcall %}
               <p class="mb-3 text-xs text-muted-foreground">Staff can hold multiple roles at the same time.</p>
               <div class="divide-y rounded-lg border bg-background">
                 {% for role in roles %}
@@ -133,7 +132,7 @@
               </div>
             </div>
 
-          </form>
+          {% endcall %}
         </div>
       </div>
 
@@ -142,13 +141,11 @@
     {% else %}
     {# ══════════════════ LIST VIEW ══════════════════ #}
     <div class="grid gap-4 p-2">
-      {{ breadcrumb_trail([("Dashboard", "/"), ("Staff", None)]) }}
-
       {{ flash("error", error) }}
 
       {# Toolbar #}
       <div class="grid gap-3 lg:grid-cols-[minmax(18rem,26rem)_minmax(1rem,1fr)_auto] md:items-center">
-        <form method="get" action="{{ url_for('staff.list_view') }}">
+        {% call form_ui.form(method="get", action=url_for('staff.list_view'), unstyled=true) %}
           {% call ig.input_group() %}
             {{ ig.input_group_input(
               name="q",
@@ -160,7 +157,7 @@
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
             {% endcall %}
           {% endcall %}
-        </form>
+        {% endcall %}
 
         <div aria-hidden class="hidden lg:block"></div>
 

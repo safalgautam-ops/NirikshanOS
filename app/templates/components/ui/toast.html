@@ -1,7 +1,7 @@
-{# Hands a server-rendered flash message off to app/static/js/toast-runtime.js,
+{# Hands a server-rendered flash message off to app/static/js/app.js,
 which scans for [data-flash] elements on load and turns each into a toast,
 then removes the element. This indirection (hidden element -> JS scan)
-exists because CSP (script-src 'self', no 'unsafe-inline') rules out an
+exists because CSP does not allow inline application scripts, so it avoids an
 inline <script> calling window.toast.error(...) directly - see
 layouts/base.html's notes on the same constraint. #}
 {% macro flash(type, message) -%}

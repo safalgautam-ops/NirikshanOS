@@ -7,7 +7,7 @@ appending a new version row on every subsequent save.
 
 from __future__ import annotations
 
-from quart import Blueprint, abort, g, jsonify, request
+from flask import Blueprint, abort, g, jsonify, request
 
 from app.core.db.orm import db
 from app.core.security.org_permissions import get_user_org_membership, is_org_owner
@@ -58,7 +58,7 @@ async def get_report_view(case_id: str):
 async def save_report_view(case_id: str):
     """Upsert the case report draft and append a version row."""
     await _require_visible_case(case_id)
-    body = await request.get_json(silent=True) or {}
+    body = request.get_json(silent=True) or {}
     content: str = (body.get("content") or "").strip()
     title: str = (body.get("title") or "Investigation Report").strip()[:255]
 

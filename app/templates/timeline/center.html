@@ -58,16 +58,16 @@
 {% block body %}
 {{ sidebar(active="timeline", visible_keys=visible_keys) }}
 
-<div class="flex flex-col md:pl-60" x-data="{ q: '' }">
+<div class="flex flex-col md:pl-60" data-list-filter>
     {{ topbar("Timeline Center") }}
-    <main class="flex-1 p-4 md:p-6">
+    <main class="flex-1 p-2 md:p-4">
         {{ breadcrumb_trail([("Dashboard", "/"), ("Timeline Center", None)]) }}
 
         <div class="grid gap-6 p-2">
             <p class="text-sm text-muted-foreground">Select a case to manage its manual investigation timeline.</p>
 
             {% call input_group(class="max-w-sm") %}
-                {{ input_group_input(name="q", placeholder="Search cases…", attrs={"type": "search", "aria-label": "Search cases", "x-model": "q"}) }}
+                {{ input_group_input(name="q", placeholder="Search cases…", attrs={"type": "search", "aria-label": "Search cases", "data-list-filter-input": true}) }}
                 {% call input_group_addon() %}
                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></svg>
                 {% endcall %}
@@ -78,7 +78,7 @@
             {% else %}
             <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 {% for c in cases %}
-                <div x-show="!q || {{ (c.title|lower)|tojson|forceescape }}.includes(q.toLowerCase()) || {{ (c.case_number|lower)|tojson|forceescape }}.includes(q.toLowerCase())">
+                <div data-filter-text="{{ (c.title ~ ' ' ~ c.case_number)|lower|e }}">
                     {{ timeline_case_card(c) }}
                 </div>
                 {% endfor %}

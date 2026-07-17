@@ -1,0 +1,273 @@
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-destructive-soft: var(--destructive-soft);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-success-soft: var(--success-soft);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-warning-soft: var(--warning-soft);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+  --color-info-soft: var(--info-soft);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+}
+
+/* Theme tokens are defined directly in this Jinja-included Tailwind source. */
+:root {
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+  --primary: oklch(0.505 0.213 27.518);
+  --primary-foreground: oklch(0.971 0.013 17.38);
+  --secondary: oklch(0.967 0.001 286.375);
+  --secondary-foreground: oklch(0.21 0.006 285.885);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: oklch(0.922 0 0);
+  --input: oklch(0.922 0 0);
+  --ring: oklch(0.708 0 0);
+  --chart-1: oklch(0.808 0.114 19.571);
+  --chart-2: oklch(0.637 0.237 25.331);
+  --chart-3: oklch(0.577 0.245 27.325);
+  --chart-4: oklch(0.505 0.213 27.518);
+  --chart-5: oklch(0.444 0.177 26.899);
+  --radius: 0.625rem;
+  --sidebar: oklch(0.985 0 0);
+  --sidebar-foreground: oklch(0.145 0 0);
+  --sidebar-primary: oklch(0.577 0.245 27.325);
+  --sidebar-primary-foreground: oklch(0.971 0.013 17.38);
+  --sidebar-accent: oklch(0.97 0 0);
+  --sidebar-accent-foreground: oklch(0.205 0 0);
+  --sidebar-border: oklch(0.922 0 0);
+  --sidebar-ring: oklch(0.708 0 0);
+}
+
+.dark {
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.205 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.205 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.444 0.177 26.899);
+  --primary-foreground: oklch(0.971 0.013 17.38);
+  --secondary: oklch(0.274 0.006 286.033);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.269 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.704 0.191 22.216);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.556 0 0);
+  --chart-1: oklch(0.808 0.114 19.571);
+  --chart-2: oklch(0.637 0.237 25.331);
+  --chart-3: oklch(0.577 0.245 27.325);
+  --chart-4: oklch(0.505 0.213 27.518);
+  --chart-5: oklch(0.444 0.177 26.899);
+  --sidebar: oklch(0.205 0 0);
+  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar-primary: oklch(0.637 0.237 25.331);
+  --sidebar-primary-foreground: oklch(0.971 0.013 17.38);
+  --sidebar-accent: oklch(0.269 0 0);
+  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.556 0 0);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    font-family: var(--font-sans);
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  [hidden] {
+    display: none !important;
+  }
+  mark.page-search-highlight {
+    background-color: var(--warning-soft);
+    color: inherit;
+    border-radius: 0.15em;
+  }
+  mark.page-search-highlight.page-search-current {
+    background-color: var(--warning);
+    color: var(--warning-foreground);
+  }
+}
+
+/* Self-hosted variable font. */
+@font-face {
+    font-family: "Inter";
+    font-style: normal;
+    font-weight: 400 800;
+    font-display: swap;
+    src: url("{{ url_for('static', filename='fonts/inter-latin-variable.woff2') }}") format("woff2");
+}
+body {
+    font-family:
+        "Inter",
+        ui-sans-serif,
+        system-ui,
+        sans-serif;
+}
+
+::-webkit-scrollbar {
+    display: none;
+    width: 0px;
+}
+
+/* Public home-page Rive overlay. */
+#hero-animation {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 1280 / 552;
+    overflow: hidden;
+}
+#hero-animation canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    touch-action: none;
+    user-select: none;
+}
+#hero-animation .hero-anim-side {
+    position: absolute;
+    inset-block: 0;
+    background: var(--background);
+    pointer-events: none;
+}
+#hero-animation .hero-anim-side.left {
+    left: 0;
+    width: 30%;
+}
+#hero-animation .hero-anim-side.right {
+    right: 0;
+    width: 30%;
+}
+#hero-animation .hero-anim-item {
+    position: absolute;
+    display: flex;
+    align-items: center;
+    height: 24px;
+    transform: translateY(-50%);
+    font-size: 0.6875rem;
+    letter-spacing: 0.08em;
+    white-space: nowrap;
+}
+#hero-animation .hero-anim-item.left {
+    left: 4%;
+    width: 26%;
+}
+#hero-animation .hero-anim-item.right {
+    right: 4%;
+    width: 26%;
+}
+#hero-animation .hero-anim-line {
+    flex: 1;
+    border-top: 1px dotted var(--border);
+}
+#hero-animation .hero-anim-badge {
+    height: 23px;
+    display: grid;
+    place-items: center;
+    padding: 0 10px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--background);
+    color: var(--muted-foreground);
+    font-weight: 700;
+    box-shadow: 0 0 0 4px var(--background);
+}
+#hero-animation .hero-anim-item.left .hero-anim-badge {
+    order: 0;
+}
+#hero-animation .hero-anim-item.left .hero-anim-line {
+    order: 1;
+}
+#hero-animation .hero-anim-item.right .hero-anim-line {
+    order: 0;
+}
+#hero-animation .hero-anim-item.right .hero-anim-badge {
+    order: 1;
+}
+#hero-animation .hero-anim-item.active .hero-anim-badge {
+    background: var(--foreground);
+    color: var(--background);
+    border-color: var(--c);
+    box-shadow:
+        0 0 0 4px var(--background),
+        0 0 0 1px var(--c);
+}
+#hero-animation .hero-anim-item.active .hero-anim-line {
+    border-top-style: solid;
+    border-color: var(--c);
+}
+#hero-animation .hero-anim-desc {
+    position: absolute;
+    top: 18px;
+    color: var(--muted-foreground);
+    font-size: 0.625rem;
+    line-height: 1.2;
+    letter-spacing: 0;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+}
+#hero-animation .hero-anim-item.left .hero-anim-desc {
+    left: 30%;
+}
+#hero-animation .hero-anim-item.right .hero-anim-desc {
+    right: 30%;
+}
+#hero-animation .hero-anim-item.active .hero-anim-desc {
+    opacity: 1;
+}
+@media (max-width: 900px) {
+    #hero-animation .hero-anim-item {
+        display: none;
+    }
+}

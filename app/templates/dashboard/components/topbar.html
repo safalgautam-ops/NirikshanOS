@@ -1,3 +1,6 @@
+{% import "components/ui/form.html" as form_ui %}
+{% import "components/ui/button.html" as button_ui %}
+
 {#
   Topbar - page title, search box, theme toggle, user avatar.
 
@@ -9,13 +12,15 @@
 {% from "components/ui/theme-toggle.html" import theme_toggle %}
 {% from "components/ui/avatar.html" import avatar, avatar_image, avatar_fallback %}
 {% from "components/ui/menu.html" import menu, menu_trigger, menu_popup, menu_item, menu_separator %}
+{% from "components/ui/sidebar.html" import sidebar_trigger %}
 {% from "macros/csrf.html" import csrf_field %}
 
 {% macro topbar(title) %}
 <header class="sticky top-0 z-10 flex h-14 items-center gap-4 border-b border-border bg-background/95 backdrop-blur px-4 md:px-6">
+    {{ sidebar_trigger() }}
     <h1 class="text-lg font-semibold">{{ title }}</h1>
     <div class="ml-auto flex items-center gap-3">
-        <div class="hidden sm:block w-64" x-data="pageSearch()" data-page-search-ignore>
+        <div class="hidden sm:block w-64" data-page-search data-page-search-ignore>
             {% call input_group() %}
                 {% call input_group_addon(class="pr-0") %}
                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></svg>
@@ -24,23 +29,8 @@
                     "type": "text",
                     "autocomplete": "off",
                     "aria-label": "Find on page",
-                    "x-model": "query",
-                    "@input": "search()",
-                    "@keydown.enter.prevent": "$event.shiftKey ? prev() : next()",
-                    "@keydown.escape": "clear()",
+                    "data-page-search-input": true,
                 }) }}
-                {% call input_group_addon(class="gap-1 pl-0") %}
-                    <span class="text-xs tabular-nums whitespace-nowrap" x-show="query" x-cloak x-text="matches.length ? (currentIndex + 1) + '/' + matches.length : 'No results'"></span>
-                    <button type="button" class="rounded p-0.5 hover:bg-accent disabled:opacity-30" x-show="matches.length" x-cloak title="Previous match" aria-label="Previous match" @click="prev()">
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-3.5" aria-hidden="true"><path d="m18 15-6-6-6 6" /></svg>
-                    </button>
-                    <button type="button" class="rounded p-0.5 hover:bg-accent disabled:opacity-30" x-show="matches.length" x-cloak title="Next match" aria-label="Next match" @click="next()">
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-3.5" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
-                    </button>
-                    <button type="button" class="rounded p-0.5 hover:bg-accent" x-show="query" x-cloak title="Clear search" aria-label="Clear search" @click="clear()">
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-3.5" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12" /></svg>
-                    </button>
-                {% endcall %}
             {% endcall %}
         </div>
         {{ theme_toggle() }}
@@ -61,10 +51,10 @@
             {% endif %}
             {% call menu_item(href=url_for('auth.settings_connections')) %}Settings{% endcall %}
             {{ menu_separator() }}
-            <form method="post" action="{{ url_for('auth.logout') }}">
+            {% call form_ui.form(method="post", action=url_for('auth.logout'), unstyled=true) %}
               {{ csrf_field() }}
-              <button type="submit" class="flex w-full cursor-pointer items-center rounded-sm px-2 py-1.5 text-left text-sm text-destructive transition-colors hover:bg-destructive/10">Log out</button>
-            </form>
+              {% call button_ui.button(type="submit", unstyled=true, class="flex w-full cursor-pointer items-center rounded-sm px-2 py-1.5 text-left text-sm text-destructive transition-colors hover:bg-destructive/10") %}Log out{% endcall %}
+            {% endcall %}
           {% endcall %}
         {% endcall %}
     </div>

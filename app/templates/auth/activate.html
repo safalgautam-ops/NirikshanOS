@@ -1,10 +1,14 @@
 {% extends "layouts/base.html" %}
+{% import "components/ui/form.html" as form_ui %}
 {% from "components/ui/card.html" import card, card_panel %}
 {% from "components/ui/field.html" import field_group, field, field_label %}
 {% from "components/ui/input.html" import input %}
 {% from "components/ui/button.html" import button %}
 {% from "components/ui/toast.html" import flash %}
 {% from "macros/csrf.html" import csrf_field %}
+
+{% import "components/ui/button.html" as button_ui %}
+{% import "components/ui/input.html" as input_ui %}
 
 {% block title %}Activate account - NirikshanOS{% endblock %}
 
@@ -13,9 +17,9 @@
   <div class="flex w-full max-w-sm flex-col gap-6">
     {% call card() %}
       {% call card_panel(class="p-6 md:p-8") %}
-        <form method="post" action="{{ url_for('auth.activate') }}">
+        {% call form_ui.form(method="post", action=url_for('auth.activate'), unstyled=true) %}
           {{ csrf_field() }}
-          {% if next_url %}<input type="hidden" name="next" value="{{ next_url }}" />{% endif %}
+          {% if next_url %}{{ input_ui.hidden_input(name="next", value=next_url) }}{% endif %}
           {% call field_group() %}
             <div class="flex flex-col items-center gap-2 text-center">
               <h1 class="text-2xl font-bold">Check your email</h1>
@@ -27,7 +31,7 @@
             {{ flash("success", "A new code has been sent." if resent else None) }}
             {{ flash("error", error) }}
 
-            <input type="hidden" name="email" value="{{ email }}" />
+            {{ input_ui.hidden_input(name="email", value=email) }}
 
             {% call field() %}
               {{ field_label("Activation code", for_id="code") }}
@@ -38,16 +42,16 @@
               {% call button(type="submit", class="w-full") %}Activate account{% endcall %}
             {% endcall %}
           {% endcall %}
-        </form>
+        {% endcall %}
 
-        <form method="post" action="{{ url_for('auth.resend_activation_view') }}" class="mt-4">
+        {% call form_ui.form(method="post", action=url_for('auth.resend_activation_view'), class="mt-4", unstyled=true) %}
           {{ csrf_field() }}
-          <input type="hidden" name="email" value="{{ email }}" />
+          {{ input_ui.hidden_input(name="email", value=email) }}
           <p class="text-center text-sm text-muted-foreground">
             Didn't receive a code?
-            <button type="submit" class="underline underline-offset-4 hover:text-foreground">Resend</button>
+            {% call button_ui.button(type="submit", unstyled=true, class="underline underline-offset-4 hover:text-foreground") %}Resend{% endcall %}
           </p>
-        </form>
+        {% endcall %}
       {% endcall %}
     {% endcall %}
   </div>

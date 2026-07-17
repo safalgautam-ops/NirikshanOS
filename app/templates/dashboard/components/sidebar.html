@@ -1,6 +1,11 @@
-{# Sidebar - primary navigation, fixed width on desktop. Usage: {% from
+{# Sidebar - primary navigation. Usage: {% from
 "dashboard/components/sidebar.html" import sidebar %} {{
 sidebar(active="dashboard", visible_keys=visible_keys) }}
+
+Built on top of components/ui/sidebar.html's macros (a Jinja port of
+shadcn/ui's Sidebar primitives - see that file's doc comment for how the
+desktop/mobile split works). This file owns the actual nav structure/gating
+rules; components/ui/sidebar.html only owns the reusable shell markup.
 
 Params: active - key of the current nav item, used to highlight it.
 visible_keys - which Administration keys this user's *system* role allows, or
@@ -36,6 +41,8 @@ also set in load_session()) never sees "Organization" or the org's Staff/Roles
 items at all, locked or not - they manage every org from /admin/organizations
 instead of being a tenant member through their own platform identity (see
 onboarding/routes.py's blueprint guard, which enforces this server-side too). #}
+{% from "components/ui/sidebar.html" import sidebar as sidebar_shell, sidebar_mobile, sidebar_header, sidebar_content, sidebar_group, sidebar_group_label, sidebar_menu, sidebar_menu_item, sidebar_menu_button %}
+
 {% macro sidebar(active="dashboard", visible_keys=None) %}
 {% set org_items = [ ("org_staff", "Staff", "/onboarding/staff"), ("org_role", "Roles", "/onboarding/roles"), ("org_billing", "Billing", "/billing/") ] %}
 {% set app_items = [ ("case", "Case", "/cases/"), ("timeline", "Timeline", "/timeline") ] %}
@@ -45,75 +52,74 @@ onboarding/routes.py's blueprint guard, which enforces this server-side too). #}
 {% set visible_finance_items = finance_items|selectattr("0", "in", visible_keys)|list if visible_keys is not none else finance_items %}
 {% set visible_org_items = org_items|selectattr("0", "in", g.org_nav_keys)|list if g.org_nav_keys is not none else org_items %}
 {% set visible_app_items = app_items|selectattr("0", "in", g.org_nav_keys)|list if g.org_nav_keys is not none else app_items %}
-<aside
-    class="hidden md:flex md:w-60 md:flex-col md:fixed md:inset-y-0 border-r border-sidebar-border bg-sidebar text-sidebar-foreground"
->
-    <div class="flex h-14 items-center px-4 border-b border-sidebar-border">
-        <span class="font-semibold text-sidebar-accent-foreground"
-            >NirikshanOS</span
-        >
-    </div>
-    <nav class="flex-1 overflow-y-auto p-2 space-y-4">
-        <div class="space-y-1">
-            <p class="px-3 text-xs font-medium uppercase text-sidebar-foreground/50">Platform</p>
-            {{ _nav_link("dashboard", "Dashboard", "/", active, locked=False) }}
-            {% if not g.is_platform_staff %}
-            {{ _nav_link("my_organization", "Organization", "/onboarding/", active, locked=False) }}
-            {% for key, label, href in (org_items if g.org_locked else visible_org_items) %}
-            {{ _nav_link(key, label, href, active, locked=g.org_locked) }}
-            {% endfor %}
-            {% endif %}
-        </div>
 
-        {% if not g.is_platform_staff %}
-        <div class="space-y-1">
-            <p class="px-3 text-xs font-medium uppercase text-sidebar-foreground/50">Application</p>
-            {% for key, label, href in (app_items if g.org_locked else visible_app_items) %}
-            {{ _nav_link(key, label, href, active, locked=g.org_locked) }}
-            {% endfor %}
-        </div>
-        {% endif %}
+{% call sidebar_shell() %}
+    {% call sidebar_header() %}
+        <span class="font-semibold text-sidebar-accent-foreground">NirikshanOS</span>
+    {% endcall %}
+    {% call sidebar_content() %}
+        {{ _nav_groups(active, visible_admin_items, visible_finance_items, visible_org_items, visible_app_items, org_items, app_items) }}
+    {% endcall %}
+{% endcall %}
 
-        {% if visible_admin_items %}
-        <div class="space-y-1">
-            <p class="px-3 text-xs font-medium uppercase text-sidebar-foreground/50">Administration</p>
-            {% for key, label, href in visible_admin_items %}
-            {{ _nav_link(key, label, href, active, locked=False) }}
-            {% endfor %}
-        </div>
-        {% endif %}
-
-        {% if visible_finance_items %}
-        <div class="space-y-1">
-            <p class="px-3 text-xs font-medium uppercase text-sidebar-foreground/50">Finance</p>
-            {% for key, label, href in visible_finance_items %}
-            {{ _nav_link(key, label, href, active, locked=False) }}
-            {% endfor %}
-        </div>
-        {% endif %}
-    </nav>
-</aside>
+{# Mobile: same nav, rendered a second time into the off-canvas sheet opened
+   by sidebar_trigger() (see dashboard/components/topbar.html) - a Sheet on
+   mobile is exactly how shadcn/ui's own Sidebar handles small screens too,
+   see components/ui/sidebar.html's doc comment. #}
+{% call sidebar_mobile() %}
+    {% call sidebar_header() %}
+        <span class="font-semibold text-sidebar-accent-foreground">NirikshanOS</span>
+    {% endcall %}
+    {% call sidebar_content() %}
+        {{ _nav_groups(active, visible_admin_items, visible_finance_items, visible_org_items, visible_app_items, org_items, app_items) }}
+    {% endcall %}
+{% endcall %}
 {% endmacro %}
 
-{% macro _nav_link(key, label, href, active, locked) %}
-{% if locked %}
-<span
-    class="flex items-center justify-between gap-2 rounded-md px-3 py-2 text-sm font-medium text-sidebar-foreground/40 cursor-not-allowed"
-    title="Create or join an organization to unlock this"
->
-    {{ label }}
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-         class="h-3.5 w-3.5 shrink-0">
-        <rect width="18" height="11" x="3" y="11" rx="2" ry="2"/>
-        <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-    </svg>
-</span>
-{% else %}
-<a
-    href="{{ href }}"
-    class="flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors {% if key == active %}bg-sidebar-accent text-sidebar-accent-foreground{% else %}text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground{% endif %}"
->
-    {{ label }}
-</a>
+{% macro _nav_groups(active, visible_admin_items, visible_finance_items, visible_org_items, visible_app_items, org_items, app_items) %}
+{% call sidebar_group() %}
+    {{ sidebar_group_label("Platform") }}
+    {% call sidebar_menu() %}
+        {% call sidebar_menu_item() %}{{ sidebar_menu_button("Dashboard", href="/dashboard", is_active=(active == "dashboard")) }}{% endcall %}
+        {% if not g.is_platform_staff %}
+        {% call sidebar_menu_item() %}{{ sidebar_menu_button("Organization", href="/onboarding/", is_active=(active == "my_organization")) }}{% endcall %}
+        {% for key, label, href in (org_items if g.org_locked else visible_org_items) %}
+        {% call sidebar_menu_item() %}{{ sidebar_menu_button(label, href=href, is_active=(key == active), locked=g.org_locked) }}{% endcall %}
+        {% endfor %}
+        {% endif %}
+    {% endcall %}
+{% endcall %}
+
+{% if not g.is_platform_staff %}
+{% call sidebar_group() %}
+    {{ sidebar_group_label("Application") }}
+    {% call sidebar_menu() %}
+        {% for key, label, href in (app_items if g.org_locked else visible_app_items) %}
+        {% call sidebar_menu_item() %}{{ sidebar_menu_button(label, href=href, is_active=(key == active), locked=g.org_locked) }}{% endcall %}
+        {% endfor %}
+    {% endcall %}
+{% endcall %}
+{% endif %}
+
+{% if visible_admin_items %}
+{% call sidebar_group() %}
+    {{ sidebar_group_label("Administration") }}
+    {% call sidebar_menu() %}
+        {% for key, label, href in visible_admin_items %}
+        {% call sidebar_menu_item() %}{{ sidebar_menu_button(label, href=href, is_active=(key == active)) }}{% endcall %}
+        {% endfor %}
+    {% endcall %}
+{% endcall %}
+{% endif %}
+
+{% if visible_finance_items %}
+{% call sidebar_group() %}
+    {{ sidebar_group_label("Finance") }}
+    {% call sidebar_menu() %}
+        {% for key, label, href in visible_finance_items %}
+        {% call sidebar_menu_item() %}{{ sidebar_menu_button(label, href=href, is_active=(key == active)) }}{% endcall %}
+        {% endfor %}
+    {% endcall %}
+{% endcall %}
 {% endif %}
 {% endmacro %}

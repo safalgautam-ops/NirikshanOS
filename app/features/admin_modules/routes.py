@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import re
 
-from quart import Blueprint, g, jsonify, redirect, render_template, request, url_for
+from flask import Blueprint, g, jsonify, redirect, render_template, request, url_for
 
 from app.config import Config
 from app.core.object_storage import put_object
@@ -79,7 +79,7 @@ async def list_view():
     categories = await categories_repository.list_categories()
     instances = await instances_repository.list_ready_instances()
     visible_keys = await get_visible_nav_keys(g.user_id)
-    return await render_template(
+    return render_template(
         "admin/modules/list.html",
         modules=modules,
         categories=categories,
@@ -92,7 +92,7 @@ async def list_view():
 @admin_modules_bp.route("/", methods=["POST"])
 @require_permission(MODULE_EDIT)
 async def create_view():
-    body = await request.get_json(silent=True) or {}
+    body = request.get_json(silent=True) or {}
     module_id = (body.get("id") or "").strip().lower().replace(" ", "_")
     if not module_id or not _ID_RE.match(module_id):
         return jsonify({"error": "ID must be 1–100 lowercase alphanumeric/underscore/hyphen characters"}), 400
@@ -155,7 +155,7 @@ async def ide_view(module_id: str):
     # dialog can name real, current plans instead of a generic warning.
     all_plans = await plans_repository.list_plans()
     affected_plans = [p["display_name"] for p in all_plans if mod["tier"] in (p["allowed_tiers"] or [])]
-    return await render_template(
+    return render_template(
         "admin/modules/ide.html",
         module=mod,
         module_meta=module_meta,
@@ -177,7 +177,7 @@ async def update_meta_view(module_id: str):
     mod = await repository.get_module(module_id)
     if not mod:
         return jsonify({"error": "not found"}), 404
-    body = await request.get_json(silent=True) or {}
+    body = request.get_json(silent=True) or {}
     fields, error = await _validate_meta_fields(body)
     if error:
         return jsonify({"error": error}), 400
@@ -218,7 +218,7 @@ async def delete_view(module_id: str):
 async def create_file_view(module_id: str):
     if not await repository.get_module(module_id):
         return jsonify({"error": "module not found"}), 404
-    body = await request.get_json(silent=True) or {}
+    body = request.get_json(silent=True) or {}
     filename: str = (body.get("filename") or "").strip()
     if not filename:
         return jsonify({"error": "filename required"}), 400
@@ -252,7 +252,7 @@ async def update_file_view(module_id: str, file_id: str):
     f = await repository.get_file(file_id)
     if not f or f["module_id"] != module_id:
         return jsonify({"error": "not found"}), 404
-    body = await request.get_json(silent=True) or {}
+    body = request.get_json(silent=True) or {}
     await repository.update_file_content(file_id, body.get("content") or "")
     return jsonify({"ok": True})
 
@@ -282,7 +282,7 @@ async def set_entry_view(module_id: str, file_id: str):
 async def save_options_schema_view(module_id: str):
     if not await repository.get_module(module_id):
         return jsonify({"error": "not found"}), 404
-    body = await request.get_json(silent=True) or {}
+    body = request.get_json(silent=True) or {}
     raw = body.get("schema", "")
     if raw:
         try:
@@ -302,7 +302,7 @@ async def save_options_schema_view(module_id: str):
 async def save_pipeline_view(module_id: str):
     if not await repository.get_module(module_id):
         return jsonify({"error": "not found"}), 404
-    body = await request.get_json(silent=True) or {}
+    body = request.get_json(silent=True) or {}
     raw = body.get("pipeline", "")
     if raw:
         try:
@@ -336,7 +336,7 @@ async def save_pipeline_view(module_id: str):
 async def test_upload_view(module_id: str):
     if not await repository.get_module(module_id):
         return jsonify({"error": "not found"}), 404
-    files = await request.files
+    files = request.files
     file = files.get("file")
     if not file or not file.filename:
         return jsonify({"error": "No file provided"}), 400
@@ -373,7 +373,7 @@ async def test_run_view(module_id: str):
     if not has_entry and not mod.get("pipeline_spec"):
         return jsonify({"error": "No entry point set and no pipeline defined — nothing to run."}), 400
 
-    body = await request.get_json(silent=True) or {}
+    body = request.get_json(silent=True) or {}
     s3_key = (body.get("s3_key") or "").strip()
     if not s3_key:
         return jsonify({"error": "Upload a sample file first."}), 400

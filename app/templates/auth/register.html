@@ -1,4 +1,8 @@
-{% extends "layouts/base.html" %} {% from "components/ui/card.html" import card,
+{% extends "layouts/base.html" %}
+{% import "components/ui/form.html" as form_ui %}
+{% import "components/ui/input.html" as input_ui %}
+ {% from "components/ui/card.html" import card,
+
 card_panel %} {% from "components/ui/field.html" import field_group, field,
 field_label %} {% from "components/ui/input.html" import input %} {% from
 "components/ui/button.html" import button %} {% from
@@ -81,12 +85,8 @@ block body %}
 
             {# ── Email form ──────────────────────────────────────────────────
             #}
-            <form method="post" action="{{ url_for('auth.register_view') }}">
-                {{ csrf_field() }} {% if next_url %}<input
-                    type="hidden"
-                    name="next"
-                    value="{{ next_url }}"
-                />{% endif %} {% call field_group() %} {{ flash("error", error) }}
+            {% call form_ui.form(method="post", action=url_for('auth.register_view'), unstyled=true) %}
+                {{ csrf_field() }} {% if next_url %}{{ input_ui.hidden_input(name="next", value=next_url) }}{% endif %} {% call field_group() %} {{ flash("error", error) }}
                 {% call field() %} {{ field_label("Name",
                 for_id="name") }} {{ input(name="name", type="text",
                 placeholder="Jane Doe", required=True, attrs={"id": "name"}) }}
@@ -112,7 +112,7 @@ block body %}
                     >
                 </p>
                 {% endcall %}
-            </form>
+            {% endcall %}
         </div>
         {% endcall %} {% endcall %}
     </div>

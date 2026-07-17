@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from quart import Blueprint, g, redirect, render_template, request, url_for
+from flask import Blueprint, g, redirect, render_template, request, url_for
 
 from app.core.security.permissions import get_visible_nav_keys, require_permission
 from app.features.staff import service
@@ -39,7 +39,7 @@ async def list_view():
     elif member_param:
         selected_member = await service.get_staff_member(member_param)
 
-    return await render_template(
+    return render_template(
         "admin/staff/list.html",
         staff=staff,
         selected_member=selected_member,
@@ -54,7 +54,7 @@ async def list_view():
 @staff_bp.route("/create", methods=["POST"])
 @require_permission(STAFF_CREATE)
 async def create_view():
-    form = await request.form
+    form = request.form
     roles = await service.get_all_roles()
     role_ids = [r["id"] for r in roles if form.get(f"role_{r['id']}") == "1"]
     try:
@@ -72,7 +72,7 @@ async def create_view():
 @staff_bp.route("/<member_id>/save", methods=["POST"])
 @require_permission(STAFF_EDIT)
 async def save_view(member_id: str):
-    form = await request.form
+    form = request.form
     roles = await service.get_all_roles()
     role_ids = [r["id"] for r in roles if form.get(f"role_{r['id']}") == "1"]
     try:

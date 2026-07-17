@@ -2,7 +2,7 @@
    height/width percentages and conic-gradient (same technique as
    progress.html/meter.html), so they work under this app's strict CSP
    without adding a charting library (e.g. recharts, which needs React -
-   this app is Jinja+Alpine). Callers precompute `pct`/`start`/`end`
+   this app is server-rendered Jinja with plain JavaScript). Callers precompute `pct`/`start`/`end`
    (0-100) and `display` (pre-formatted label) per item in the service
    layer - these macros never do math on raw values, matching how every
    other macro here stays presentation-only.

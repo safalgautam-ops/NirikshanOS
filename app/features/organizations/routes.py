@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from quart import Blueprint, abort, g, redirect, render_template, request, url_for
+from flask import Blueprint, abort, g, redirect, render_template, request, url_for
 
 from app.core import storage
 from app.core.security.permissions import get_visible_nav_keys, require_permission
@@ -58,7 +58,7 @@ async def list_view():
             selected_org["member_count"] = mc.get(selected_org["id"], 0)
             documents = await repository.list_documents(selected_org["id"])
 
-    return await render_template(
+    return render_template(
         "admin/organizations/list.html",
         page=result,
         all_orgs=all_orgs.items,
@@ -77,7 +77,7 @@ async def list_view():
 @organizations_bp.route("/create", methods=["POST"])
 @require_permission(ORG_CREATE)
 async def create_view():
-    form = await request.form
+    form = request.form
     try:
         org_id = await service.create_organization(
             name=form.get("name", ""),
@@ -100,7 +100,7 @@ async def create_view_legacy():
 @organizations_bp.route("/<org_id>/update", methods=["POST"])
 @require_permission(ORG_EDIT)
 async def update_view(org_id: str):
-    form = await request.form
+    form = request.form
     try:
         await service.update_organization(
             org_id,
@@ -123,7 +123,7 @@ async def update_view_legacy(org_id: str):
 @organizations_bp.route("/<org_id>/update-status", methods=["POST"])
 @require_permission(ORG_EDIT)
 async def update_status_view(org_id: str):
-    form = await request.form
+    form = request.form
     new_status = form.get("status", "active")
     try:
         org = await repository.get_organization(org_id)
@@ -158,7 +158,7 @@ async def approve_view(org_id: str):
 @organizations_bp.route("/<org_id>/reject", methods=["POST"])
 @require_permission(ORG_APPROVE)
 async def reject_view(org_id: str):
-    form = await request.form
+    form = request.form
     try:
         await service.reject_organization(
             org_id, reviewed_by=g.user_id, reason=form.get("reason", "")
@@ -181,7 +181,7 @@ async def download_document_view(doc_id: str):
 @organizations_bp.route("/<org_id>/documents", methods=["POST"])
 @require_permission(ORG_EDIT)
 async def upload_document_view(org_id: str):
-    files = await request.files
+    files = request.files
     try:
         await service.add_documents(org_id, files.getlist("documents"))
     except OrganizationError as exc:
