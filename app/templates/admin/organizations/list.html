@@ -1,4 +1,7 @@
-{% extends "layouts/base.html" %} {% block title %}Organizations - NirikshanOS{%
+{% extends "layouts/base.html" %}
+{% import "components/ui/form.html" as form_ui %}
+ {% block title %}Organizations - NirikshanOS{%
+
 endblock %} {% import "components/ui/frame.html" as frame %} {% import
 "components/ui/table.html" as table %} {% import
 "components/ui/input-group.html" as ig %} {% import "components/ui/select.html"
@@ -8,7 +11,6 @@ field %} {% import "components/ui/input.html" as input %} {% from
 "components/ui/select.html" import select_simple %} {% from
 "dashboard/components/sidebar.html" import sidebar %} {% from
 "dashboard/components/topbar.html" import topbar %} {% from
-"components/ui/breadcrumb.html" import breadcrumb_trail %} {% from
 "components/ui/table-pagination.html" import table_pagination %} {% from
 "components/ui/toast.html" import flash %} {% from
 "macros/csrf.html" import csrf_field %} {% block body %} {{
@@ -16,7 +18,7 @@ sidebar(active="admin_organizations", visible_keys=visible_keys) }}
 
 <div class="flex flex-col md:pl-60">
     {{ topbar("Organizations") }}
-    <main class="flex h-[calc(100dvh-56px)]">
+    <main class="flex h-[calc(100dvh-56px)] p-4 md:p-6">
         {% if selected_org is defined and selected_org is not none %} {#
         <div
             class="flex min-h-[calc(100dvh-var(--header-height,3.5rem)-3rem)] overflow-hidden rounded-xl border bg-background"
@@ -158,17 +160,8 @@ sidebar(active="admin_organizations", visible_keys=visible_keys) }}
 
                 {{ flash("error", error) }} {# Form #}
                 <div class="min-h-0 flex-1 overflow-y-auto">
-                    <form
-                        id="org-form"
-                        method="post"
-                        action="{{ url_for('organizations.create_view') if is_new else url_for('organizations.update_view', org_id=selected_org.id) }}"
-                        class="grid gap-6 p-4"
-                    >
-                        {{ csrf_field() }} {% if selected_org.id %}<input
-                            type="hidden"
-                            name="org_id"
-                            value="{{ selected_org.id }}"
-                        />{% endif %}
+                    {% call form_ui.form(id="org-form", method="post", action=url_for('organizations.create_view') if is_new else url_for('organizations.update_view', org_id=selected_org.id), class="grid gap-6 p-4", unstyled=true) %}
+                        {{ csrf_field() }} {% if selected_org.id %}{{ input.hidden_input(name="org_id", value=selected_org.id) }}{% endif %}
 
                         <div class="grid gap-4 md:grid-cols-2">
                             {% call field.field(class="md:col-span-2") %} {{
@@ -201,7 +194,7 @@ sidebar(active="admin_organizations", visible_keys=visible_keys) }}
                             sm:w-auto") %}Create organization{% endcall %}
                         </div>
                         {% endif %}
-                    </form>
+                    {% endcall %}
 
                     {% if not is_new and selected_org.org_type %}
                     {# Self-registered orgs (app/features/onboarding) submit these -
@@ -268,36 +261,36 @@ sidebar(active="admin_organizations", visible_keys=visible_keys) }}
                                 {% for doc in documents %}
                                 <li class="flex items-center justify-between gap-2">
                                     <a href="{{ url_for('organizations.download_document_view', doc_id=doc.id) }}" class="text-sm text-primary underline underline-offset-4 hover:no-underline">{{ doc.original_filename }}</a>
-                                    <form method="post" action="{{ url_for('organizations.delete_document_view', org_id=selected_org.id, doc_id=doc.id) }}">
+                                    {% call form_ui.form(method="post", action=url_for('organizations.delete_document_view', org_id=selected_org.id, doc_id=doc.id), unstyled=true) %}
                                         {{ csrf_field() }}
                                         {% call button.button(type="submit", variant="ghost", size="icon-xs", class="text-muted-foreground hover:bg-destructive/10 hover:text-destructive", attrs={"aria-label": "Remove " ~ doc.original_filename}) %}
                                         <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
                                         {% endcall %}
-                                    </form>
+                                    {% endcall %}
                                 </li>
                                 {% endfor %}
                             </ul>
                             {% else %}
                             <p class="text-sm text-muted-foreground">No documents on file.</p>
                             {% endif %}
-                            <form method="post" action="{{ url_for('organizations.upload_document_view', org_id=selected_org.id) }}" enctype="multipart/form-data" class="mt-2 flex items-center gap-2">
+                            {% call form_ui.form(method="post", action=url_for('organizations.upload_document_view', org_id=selected_org.id), class="mt-2 flex items-center gap-2", unstyled=true, attrs={"enctype": "multipart/form-data"}) %}
                                 {{ csrf_field() }}
-                                <input type="file" name="documents" multiple accept=".pdf,.png,.jpg,.jpeg" data-max-size-bytes="26214400" data-max-size-label="25MB" class="text-sm text-muted-foreground file:mr-2 file:rounded-md file:border file:border-input file:bg-popover file:px-2 file:py-1 file:text-sm file:font-medium" />
+                                {{ input.file_input(name="documents", class="text-sm text-muted-foreground file:mr-2 file:rounded-md file:border file:border-input file:bg-popover file:px-2 file:py-1 file:text-sm file:font-medium", attrs={"multiple": true, "accept": ".pdf,.png,.jpg,.jpeg", "data-max-size-bytes": "26214400", "data-max-size-label": "25MB"}) }}
                                 {% call button.button(type="submit", variant="outline", size="sm") %}Upload{% endcall %}
-                            </form>
+                            {% endcall %}
                         </div>
 
                         {% if selected_org.verification_status != "approved" %}
                         <div class="mt-4 flex flex-wrap items-start gap-2">
-                            <form method="post" action="{{ url_for('organizations.approve_view', org_id=selected_org.id) }}">
+                            {% call form_ui.form(method="post", action=url_for('organizations.approve_view', org_id=selected_org.id), unstyled=true) %}
                                 {{ csrf_field() }}
                                 {% call button.button(type="submit") %}Approve{% endcall %}
-                            </form>
-                            <form method="post" action="{{ url_for('organizations.reject_view', org_id=selected_org.id) }}" class="flex flex-1 min-w-48 items-start gap-2">
+                            {% endcall %}
+                            {% call form_ui.form(method="post", action=url_for('organizations.reject_view', org_id=selected_org.id), class="flex flex-1 min-w-48 items-start gap-2", unstyled=true) %}
                                 {{ csrf_field() }}
                                 {{ input.input(name="reason", placeholder="Reason for rejection", required=true, class="flex-1") }}
                                 {% call button.button(type="submit", variant="destructive-outline") %}Reject{% endcall %}
-                            </form>
+                            {% endcall %}
                         </div>
                         {% endif %}
                     </div>
@@ -305,14 +298,11 @@ sidebar(active="admin_organizations", visible_keys=visible_keys) }}
 
                     {% if not is_new %}
                     <div class="border-t px-4 py-4">
-                        <form
-                            method="post"
-                            action="{{ url_for('organizations.delete_view', org_id=selected_org.id) }}"
-                        >
+                        {% call form_ui.form(method="post", action=url_for('organizations.delete_view', org_id=selected_org.id), unstyled=true) %}
                             {{ csrf_field() }} {% call
                             button.button(variant="destructive-outline",
                             type="submit") %}Delete organization{% endcall %}
-                        </form>
+                        {% endcall %}
                     </div>
                     {% endif %}
                 </div>
@@ -320,14 +310,9 @@ sidebar(active="admin_organizations", visible_keys=visible_keys) }}
         </div>
 
         {% else %} {# ══════════════════ LIST VIEW ══════════════════ #}
-        <div class="flex flex-col gap-4 p-2 w-full">
-            {{ breadcrumb_trail([("Dashboard", "/"), ("Organizations", None)])
-            }} {{ flash("error", error) }} {# Toolbar #}
-            <form
-                method="get"
-                action="{{ url_for('organizations.list_view') }}"
-                class="grid gap-3 lg:grid-cols-[minmax(18rem,26rem)_minmax(1rem,1fr)_13rem_13rem_auto]"
-            >
+        <div class="flex flex-col gap-4 w-full">
+            {{ flash("error", error) }} {# Toolbar #}
+            {% call form_ui.form(method="get", action=url_for('organizations.list_view'), class="grid gap-3 lg:grid-cols-[minmax(18rem,26rem)_minmax(1rem,1fr)_13rem_13rem_auto]", unstyled=true) %}
                 {% call ig.input_group() %} {{ ig.input_group_input( name="q",
                 placeholder="Search organizations…", value=search,
                 attrs={"type": "search", "aria-label": "Search organizations"} )
@@ -410,7 +395,7 @@ sidebar(active="admin_organizations", visible_keys=visible_keys) }}
                 <a
                     href="{{ url_for('organizations.list_view') }}?org=new"
                     aria-label="Create organization"
-                    class="inline-flex size-9 items-center justify-center rounded-lg border-primary bg-primary text-primary-foreground hover:bg-primary/90 transition-colors sm:size-8"
+                    class="inline-flex items-center justify-center rounded-lg border-primary bg-primary text-primary-foreground hover:bg-primary/90 transition-colors size-8"
                 >
                     <svg
                         class="size-4"
@@ -427,7 +412,7 @@ sidebar(active="admin_organizations", visible_keys=visible_keys) }}
                         <path d="M12 5v14" />
                     </svg>
                 </a>
-            </form>
+            {% endcall %}
 
             {# Table #} {% call frame.frame() %} {% call
             table.table(variant="card") %} {% call table.table_header() %} {%

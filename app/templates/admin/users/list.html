@@ -1,4 +1,8 @@
-{% extends "layouts/base.html" %} {% block title %}Users - NirikshanOS{%
+{% extends "layouts/base.html" %}
+{% import "components/ui/form.html" as form_ui %}
+{% import "components/ui/input.html" as input_ui %}
+ {% block title %}Users - NirikshanOS{%
+
 endblock %} {% import "components/ui/frame.html" as frame %} {% import
 "components/ui/table.html" as table %} {% import
 "components/ui/input-group.html" as ig %} {% import "components/ui/select.html"
@@ -7,7 +11,6 @@ as sel %} {% import "components/ui/badge.html" as badge %} {% import
 as dialog %} {% from
 "dashboard/components/sidebar.html" import sidebar %} {% from
 "dashboard/components/topbar.html" import topbar %} {% from
-"components/ui/breadcrumb.html" import breadcrumb_trail %} {% from
 "components/ui/table-pagination.html" import table_pagination %} {% from
 "components/ui/toast.html" import flash %} {% from
 "macros/csrf.html" import csrf_field %}
@@ -17,18 +20,12 @@ visible_keys=visible_keys) }}
 
 <div class="flex flex-col md:pl-60">
     {{ topbar("Users") }}
-    <main class="flex-1 p-4 md:p-6">
-        {{ breadcrumb_trail([("Dashboard", "/"), ("Users", None)]) }}
-
+    <main class="flex-1 p-2 md:p-4">
         {{ flash("error", error) }}
 
         <div class="grid gap-4 p-2">
             {# Filter toolbar #}
-            <form
-                method="get"
-                action="{{ url_for('users.list_view') }}"
-                class="grid gap-3 lg:grid-cols-[minmax(18rem,26rem)_minmax(1rem,1fr)_13rem_13rem]"
-            >
+            {% call form_ui.form(method="get", action=url_for('users.list_view'), class="grid gap-3 lg:grid-cols-[minmax(18rem,26rem)_minmax(1rem,1fr)_13rem_13rem]", unstyled=true) %}
                 {% call ig.input_group() %} {{ ig.input_group_input( name="q",
                 placeholder="Search users…", value=search, attrs={"type":
                 "search", "aria-label": "Search users"} ) }} {% call
@@ -105,7 +102,7 @@ visible_keys=visible_keys) }}
                 call sel.select_item(value=opt.value, selected=(opt.value ==
                 status_val)) %}{{ opt.label }}{% endcall %} {% endfor %} {%
                 endcall %} {% endcall %}
-            </form>
+            {% endcall %}
 
             {# Table #} {% call frame.frame() %} {% call
             table.table(variant="card") %} {% call table.table_header() %} {%
@@ -168,12 +165,7 @@ visible_keys=visible_keys) }}
             <div class="flex justify-end">
                 {# Three-dot trigger — data-cs-menu uses fixed positioning,
                 escaping overflow clipping #}
-                <button
-                    type="button"
-                    data-cs-menu="user-menu-{{ u.id }}"
-                    class="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors sm:size-6"
-                    aria-label="Actions for {{ u.name }}"
-                >
+                {% call button.button(type="button", unstyled=true, class="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors sm:size-6", attrs={"data-cs-menu": "user-menu-" ~ (u.id), "aria-label": "Actions for " ~ (u.name)}) %}
                     <svg
                         class="pointer-events-none size-4"
                         xmlns="http://www.w3.org/2000/svg"
@@ -189,52 +181,36 @@ visible_keys=visible_keys) }}
                         <circle cx="5" cy="12" r="1" />
                         <circle cx="19" cy="12" r="1" />
                     </svg>
-                </button>
+                {% endcall %}
                 {# Fixed-position popup #}
                 <div
                     id="user-menu-{{ u.id }}"
                     class="hidden fixed z-[100] w-52 rounded-lg border bg-popover p-1 shadow-lg text-sm text-popover-foreground"
                 >
-                    <form
-                        method="post"
-                        action="{{ url_for('users.update_status', user_id=u.id) }}"
-                    >
+                    {% call form_ui.form(method="post", action=url_for('users.update_status', user_id=u.id), unstyled=true) %}
                         {{ csrf_field() }}
-                        <input
-                            type="hidden"
-                            name="is_active"
-                            value="{{ '0' if u.isActive else '1' }}"
-                        />
-                        <button
-                            type="submit"
-                            class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left hover:bg-accent hover:text-accent-foreground"
-                        >
+                        {{ input_ui.hidden_input(name="is_active", value='0' if u.isActive else '1') }}
+                        {% call button.button(type="submit", unstyled=true, class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left hover:bg-accent hover:text-accent-foreground") %}
                             {{ "Deactivate" if u.isActive else "Activate" }}
-                        </button>
-                    </form>
+                        {% endcall %}
+                    {% endcall %}
                     <div class="my-1 h-px bg-border"></div>
-                    <button
-                        type="button"
-                        class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-destructive hover:bg-destructive/10"
-                        data-slot="dialog-trigger"
-                        data-target="#delete-user-{{ u.id }}"
-                        aria-controls="delete-user-{{ u.id }}"
-                    >
+                    {% call dialog.dialog_trigger(target="#delete-user-" ~ (u.id), class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-destructive hover:bg-destructive/10") %}
                         Delete user
-                    </button>
+                    {% endcall %}
                 </div>
                 {% call dialog.dialog(attrs={"id": "delete-user-" ~ u.id}) %}
                     {% call dialog.dialog_header() %}
                         {{ dialog.dialog_title("Delete user?") }}
                         {{ dialog.dialog_description('"' ~ u.name ~ '" and all their access will be permanently removed. This cannot be undone.') }}
                     {% endcall %}
-                    <form method="post" action="{{ url_for('users.delete_view', user_id=u.id) }}">
+                    {% call form_ui.form(method="post", action=url_for('users.delete_view', user_id=u.id), unstyled=true) %}
                         {{ csrf_field() }}
                         {% call dialog.dialog_footer() %}
                             {% call dialog.dialog_close(class=cancel_classes) %}Cancel{% endcall %}
                             {% call button.button(variant="destructive", type="submit") %}Delete{% endcall %}
                         {% endcall %}
-                    </form>
+                    {% endcall %}
                 {% endcall %}
             </div>
             {% endcall %} {% endcall %}{# table_row #} {% endfor %} {% endif %}

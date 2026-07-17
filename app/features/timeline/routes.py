@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from quart import Blueprint, abort, g, jsonify, redirect, render_template, request, url_for
+from flask import Blueprint, abort, g, jsonify, redirect, render_template, request, url_for
 
 from app.core.security.org_permissions import get_user_org_membership, is_org_owner
 from app.core.security.permissions import get_visible_nav_keys
@@ -56,7 +56,7 @@ async def center_view():
     cases = await list_cases_for_user(org_id, g.user_id, is_owner=is_owner)
     summaries = await case_timeline_summaries(cases)
     visible_keys = await get_visible_nav_keys(g.user_id)
-    return await render_template(
+    return render_template(
         "timeline/center.html",
         cases=summaries,
         classification_labels=dict(CLASSIFICATIONS),
@@ -78,7 +78,7 @@ async def case_view(case_id: str):
     ]
     evidence = await list_case_evidence(case_id)
     visible_keys = await get_visible_nav_keys(g.user_id)
-    # JSON-safe subset for the Edit dialog's Alpine state - datetime/date
+    # JSON-safe subset for the Edit dialog's raw-JavaScript state - datetime/date
     # columns get pre-formatted to the exact string each <input> expects,
     # same reasoning as cases/routes.py's analyze_evidence subset.
     items_json_by_id = {
@@ -98,7 +98,7 @@ async def case_view(case_id: str):
         }
         for i in items
     }
-    return await render_template(
+    return render_template(
         "timeline/case_timeline.html",
         case=case,
         items=items,
@@ -124,7 +124,7 @@ async def case_view(case_id: str):
 @login_required
 async def create_item_view(case_id: str):
     await _require_visible_case(case_id)
-    form = await request.form
+    form = request.form
     try:
         await create_item(
             case_id=case_id,
@@ -161,7 +161,7 @@ async def update_item_view(case_id: str, item_id: str):
     item = await get_item(item_id)
     if not item or item["case_id"] != case_id:
         abort(404)
-    form = await request.form
+    form = request.form
     try:
         await update_item(
             item_id,
@@ -200,7 +200,7 @@ async def create_item_json_view(case_id: str):
     to, so this is the only shape that works from a background fetch call.
     """
     await _require_visible_case(case_id)
-    body = await request.get_json(silent=True) or {}
+    body = request.get_json(silent=True) or {}
     try:
         item_id = await create_item(
             case_id=case_id,

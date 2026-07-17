@@ -1,4 +1,5 @@
 {% extends "layouts/base.html" %}
+{% import "components/ui/form.html" as form_ui %}
 {% from "components/ui/badge.html" import badge %}
 {% from "components/ui/button.html" import button %}
 {% from "components/ui/frame.html" import frame, frame_panel %}
@@ -9,6 +10,8 @@
 {% from "components/ui/toast.html" import flash %}
 {% from "macros/csrf.html" import csrf_field %}
 
+{% import "components/ui/input.html" as input_ui %}
+
 {% set cancel_classes = "relative inline-flex h-9 shrink-0 cursor-pointer items-center justify-center gap-2 whitespace-nowrap rounded-lg border border-input bg-popover px-[calc(--spacing(3)-1px)] text-sm text-foreground shadow-xs/5 outline-none transition-shadow hover:bg-accent/50 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-64 sm:h-8" %}
 
 {% block title %}Organization - NirikshanOS{% endblock %}
@@ -18,7 +21,7 @@
 
 <div class="flex flex-col md:pl-60">
     {{ topbar("Organization") }}
-    <main class="flex-1 p-4 md:p-6">
+    <main class="flex-1 p-2 md:p-4">
         {{ breadcrumb_trail([("Dashboard", "/"), ("Organization", None)]) }}
 
         {{ flash("error", error) }}
@@ -83,12 +86,12 @@
                                 <li class="flex items-center justify-between gap-2">
                                     <a href="{{ url_for('onboarding.download_document_view', doc_id=doc.id) }}" class="text-sm text-primary underline underline-offset-4 hover:no-underline">{{ doc.original_filename }}</a>
                                     {% if can_manage_org %}
-                                    <form method="post" action="{{ url_for('onboarding.delete_document_view', doc_id=doc.id) }}">
+                                    {% call form_ui.form(method="post", action=url_for('onboarding.delete_document_view', doc_id=doc.id), unstyled=true) %}
                                         {{ csrf_field() }}
                                         {% call button(type="submit", variant="ghost", size="icon-xs", class="text-muted-foreground hover:bg-destructive/10 hover:text-destructive", attrs={"aria-label": "Remove " ~ doc.original_filename}) %}
                                         <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
                                         {% endcall %}
-                                    </form>
+                                    {% endcall %}
                                     {% endif %}
                                 </li>
                                 {% endfor %}
@@ -97,11 +100,11 @@
                             <p class="text-sm text-muted-foreground">No documents on file.</p>
                             {% endif %}
                             {% if can_manage_org %}
-                            <form method="post" action="{{ url_for('onboarding.upload_document_view') }}" enctype="multipart/form-data" class="mt-2 flex items-center gap-2">
+                            {% call form_ui.form(method="post", action=url_for('onboarding.upload_document_view'), class="mt-2 flex items-center gap-2", unstyled=true, attrs={"enctype": "multipart/form-data"}) %}
                                 {{ csrf_field() }}
-                                <input type="file" name="documents" multiple accept=".pdf,.png,.jpg,.jpeg" data-max-size-bytes="26214400" data-max-size-label="25MB" class="text-sm text-muted-foreground file:mr-2 file:rounded-md file:border file:border-input file:bg-popover file:px-2 file:py-1 file:text-sm file:font-medium" />
+                                {{ input_ui.file_input(name="documents", class="text-sm text-muted-foreground file:mr-2 file:rounded-md file:border file:border-input file:bg-popover file:px-2 file:py-1 file:text-sm file:font-medium", attrs={"multiple": true, "accept": ".pdf,.png,.jpg,.jpeg", "data-max-size-bytes": "26214400", "data-max-size-label": "25MB"}) }}
                                 {% call button(type="submit", variant="outline", size="sm") %}Upload{% endcall %}
-                            </form>
+                            {% endcall %}
                             <p class="mt-1 text-xs text-muted-foreground">You can add or remove documents until this organization is verified.</p>
                             {% endif %}
                         </div>
@@ -116,9 +119,9 @@
                     <div class="space-y-3">
                         <p class="text-sm font-medium">Membership</p>
                         <p class="text-sm text-muted-foreground">Leaving removes your access to "{{ org.name }}" immediately.</p>
-                        <button type="button" class="inline-flex h-9 items-center justify-center rounded-lg border border-destructive/40 px-3 text-sm font-medium text-destructive hover:bg-destructive/10" data-slot="dialog-trigger" data-target="#leave-org" aria-controls="leave-org">
+                        {% call dialog.dialog_trigger(target="#leave-org", class="inline-flex h-9 items-center justify-center rounded-lg border border-destructive/40 px-3 text-sm font-medium text-destructive hover:bg-destructive/10") %}
                             Leave organization
-                        </button>
+                        {% endcall %}
                     </div>
                 {% endcall %}
             {% endcall %}
@@ -127,13 +130,13 @@
                     {{ dialog.dialog_title('Leave "' ~ org.name ~ '"?') }}
                     {{ dialog.dialog_description("You'll lose access immediately. Someone else can invite you back later with the org's code or link.") }}
                 {% endcall %}
-                <form method="post" action="{{ url_for('onboarding.leave_view') }}">
+                {% call form_ui.form(method="post", action=url_for('onboarding.leave_view'), unstyled=true) %}
                     {{ csrf_field() }}
                     {% call dialog.dialog_footer() %}
                         {% call dialog.dialog_close(class=cancel_classes) %}Cancel{% endcall %}
                         {% call button(variant="destructive", type="submit") %}Leave organization{% endcall %}
                     {% endcall %}
-                </form>
+                {% endcall %}
             {% endcall %}
             {% endif %}
         </div>

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from quart import Blueprint, g, redirect, render_template, request, url_for
+from flask import Blueprint, g, redirect, render_template, request, url_for
 
 from app.core.security.permissions import get_visible_nav_keys, require_permission
 from app.features.users import repository
@@ -32,7 +32,7 @@ async def list_view():
     roles = await repository.get_all_roles()
     visible_keys = await get_visible_nav_keys(g.user_id)
 
-    return await render_template(
+    return render_template(
         "admin/users/list.html",
         page=result,
         roles=roles,
@@ -47,7 +47,7 @@ async def list_view():
 @users_bp.route("/<user_id>/status", methods=["POST"])
 @require_permission(USER_EDIT)
 async def update_status(user_id: str):
-    form = await request.form
+    form = request.form
     await toggle_user_active(user_id, form.get("is_active") == "1")
     return redirect(url_for("users.list_view"))
 
@@ -55,7 +55,7 @@ async def update_status(user_id: str):
 @users_bp.route("/<user_id>/roles", methods=["POST"])
 @require_permission(USER_EDIT)
 async def update_roles(user_id: str):
-    form = await request.form
+    form = request.form
     role_ids = form.getlist("role_ids")
     try:
         await update_user_roles(user_id, role_ids, assigned_by=g.user_id)
@@ -67,7 +67,7 @@ async def update_roles(user_id: str):
 @users_bp.route("/<user_id>/update", methods=["POST"])
 @require_permission(USER_EDIT)
 async def update_view(user_id: str):
-    form = await request.form
+    form = request.form
     if "status" in form:
         status = form.get("status")
         is_active = status == "active"

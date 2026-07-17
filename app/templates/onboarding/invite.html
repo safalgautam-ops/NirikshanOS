@@ -1,4 +1,5 @@
 {% extends "layouts/base.html" %}
+{% import "components/ui/form.html" as form_ui %}
 {% from "components/ui/button.html" import button %}
 {% from "components/ui/frame.html" import frame, frame_panel %}
 {% from "dashboard/components/sidebar.html" import sidebar %}
@@ -9,6 +10,7 @@
 {% from "components/ui/toast.html" import flash %}
 {% from "macros/csrf.html" import csrf_field %}
 
+
 {% set cancel_classes = "relative inline-flex h-9 shrink-0 cursor-pointer items-center justify-center gap-2 whitespace-nowrap rounded-lg border border-input bg-popover px-[calc(--spacing(3)-1px)] text-sm text-foreground shadow-xs/5 outline-none transition-shadow hover:bg-accent/50 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-64 sm:h-8" %}
 
 {% block title %}Organization - NirikshanOS{% endblock %}
@@ -18,7 +20,7 @@
 
 <div class="flex flex-col md:pl-60">
     {{ topbar("Organization") }}
-    <main class="flex-1 p-4 md:p-6">
+    <main class="flex-1 p-2 md:p-4">
         {{ breadcrumb_trail([("Dashboard", "/"), ("Organization", None)]) }}
 
         {{ flash("error", error) }}
@@ -95,10 +97,10 @@
 
                         <p class="text-xs text-muted-foreground">Anyone with this code or link can join "{{ org.name }}". Regenerating it immediately invalidates the old one.</p>
 
-                        <form method="post" action="{{ url_for('onboarding.regenerate_invite_view') }}">
+                        {% call form_ui.form(method="post", action=url_for('onboarding.regenerate_invite_view'), unstyled=true) %}
                             {{ csrf_field() }}
                             {% call button(type="submit", variant="outline") %}Regenerate code{% endcall %}
-                        </form>
+                        {% endcall %}
                         {% endif %}
 
                         {% if not can_view_documents and not can_manage_org %}
@@ -115,9 +117,9 @@
                         <p class="text-sm font-medium">Ownership</p>
                         {% if other_members %}
                         <p class="text-sm text-muted-foreground">Hand off this organization's ownership to another member. The owner bypasses every role's permissions - only one person can hold it.</p>
-                        <button type="button" class="inline-flex h-9 items-center justify-center rounded-lg border border-input px-3 text-sm font-medium hover:bg-accent" data-slot="dialog-trigger" data-target="#transfer-ownership" aria-controls="transfer-ownership">
+                        {% call dialog.dialog_trigger(target="#transfer-ownership", class="inline-flex h-9 items-center justify-center rounded-lg border border-input px-3 text-sm font-medium hover:bg-accent") %}
                             Transfer ownership
-                        </button>
+                        {% endcall %}
                         {% else %}
                         <p class="text-sm text-muted-foreground">There's no one else in this organization to transfer ownership to yet.</p>
                         {% endif %}
@@ -126,7 +128,7 @@
             {% endcall %}
             {% if other_members %}
             {% call dialog.dialog(attrs={"id": "transfer-ownership"}) %}
-                <form method="post" action="{{ url_for('onboarding.transfer_ownership_view') }}">
+                {% call form_ui.form(method="post", action=url_for('onboarding.transfer_ownership_view'), unstyled=true) %}
                     {{ csrf_field() }}
                     {% call dialog.dialog_header() %}
                         {{ dialog.dialog_title("Transfer ownership?") }}
@@ -137,7 +139,7 @@
                         {% call dialog.dialog_close(class=cancel_classes) %}Cancel{% endcall %}
                         {% call button(variant="destructive", type="submit") %}Transfer ownership{% endcall %}
                     {% endcall %}
-                </form>
+                {% endcall %}
             {% endcall %}
             {% endif %}
 
@@ -146,9 +148,9 @@
                     <div class="space-y-3">
                         <p class="text-sm font-medium text-destructive">Danger zone</p>
                         <p class="text-sm text-muted-foreground">Deleting "{{ org.name }}" removes every member, role, and document permanently. This can't be undone.</p>
-                        <button type="button" class="inline-flex h-9 items-center justify-center rounded-lg border border-destructive/40 px-3 text-sm font-medium text-destructive hover:bg-destructive/10" data-slot="dialog-trigger" data-target="#delete-org" aria-controls="delete-org">
+                        {% call dialog.dialog_trigger(target="#delete-org", class="inline-flex h-9 items-center justify-center rounded-lg border border-destructive/40 px-3 text-sm font-medium text-destructive hover:bg-destructive/10") %}
                             Delete organization
-                        </button>
+                        {% endcall %}
                     </div>
                 {% endcall %}
             {% endcall %}
@@ -157,13 +159,13 @@
                     {{ dialog.dialog_title('Delete "' ~ org.name ~ '"?') }}
                     {{ dialog.dialog_description("Every member, role, and document is removed permanently. This can't be undone.") }}
                 {% endcall %}
-                <form method="post" action="{{ url_for('onboarding.delete_organization_view') }}">
+                {% call form_ui.form(method="post", action=url_for('onboarding.delete_organization_view'), unstyled=true) %}
                     {{ csrf_field() }}
                     {% call dialog.dialog_footer() %}
                         {% call dialog.dialog_close(class=cancel_classes) %}Cancel{% endcall %}
                         {% call button(variant="destructive", type="submit") %}Delete organization{% endcall %}
                     {% endcall %}
-                </form>
+                {% endcall %}
             {% endcall %}
             {% else %}
             {% call frame() %}
@@ -171,9 +173,9 @@
                     <div class="space-y-3">
                         <p class="text-sm font-medium">Membership</p>
                         <p class="text-sm text-muted-foreground">Leaving removes your access to "{{ org.name }}" immediately.</p>
-                        <button type="button" class="inline-flex h-9 items-center justify-center rounded-lg border border-destructive/40 px-3 text-sm font-medium text-destructive hover:bg-destructive/10" data-slot="dialog-trigger" data-target="#leave-org" aria-controls="leave-org">
+                        {% call dialog.dialog_trigger(target="#leave-org", class="inline-flex h-9 items-center justify-center rounded-lg border border-destructive/40 px-3 text-sm font-medium text-destructive hover:bg-destructive/10") %}
                             Leave organization
-                        </button>
+                        {% endcall %}
                     </div>
                 {% endcall %}
             {% endcall %}
@@ -182,13 +184,13 @@
                     {{ dialog.dialog_title('Leave "' ~ org.name ~ '"?') }}
                     {{ dialog.dialog_description("You'll lose access immediately. Someone else can invite you back later with the org's code or link.") }}
                 {% endcall %}
-                <form method="post" action="{{ url_for('onboarding.leave_view') }}">
+                {% call form_ui.form(method="post", action=url_for('onboarding.leave_view'), unstyled=true) %}
                     {{ csrf_field() }}
                     {% call dialog.dialog_footer() %}
                         {% call dialog.dialog_close(class=cancel_classes) %}Cancel{% endcall %}
                         {% call button(variant="destructive", type="submit") %}Leave organization{% endcall %}
                     {% endcall %}
-                </form>
+                {% endcall %}
             {% endcall %}
             {% endif %}
         </div>

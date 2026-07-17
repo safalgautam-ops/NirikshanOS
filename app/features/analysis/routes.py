@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from quart import Blueprint, abort, g, jsonify, request
+from flask import Blueprint, abort, g, jsonify, request
 
 from app.config import Config
 from app.core.security.org_permissions import get_user_org_membership, is_org_owner
@@ -110,7 +110,7 @@ async def analyze_evidence_view(case_id: str, evidence_id: str):
     if not evidence or evidence["case_id"] != case_id:
         abort(404)
 
-    body = await request.get_json(silent=True) or {}
+    body = request.get_json(silent=True) or {}
     module_ids: list[str] = body.get("module_ids", [])
     module_options: dict[str, dict] = body.get("module_options", {})
 
@@ -307,7 +307,7 @@ async def save_note_view(case_id: str, evidence_id: str, module_id: str):
     if not evidence or evidence["case_id"] != case_id:
         abort(404)
 
-    body = await request.get_json(silent=True) or {}
+    body = request.get_json(silent=True) or {}
     note_body: str = body.get("body", "")
 
     try:
@@ -349,7 +349,7 @@ async def list_notes_view(case_id: str, evidence_id: str):
 async def create_finding_view(case_id: str):
     """Persist an analyst-authored finding for a case. Returns the new ID."""
     await _require_visible_case(case_id)
-    body = await request.get_json(silent=True) or {}
+    body = request.get_json(silent=True) or {}
     try:
         finding_id = await findings_service.create_finding(
             case_id=case_id,
@@ -399,7 +399,7 @@ async def list_findings_view(case_id: str):
 async def create_indicator_view(case_id: str):
     """Persist an IOC for a case. Silently deduplicates by (case, type, value)."""
     await _require_visible_case(case_id)
-    body = await request.get_json(silent=True) or {}
+    body = request.get_json(silent=True) or {}
     try:
         indicator_id = await findings_service.create_indicator(
             case_id=case_id,

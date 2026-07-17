@@ -18,7 +18,7 @@ straight to MinIO using the presigned URL this route hands back.
 
 from __future__ import annotations
 
-from quart import Blueprint, abort, g, jsonify, request
+from flask import Blueprint, abort, g, jsonify, request
 
 from app.core.security.org_permissions import (
     get_user_org_membership,
@@ -103,7 +103,7 @@ async def init_view(case_id: str):
     # request.form for the csrf_token field (see core/security/csrf.py), so
     # every state-changing request in this app must be sent that way.
     await _require_visible_case(case_id)
-    form = await request.form
+    form = request.form
     try:
         result = await init_upload(
             case_id=case_id,

@@ -4,7 +4,7 @@ info if they do - see app/templates/onboarding/{index,invite}.html."""
 
 from __future__ import annotations
 
-from quart import Blueprint, abort, g, redirect, render_template, request, url_for
+from flask import Blueprint, abort, g, redirect, render_template, request, url_for
 
 from app.core.security.org_permissions import (
     ORG_NAV_KEYS,
@@ -102,7 +102,7 @@ async def index():
         other_members = [m for m in await list_staff(org["id"]) if m["id"] != g.user_id]
         member_options = [(m["id"], m["name"]) for m in other_members]
         if org["verification_status"] != "approved":
-            return await render_template(
+            return render_template(
                 "onboarding/pending.html",
                 org=org,
                 documents=documents,
@@ -114,7 +114,7 @@ async def index():
                 other_members=other_members,
                 error=request.args.get("error"),
             )
-        return await render_template(
+        return render_template(
             "onboarding/invite.html",
             org=org,
             documents=documents,
@@ -128,7 +128,7 @@ async def index():
             error=request.args.get("error"),
         )
 
-    return await render_template(
+    return render_template(
         "onboarding/index.html",
         error=request.args.get("error"),
         code=request.args.get("code", ""),
@@ -141,8 +141,8 @@ async def index():
 @onboarding_bp.route("/create", methods=["POST"])
 @login_required
 async def create_view():
-    form = await request.form
-    files = await request.files
+    form = request.form
+    files = request.files
     try:
         await create_and_join(
             created_by=g.user_id,
@@ -178,7 +178,7 @@ async def join_view():
             return redirect(url_for("onboarding.index"))
         return redirect(url_for("onboarding.index", code=request.args.get("code", "")))
 
-    form = await request.form
+    form = request.form
     try:
         await join_by_code(code=form.get("code", ""), user_id=g.user_id)
     except OnboardingError as exc:
@@ -210,7 +210,7 @@ async def download_document_view(doc_id: str):
 @require_org_permission(ORG_SETTINGS_MANAGE)
 async def upload_document_view():
     org_id = await _require_org_id()
-    files = await request.files
+    files = request.files
     try:
         await add_documents(org_id, files.getlist("documents"))
     except OnboardingError as exc:
@@ -255,7 +255,7 @@ async def leave_view():
 @login_required
 async def transfer_ownership_view():
     org_id = await _require_org_id()
-    form = await request.form
+    form = request.form
     try:
         await transfer_ownership(
             org_id, current_owner_id=g.user_id, new_owner_id=form.get("new_owner_id", "")
@@ -275,7 +275,7 @@ async def staff_list_view():
     members = await list_staff(org_id)
     org = await org_repository.get_organization(org_id)
     visible_keys = await get_visible_nav_keys(g.user_id)
-    return await render_template(
+    return render_template(
         "onboarding/staff/list.html",
         members=members,
         owner_id=org["created_by"] if org else None,
@@ -306,7 +306,7 @@ async def org_roles_list_view():
     visible_keys = await get_visible_nav_keys(g.user_id)
     membership = await get_user_org_membership(g.user_id)
     is_owner = bool(membership and is_org_owner(g.user_id, membership))
-    return await render_template(
+    return render_template(
         "onboarding/roles/list.html",
         roles=roles,
         visible_keys=visible_keys,
@@ -343,7 +343,7 @@ async def org_roles_edit_view(role_id: str):
     membership = await get_user_org_membership(g.user_id)
     is_owner = bool(membership and is_org_owner(g.user_id, membership))
 
-    return await render_template(
+    return render_template(
         "onboarding/roles/edit.html",
         role=role,
         all_roles=all_roles,
@@ -362,7 +362,7 @@ async def org_roles_edit_view(role_id: str):
 @onboarding_bp.route("/roles/<role_id>/display", methods=["POST"])
 @require_org_permission(ORG_ROLE_EDIT)
 async def org_roles_update_display(role_id: str):
-    form = await request.form
+    form = request.form
     try:
         await update_org_role_display(
             role_id,
@@ -378,7 +378,7 @@ async def org_roles_update_display(role_id: str):
 @onboarding_bp.route("/roles/<role_id>/permissions", methods=["POST"])
 @require_org_permission(ORG_ROLE_EDIT)
 async def org_roles_update_permissions(role_id: str):
-    form = await request.form
+    form = request.form
     await update_org_role_permissions(role_id, form.getlist("permission_ids"))
     return redirect(url_for("onboarding.org_roles_edit_view", role_id=role_id, tab="permissions"))
 
@@ -386,7 +386,7 @@ async def org_roles_update_permissions(role_id: str):
 @onboarding_bp.route("/roles/<role_id>/sidebar", methods=["POST"])
 @require_org_permission(ORG_ROLE_EDIT)
 async def org_roles_update_sidebar(role_id: str):
-    form = await request.form
+    form = request.form
     await update_org_role_sidebar(role_id, form.getlist("nav_keys"))
     return redirect(url_for("onboarding.org_roles_edit_view", role_id=role_id, tab="sidebar"))
 
@@ -395,7 +395,7 @@ async def org_roles_update_sidebar(role_id: str):
 @require_org_permission(ORG_ROLE_EDIT)
 async def org_roles_add_member(role_id: str):
     org_id = await _require_org_id()
-    form = await request.form
+    form = request.form
     user_id = form.get("user_id", "")
     try:
         if user_id:
@@ -447,6 +447,6 @@ async def org_roles_search_members(role_id: str):
     org_id = await _require_org_id()
     search = request.args.get("q", "").strip()
     users = await org_repository.search_org_assignable_users(org_id, role_id, search)
-    return await render_template(
+    return render_template(
         "onboarding/roles/_member_options.html", users=users, role_id=role_id
     )

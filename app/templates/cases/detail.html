@@ -1,18 +1,22 @@
 {% extends "layouts/base.html" %}
+{% import "components/ui/form.html" as form_ui %}
+{% import "components/ui/label.html" as label_ui %}
+{% import "components/ui/button.html" as button_ui %}
+{% import "components/ui/input.html" as input_ui %}
+{% import "components/ui/select-native.html" as select_ui %}
+{% import "components/ui/textarea.html" as textarea_ui %}
+{% import "components/ui/dialog.html" as dialog_ui %}
+
 {% block title %}{{ case.title }} - Cases - NirikshanOS{% endblock %}
-{% block scripts %}
-<script defer src="{{ url_for('static', filename='js/pages/cases/workspace.js') }}"></script>
-<script defer src="{{ url_for('static', filename='js/pages/cases/evidence-upload.js') }}"></script>
-{% endblock %}
+
 {% from "components/ui/card.html" import card, card_header, card_title, card_description, card_panel %}
 {% from "components/ui/badge.html" import badge %}
 {% from "components/ui/button.html" import button %}
-{% from "components/ui/dialog.html" import dialog, dialog_trigger, dialog_close, dialog_header, dialog_title, dialog_description, dialog_footer %}
+{% from "components/ui/dialog.html" import dialog, dialog_close, dialog_header, dialog_title, dialog_description, dialog_footer %}
 {% from "components/ui/field.html" import field_group, field, field_label %}
 {% from "components/ui/input.html" import input %}
 {% from "components/ui/textarea.html" import textarea %}
 {% from "components/ui/select.html" import select_simple %}
-{% from "components/ui/checkbox.html" import checkbox %}
 {% from "components/ui/tabs.html" import tabs, tabs_list, tabs_tab, tabs_panel %}
 {% import "components/ui/table.html" as table %}
 {% from "dashboard/components/sidebar.html" import sidebar %}
@@ -21,895 +25,104 @@
 {% from "components/ui/toast.html" import flash %}
 {% from "macros/csrf.html" import csrf_field %}
 
-{% set cancel_classes = "relative inline-flex h-9 shrink-0 cursor-pointer items-center justify-center gap-2 whitespace-nowrap rounded-lg border border-input bg-popover px-[calc(--spacing(3)-1px)] text-sm text-foreground shadow-xs/5 outline-none transition-shadow hover:bg-accent/50 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-64 sm:h-8" %}
-
+{% set cancel_classes = "relative inline-flex h-9 shrink-0 cursor-pointer items-center justify-center gap-2 whitespace-nowrap rounded-lg border border-input bg-popover px-3 text-sm text-foreground shadow-xs outline-none transition-shadow hover:bg-accent/50 focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-64" %}
 {% set severity_variant = {"low": "secondary", "medium": "info", "high": "warning", "critical": "error"} %}
 {% set status_variant = {"completed": "success", "failed": "error", "cancelled": "secondary", "paused": "secondary"} %}
 {% set case_status_variant = {"open": "info", "active": "warning", "closed": "success", "archived": "secondary"} %}
 
-{# A label/value row used by the Overview summary card and the Evidences
-   tab's per-file cards - "value" is rendered unescaped on purpose, since
-   callers pass already-safe macro output (badge(), etc.) through it. #}
-{% macro kv_row(label, value, class="") -%}
-<div class="{{ cn('flex items-center justify-between gap-4 px-5 py-3 text-sm', class) }}">
-    <span class="text-muted-foreground">{{ label }}</span>
-    <span class="font-medium text-right">{{ value }}</span>
-</div>
-{%- endmacro %}
-
-{# Status indicator for one module row in the Result Canvas's Module
-   Outputs column - ✓ completed, ○ not_run, ⚠ failed, spinner running/queued. #}
-{% macro module_status_icon(status_expr) -%}
-<span class="inline-flex size-4 shrink-0 items-center justify-center">
-    <svg x-show="{{ status_expr }} === 'completed'" class="size-4 text-success" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg>
-    <svg x-show="{{ status_expr }} === 'not_run'" class="size-4 text-muted-foreground/60" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/></svg>
-    <svg x-show="{{ status_expr }} === 'failed'" class="size-4 text-destructive" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
-    <svg x-show="{{ status_expr }} === 'running' || {{ status_expr }} === 'queued'" class="size-4 animate-spin text-primary" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-9-9"/></svg>
-</span>
-{%- endmacro %}
-
-{# Severity/confidence badges for the Report tab's saved findings/IOCs -
-   one pre-rendered badge() per value, toggled with x-show, since the
-   variant itself can't be chosen at runtime from a server-rendered macro. #}
-{% macro severity_badge(value_expr) -%}
-<span x-show="{{ value_expr }} === 'High'">{{ badge("High", variant="error", size="sm") }}</span>
-<span x-show="{{ value_expr }} === 'Medium'">{{ badge("Medium", variant="warning", size="sm") }}</span>
-<span x-show="{{ value_expr }} === 'Low'">{{ badge("Low", variant="secondary", size="sm") }}</span>
-{%- endmacro %}
-
-{% macro confidence_badge(value_expr) -%}
-<span x-show="{{ value_expr }} === 'High'">{{ badge("High", variant="success", size="sm") }}</span>
-<span x-show="{{ value_expr }} === 'Medium'">{{ badge("Medium", variant="secondary", size="sm") }}</span>
-<span x-show="{{ value_expr }} === 'Low'">{{ badge("Low", variant="outline", size="sm") }}</span>
-{%- endmacro %}
-
-{# One entry in the Activity tab's audit timeline - a dot + connecting line
-   on the left, the event's timestamp/actor/action/target/status on the
-   right. is_last drops the connecting line off the final entry. #}
-{% macro activity_row(item, is_last=false) -%}
-<div class="relative flex gap-4">
-    <div class="flex flex-col items-center">
-        <span class="{{ cn('z-10 mt-1.5 size-2.5 shrink-0 rounded-full', 'bg-success' if item.status == 'Completed' else 'bg-destructive') }}"></span>
-        {% if not is_last %}<span class="w-px flex-1 bg-border"></span>{% endif %}
-    </div>
-    <div class="min-w-0 flex-1 pb-6">
-        <div class="flex flex-wrap items-center justify-between gap-2">
-            <p class="text-sm font-medium">{{ item.action }}</p>
-            {{ badge(item.status, variant="success" if item.status == "Completed" else "error") }}
-        </div>
-        <p class="text-xs text-muted-foreground">{{ item.actor }} · {{ item.target }}</p>
-        <p class="mt-0.5 text-xs text-muted-foreground">{{ item.timestamp.strftime("%b %d, %Y %H:%M") }}</p>
-    </div>
-</div>
-{%- endmacro %}
+{% macro kv_row(label, value, class="") -%}<div class="{{ cn('flex items-center justify-between gap-4 px-5 py-3 text-sm', class) }}"><span class="text-muted-foreground">{{ label }}</span><span class="font-medium text-right">{{ value }}</span></div>{%- endmacro %}
+{% macro activity_row(item, is_last=false) -%}<div class="relative flex gap-4"><div class="flex flex-col items-center"><span class="{{ cn('z-10 mt-1.5 size-2.5 shrink-0 rounded-full', 'bg-success' if item.status == 'Completed' else 'bg-destructive') }}"></span>{% if not is_last %}<span class="w-px flex-1 bg-border"></span>{% endif %}</div><div class="min-w-0 flex-1 pb-6"><div class="flex flex-wrap items-center justify-between gap-2"><p class="text-sm font-medium">{{ item.action }}</p>{{ badge(item.status, variant="success" if item.status == "Completed" else "error") }}</div><p class="text-xs text-muted-foreground">{{ item.actor }} · {{ item.target }}</p><p class="mt-0.5 text-xs text-muted-foreground">{{ item.timestamp.strftime("%b %d, %Y %H:%M") }}</p></div></div>{%- endmacro %}
 
 {% block body %}
-{#- One shared Alpine scope for the whole page, not one per x-data attribute
-   - each evidence card's Analyze dialog, the Analysis Progress dialog, and
-   the Results/Report tabs all read/write the same `queue`/`results` state,
-   so they have to be the same component instance, not independent ones
-   that happen to share a name. Second arg is a mock subscription tier
-   (Free/Analyst/Advanced) - there's no real billing feature yet, this just
-   demonstrates the locked-module UI (see requiredPlanOf in components.js). #}
-<div x-data="analyzeWorkspace({{ analyze_evidence|tojson|forceescape }}, {{ user_plan|tojson|forceescape }}, {{ case.id|tojson|forceescape }}, {{ case.title|tojson|forceescape }}, {{ current_user_name|tojson|forceescape }}, &quot;{{ csrf_token() }}&quot;)" x-cloak>
+<script type="application/json" id="case-workspace-data">{{ {
+  "evidence": analyze_evidence,
+  "userPlan": user_plan,
+  "caseId": case.id,
+  "caseTitle": case.title,
+  "currentUserName": current_user_name,
+  "csrf": csrf_token()
+}|tojson }}</script>
+<div data-case-workspace>
 {{ sidebar(active="case", visible_keys=visible_keys) }}
-
 <div class="flex flex-col md:pl-60">
-    {{ topbar(case.title) }}
-    <main class="flex-1 p-4 md:p-6">
-        {{ breadcrumb_trail([("Dashboard", "/"), ("Cases", url_for('cases.list_view')), (case.title, None)]) }}
+  {{ topbar(case.title) }}
+  <main class="flex-1 p-2 md:p-4">
+    {{ breadcrumb_trail([("Dashboard", "/"), ("Cases", url_for('cases.list_view')), (case.title, None)]) }}
+    {{ flash("error", error) }}
+    <div class="p-2">
+      {% call tabs() %}
+        {% call tabs_list(class="w-full flex-wrap sm:w-fit") %}
+          {% call tabs_tab(value="overview", active=true) %}Overview{% endcall %}
+          {% call tabs_tab(value="evidences") %}Evidences{% endcall %}
+          {% call tabs_tab(value="results") %}Results{% endcall %}
+          {% call tabs_tab(value="report") %}Report{% endcall %}
+          {% call tabs_tab(value="notes") %}Notes{% endcall %}
+          {% call tabs_tab(value="members") %}Members{% endcall %}
+          {% call tabs_tab(value="activity") %}Activity{% endcall %}
+        {% endcall %}
 
-        {{ flash("error", error) }}
+        {% call tabs_panel(value="overview", active=true, class="mt-4 space-y-4") %}
+          <div class="flex items-start justify-between gap-4"><p class="text-sm text-muted-foreground">Review the case summary, investigation status, key details, and progress.</p><div class="flex shrink-0 gap-2">{% if can_edit %}{% call dialog_ui.dialog_trigger(target="#edit-case-dialog", class="inline-flex h-9 items-center rounded-lg border px-4 text-sm font-medium hover:bg-accent/50") %}Edit case{% endcall %}{% endif %}{% if can_delete %}{% call button(variant="destructive-outline", attrs={"data-case-delete-open":""}) %}Delete case{% endcall %}{% endif %}</div></div>
+          <div class="mx-auto max-w-2xl overflow-hidden rounded-2xl border bg-card shadow-xs"><div class="divide-y divide-border">{{ kv_row("Case Title", case.title) }}{{ kv_row("Case ID", case.case_number) }}{{ kv_row("Case Status", badge(case_status_label, variant=case_status_variant.get(case.status, "outline"))) }}{{ kv_row("Classification", classification_label) }}{{ kv_row("Severity", badge(severity_label, variant=severity_variant.get(case.severity, "outline"))) }}{{ kv_row("Examination Status", badge(forensic_status_label, variant=status_variant.get(case.forensic_status, "outline"))) }}{{ kv_row("Created by", creator_name) }}{{ kv_row("Last Modified", case.updated_at.strftime("%b %d, %Y %H:%M")) }}{{ kv_row("Evidence Count", (evidence|length|string) ~ (" File" if evidence|length == 1 else " Files")) }}{{ kv_row("Report Status", badge("Draft", variant="secondary")) }}</div></div>
+          {% if case.description %}<div class="mx-auto max-w-2xl rounded-2xl border bg-card p-5"><p class="mb-1.5 text-sm font-medium">Description</p><p class="whitespace-pre-wrap text-sm text-muted-foreground">{{ case.description }}</p></div>{% endif %}
+        {% endcall %}
 
-        <div class="p-2">
-            {% call tabs() %}
-            {% call tabs_list(class="w-full flex-wrap sm:w-fit") %}
-                {% call tabs_tab(value="overview", active=true) %}Overview{% endcall %}
-                {% call tabs_tab(value="evidences") %}Evidences{% endcall %}
-                {% call tabs_tab(value="results") %}Results{% endcall %}
-                {% call tabs_tab(value="report") %}Report{% endcall %}
-                {% call tabs_tab(value="notes") %}Notes{% endcall %}
-                {% call tabs_tab(value="members") %}Members{% endcall %}
-                {% call tabs_tab(value="activity") %}Activity{% endcall %}
-            {% endcall %}
+        {% call tabs_panel(value="evidences", class="mt-4 space-y-4") %}
+          <p class="text-sm text-muted-foreground">Manage uploaded files, metadata, hashes, file types, and chain of custody.</p>
+          <div data-evidence-root data-case-id="{{ case.id }}" data-csrf-token="{{ csrf_token() }}"{% if just_created %} data-just-created{% endif %} class="space-y-4"><div class="flex items-center justify-between gap-3"><p class="text-sm text-muted-foreground">{{ evidence|length }} file(s) collected for this case.</p>{% call dialog_ui.dialog_trigger(target="#evidence-upload-dialog", class="inline-flex h-9 items-center rounded-lg border px-4 text-sm font-medium hover:bg-accent/50") %}Upload evidence{% endcall %}</div><p class="text-sm text-muted-foreground" data-evidence-empty>No evidence uploaded yet.</p><div class="hidden space-y-4" data-evidence-cards></div></div>
+        {% endcall %}
 
-            {# ── Overview ──────────────────────────────────────────────────── #}
-            {% call tabs_panel(value="overview", active=true, class="mt-4 space-y-4") %}
-                <div class="flex items-start justify-between gap-4" x-data="{ deleteOpen: false }">
-                    <p class="text-sm text-muted-foreground">Review the case summary, investigation status, key details, and progress.</p>
-                    <div class="flex shrink-0 gap-2">
-                        {% if can_edit %}
-                        <button type="button" data-slot="dialog-trigger" data-target="#edit-case-dialog" aria-controls="edit-case-dialog"
-                            class="inline-flex h-9 shrink-0 cursor-pointer items-center justify-center gap-2 rounded-lg border border-input bg-background px-4 text-sm font-medium shadow-xs/5 hover:bg-accent/50">
-                            Edit case
-                        </button>
-                        {% endif %}
-                        {% if can_delete %}
-                        {% call button(variant="destructive-outline", attrs={"@click": "deleteOpen = true"}) %}Delete case{% endcall %}
-                        {% endif %}
-                    </div>
+        {% call tabs_panel(value="results", class="mt-4 space-y-4") %}
+          <p class="text-sm text-muted-foreground">Case-wide analysis activity. Open a Result Canvas for deep output.</p>
+          <div class="flex flex-wrap gap-2" data-results-filters>
+            {{ input(type="search", placeholder="Search results…", class="sm:max-w-64", attrs={"id":"case-result-search"}) }}
+            {% call select_ui.select_native(unstyled=true, class="h-9 rounded-lg border bg-background px-3 text-sm", attrs={"id":"case-result-status"}) %}<option value="all">All statuses</option><option value="completed">Completed</option><option value="running">Running</option><option value="failed">Failed</option>{% endcall %}
+            {% call select_ui.select_native(unstyled=true, class="h-9 rounded-lg border bg-background px-3 text-sm", attrs={"id":"case-result-type"}) %}<option value="all">All file types</option>{% endcall %}
+            {% call select_ui.select_native(unstyled=true, class="h-9 rounded-lg border bg-background px-3 text-sm", attrs={"id":"case-result-module"}) %}<option value="all">All modules</option>{% endcall %}
+          </div>
+          <div id="case-results-empty" class="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">No analysis results yet.</div>
+          {% call table.table(variant="card", class="w-full", attrs={"id":"case-results-table", "hidden":true}) %}{% call table.table_header() %}{% call table.table_row() %}{{ table.table_head("Evidence") }}{{ table.table_head("Type") }}{{ table.table_head("Completed") }}{{ table.table_head("Running") }}{{ table.table_head("Failed") }}{{ table.table_head("Action", class="text-right") }}{% endcall %}{% endcall %}{% call table.table_body(attrs={"id":"case-results-body"}) %}{% endcall %}{% endcall %}
+          <p id="case-results-no-match" class="rounded-lg border border-dashed p-4 text-center text-sm text-muted-foreground" hidden>No results match these filters.</p>
+        {% endcall %}
 
-                    {# ── Delete confirmation - irreversible, so it gets a real
-                       confirm step rather than an instant submit (same pattern
-                       as admin/instances/list.html's delete dialog). #}
-                    <template x-if="deleteOpen">
-                        <div class="fixed inset-0 z-50 flex items-center justify-center p-4" @keydown.escape.window="deleteOpen = false">
-                            <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="deleteOpen = false"></div>
-                            <div class="relative z-10 w-full max-w-sm rounded-xl border bg-card shadow-xl overflow-hidden">
-                                <div class="flex items-center justify-between border-b px-6 py-4">
-                                    <h2 class="font-semibold text-base">Delete "{{ case.title }}"?</h2>
-                                    {% call button(variant="ghost", size="icon-sm", attrs={"@click": "deleteOpen = false"}) %}
-                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" x2="6" y1="6" y2="18"/><line x1="6" x2="18" y1="6" y2="18"/></svg>
-                                    {% endcall %}
-                                </div>
-                                <div class="px-6 py-5">
-                                    <p class="text-sm text-muted-foreground">This permanently deletes the case, its evidence, findings, and report. This cannot be undone.</p>
-                                </div>
-                                <div class="flex justify-end gap-2 border-t px-6 py-4">
-                                    {% call button(variant="outline", attrs={"@click": "deleteOpen = false"}) %}Cancel{% endcall %}
-                                    <form method="post" action="{{ url_for('cases.delete_view', case_id=case.id) }}">
-                                        {{ csrf_field() }}
-                                        {% call button(variant="destructive", type="submit") %}Delete{% endcall %}
-                                    </form>
-                                </div>
-                            </div>
-                        </div>
-                    </template>
-                </div>
+        {% call tabs_panel(value="report", class="mt-4 space-y-4") %}
+          <div class="rounded-xl border bg-card overflow-hidden"><div class="flex flex-wrap items-center justify-between gap-3 border-b px-5 py-4"><div class="min-w-0 flex-1">{{ input_ui.input(type="text", bare=true, class="w-full rounded-lg border border-transparent bg-transparent px-2 py-1 text-lg font-semibold hover:border-input focus:border-input", attrs={"id":"case-report-title"}) }}<p class="text-xs text-muted-foreground px-2">Draft investigation report</p></div><div class="flex flex-wrap items-center gap-2"><span id="case-report-flash" class="text-xs text-success-soft" hidden></span>{% call button(variant="outline", size="sm", attrs={"data-report-items-open":""}) %}Saved Items <span id="case-report-pending-count" class="rounded-full bg-primary px-1.5 text-primary-foreground" hidden></span>{% endcall %}{% call button(variant="outline", size="sm", attrs={"data-report-save":""}) %}Save Draft{% endcall %}</div></div><div class="p-5">{% call textarea_ui.textarea(bare=true, rows="22", class="min-h-[430px] w-full rounded-lg border bg-background p-3 font-mono text-sm leading-relaxed", attrs={"id":"case-report-content"}) %}{% endcall %}</div><div class="flex flex-wrap justify-end gap-2 border-t px-5 py-4">{% call button(variant="outline", attrs={"data-report-preview":""}) %}Preview{% endcall %}{% call button(variant="outline", attrs={"data-report-pdf":""}) %}Export PDF{% endcall %}{% call button(variant="outline", attrs={"data-report-doc":""}) %}Export DOCX{% endcall %}</div></div>
+        {% endcall %}
 
-                <div class="mx-auto max-w-2xl overflow-hidden rounded-2xl border bg-card shadow-xs/5">
-                    <div class="divide-y divide-border">
-                        {{ kv_row("Case Title", case.title) }}
-                        {{ kv_row("Case ID", case.case_number) }}
-                        {{ kv_row("Case Status", badge(case_status_label, variant=case_status_variant.get(case.status, "outline"))) }}
-                        {{ kv_row("Classification", classification_label) }}
-                        {{ kv_row("Severity", badge(severity_label, variant=severity_variant.get(case.severity, "outline"))) }}
-                        {{ kv_row("Examination Status", badge(forensic_status_label, variant=status_variant.get(case.forensic_status, "outline"))) }}
-                        {{ kv_row("Created by", creator_name) }}
-                        {{ kv_row("Last Modified", case.updated_at.strftime("%b %d, %Y %H:%M")) }}
-                        {{ kv_row("Evidence Count", (evidence|length|string) ~ (" File" if evidence|length == 1 else " Files")) }}
-                        {{ kv_row("Analysis Job Count", "0") }}
-                        {{ kv_row("Report Status", badge("Draft", variant="secondary")) }}
-                    </div>
-                </div>
+        {% call tabs_panel(value="notes", class="mt-4 space-y-3") %}<div class="flex items-center justify-between"><p class="text-sm text-muted-foreground">Shared scratchpad visible to all case members.</p><div class="flex items-center gap-2"><span id="case-note-flash" class="text-xs text-muted-foreground" hidden></span>{% call button_ui.button(type="button", unstyled=true, class="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground disabled:opacity-50", attrs={"data-case-note-save":""}) %}Save note{% endcall %}</div></div>{% call textarea_ui.textarea(bare=true, placeholder="Start typing investigation notes here…", class="min-h-[420px] w-full rounded-md border bg-background px-3 py-2 text-sm font-mono leading-relaxed", attrs={"id":"case-note-content"}) %}{% endcall %}{% endcall %}
 
-                {% if case.description %}
-                <div class="mx-auto max-w-2xl rounded-2xl border bg-card p-5 shadow-xs/5">
-                    <p class="mb-1.5 text-sm font-medium">Description</p>
-                    <p class="whitespace-pre-wrap text-sm text-muted-foreground">{{ case.description }}</p>
-                </div>
-                {% endif %}
-            {% endcall %}
+        {% call tabs_panel(value="members", class="mt-4 w-full space-y-4") %}
+          <p class="text-sm text-muted-foreground">Manage analysts, reviewers, roles, and access for this case.</p>{% call card(class="w-full") %}{% call card_header() %}{{ card_title("Access") }}{{ card_description("Only the creator and members below can see or manage this case.") }}{% endcall %}{% call card_panel(class="pt-0 space-y-4") %}{% if not member_rows %}<div class="rounded-lg border px-3 py-6 text-center text-sm text-muted-foreground">No members added yet.</div>{% else %}{% call table.table(variant="card", class="w-full") %}{% call table.table_header() %}{% call table.table_row() %}{{ table.table_head("Name") }}{{ table.table_head("Role") }}{{ table.table_head("Last Activity") }}{{ table.table_head("Actions", class="text-right") }}{% endcall %}{% endcall %}{% call table.table_body() %}{% for row in member_rows %}{% call table.table_row() %}{% call table.table_cell() %}<div class="min-w-0"><div class="truncate font-medium">{{ row.name }}</div><div class="truncate text-xs text-muted-foreground">{{ row.email }}</div></div>{% endcall %}{% call table.table_cell() %}{{ badge(row.role_label, variant="default" if row.is_creator else "secondary") }}{% endcall %}{% call table.table_cell() %}<span class="text-muted-foreground">{{ row.last_activity.strftime("%b %d, %Y %H:%M") }}</span>{% endcall %}{% call table.table_cell(class="text-right") %}{% if not row.is_creator and (is_owner or row.id != g.user_id) %}{% call form_ui.form(method="post", action=url_for('cases.remove_member_view', case_id=case.id, user_id=row.id), class="inline", unstyled=true) %}{{ csrf_field() }}{% call button(variant="ghost", size="icon-xs", type="submit", class="text-muted-foreground hover:text-destructive", attrs={"aria-label":"Remove " ~ row.name}) %}×{% endcall %}{% endcall %}{% else %}<span class="text-xs text-muted-foreground">—</span>{% endif %}{% endcall %}{% endcall %}{% endfor %}{% endcall %}{% endcall %}{% endif %}<div class="space-y-2 border-t pt-4"><p class="text-sm font-medium">Add member</p>{{ input(name="q", type="search", placeholder="Search this org's members…", attrs={"hx-get":url_for('cases.search_members_view', case_id=case.id), "hx-trigger":"input changed delay:300ms", "hx-target":"#case-member-results"}) }}<div id="case-member-results" class="flex flex-col gap-1"></div></div>{% endcall %}{% endcall %}
+        {% endcall %}
 
-            {# ── Evidences ─────────────────────────────────────────────────── #}
-            {% call tabs_panel(value="evidences", class="mt-4 space-y-4") %}
-                <p class="text-sm text-muted-foreground">Manage uploaded files, view metadata, hashes, file types, and chain of custody.</p>
-
-                <div data-evidence-root data-case-id="{{ case.id }}" data-csrf-token="{{ csrf_token() }}"{% if just_created %} data-just-created{% endif %} class="space-y-4">
-                    <div class="flex items-center justify-between gap-3">
-                        <p class="text-sm text-muted-foreground">{{ evidence|length }} file(s) collected for this case.</p>
-                        <button type="button" data-slot="dialog-trigger" data-target="#evidence-upload-dialog" aria-controls="evidence-upload-dialog"
-                            class="inline-flex h-9 shrink-0 cursor-pointer items-center justify-center gap-2 rounded-lg border border-input bg-background px-4 text-sm font-medium shadow-xs/5 hover:bg-accent/50">
-                            Upload evidence
-                        </button>
-                    </div>
-                    <p class="text-sm text-muted-foreground" data-evidence-empty>No evidence uploaded yet.</p>
-                    <div class="hidden space-y-4" data-evidence-cards></div>
-                </div>
-            {% endcall %}
-
-            {# ── Results ───────────────────────────────────────────────────── #}
-            {% call tabs_panel(value="results", class="mt-4 space-y-4") %}
-                <p class="text-sm text-muted-foreground">A case-wide index of analysis activity. Open a file's Result Canvas to view its deep output.</p>
-
-                <template x-if="!resultRowsRaw().length">
-                    {% call card() %}
-                        {% call card_panel(class="py-12 text-center") %}
-                            <p class="text-sm font-medium">No analysis results yet</p>
-                            <p class="mt-1 text-sm text-muted-foreground">Click "Analyze" on a file in the Evidences tab to run modules and see results here.</p>
-                        {% endcall %}
-                    {% endcall %}
-                </template>
-
-                <template x-if="resultRowsRaw().length">
-                    <div class="space-y-4">
-                        <div class="flex flex-wrap items-center gap-3">
-                            {{ input(type="search", placeholder="Search Results…", class="sm:max-w-64", attrs={"x-model": "resultSearch"}) }}
-                            <select class="h-9 rounded-lg border border-input bg-background px-3 text-sm shadow-xs outline-none focus-visible:ring-2 focus-visible:ring-ring dark:bg-input/32" x-model="resultsFilterStatus">
-                                <option value="all">All statuses</option>
-                                <option value="completed">Completed</option>
-                                <option value="running">Running</option>
-                                <option value="failed">Failed</option>
-                            </select>
-                            <select class="h-9 rounded-lg border border-input bg-background px-3 text-sm shadow-xs outline-none focus-visible:ring-2 focus-visible:ring-ring dark:bg-input/32" x-model="resultsFilterType">
-                                <option value="all">All file types</option>
-                                <template x-for="t in availableResultTypes()" :key="t.value">
-                                    <option :value="t.value" x-text="t.label"></option>
-                                </template>
-                            </select>
-                            <select class="h-9 rounded-lg border border-input bg-background px-3 text-sm shadow-xs outline-none focus-visible:ring-2 focus-visible:ring-ring dark:bg-input/32" x-model="resultsFilterModule">
-                                <option value="all">All modules</option>
-                                <template x-for="m in availableResultModules()" :key="m.id">
-                                    <option :value="m.id" x-text="m.name"></option>
-                                </template>
-                            </select>
-                        </div>
-
-                        {% call table.table(variant="card", class="w-full") %}
-                            {% call table.table_header() %}
-                                {% call table.table_row() %}
-                                    {{ table.table_head("Evidence") }}
-                                    {{ table.table_head("Type") }}
-                                    {{ table.table_head("Completed") }}
-                                    {{ table.table_head("Running") }}
-                                    {{ table.table_head("Failed") }}
-                                    {{ table.table_head("Actions", class="text-right") }}
-                                {% endcall %}
-                            {% endcall %}
-                            {% call table.table_body() %}
-                                <template x-for="row in resultRows()" :key="row.evidenceId">
-                                    {% call table.table_row() %}
-                                        {% call table.table_cell() %}<span class="font-medium" x-text="row.evidenceName"></span>{% endcall %}
-                                        {% call table.table_cell() %}<span class="text-muted-foreground" x-text="row.evidenceTypeLabel"></span>{% endcall %}
-                                        {% call table.table_cell() %}<span x-text="row.completed"></span>{% endcall %}
-                                        {% call table.table_cell() %}<span x-text="row.running"></span>{% endcall %}
-                                        {% call table.table_cell() %}<span x-text="row.failed"></span>{% endcall %}
-                                        {% call table.table_cell(class="text-right") %}
-                                            <button type="button" data-slot="dialog-trigger" data-target="#result-canvas-dialog" aria-controls="result-canvas-dialog"
-                                                x-show="row.actionLabel === 'Open Canvas'" @click="openResultCanvasFor(row.evidenceId)"
-                                                class="text-xs font-medium text-primary hover:underline">Open Canvas</button>
-                                            <button type="button" data-slot="dialog-trigger" data-target="#current-job-queue" aria-controls="current-job-queue"
-                                                x-show="row.actionLabel === 'View Jobs'" @click="openJobsForEvidence(row.evidenceId)"
-                                                class="text-xs font-medium text-primary hover:underline">View Jobs</button>
-                                        {% endcall %}
-                                    {% endcall %}
-                                </template>
-                            {% endcall %}
-                        {% endcall %}
-                        <p x-show="!resultRows().length" class="rounded-lg border border-dashed p-4 text-center text-sm text-muted-foreground">No results match these filters.</p>
-                    </div>
-                </template>
-            {% endcall %}
-
-            {# ── Report ────────────────────────────────────────────────────── #}
-            {% call tabs_panel(value="report", class="mt-4 space-y-4") %}
-                <p class="text-sm text-muted-foreground">Build the final case report from findings, IOCs, notes, and timeline events.</p>
-
-                <div class="mx-auto w-full max-w-4xl space-y-4">
-                    {# Header: title / visibility / status #}
-                    <div class="space-y-3 rounded-2xl border bg-card p-5 shadow-xs/5">
-                        <input type="text" x-model="report.title" placeholder="Report title"
-                            class="w-full rounded-lg border border-transparent bg-transparent px-2 py-1 text-center text-lg font-semibold outline-none transition-colors hover:border-input focus-visible:border-input focus-visible:bg-background">
-                        <div class="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm">
-                            <label class="flex items-center gap-2">
-                                <span class="text-muted-foreground">Visibility:</span>
-                                <select class="h-8 rounded-lg border border-input bg-background px-2 text-sm shadow-xs outline-none focus-visible:ring-2 focus-visible:ring-ring dark:bg-input/32" x-model="report.visibility">
-                                    <option value="personal_draft">Personal Draft</option>
-                                    <option value="case_shared">Case Shared</option>
-                                </select>
-                            </label>
-                            <span class="flex items-center gap-2">
-                                <span class="text-muted-foreground">Status:</span>
-                                <span x-show="report.status === 'draft'">{{ badge("Draft", variant="secondary") }}</span>
-                                <span x-show="report.status === 'in_review'">{{ badge("In Review", variant="info") }}</span>
-                                <span x-show="report.status === 'changes_requested'">{{ badge("Changes Requested", variant="warning") }}</span>
-                                <span x-show="report.status === 'approved'">{{ badge("Approved", variant="success") }}</span>
-                                <span x-show="report.status === 'final'">{{ badge("Final", variant="success") }}</span>
-                                <span x-show="report.status === 'exported'">{{ badge("Exported", variant="outline") }}</span>
-                            </span>
-                            <span class="text-xs text-muted-foreground">v<span x-text="report.version"></span> · updated by <span x-text="report.updatedBy"></span></span>
-                        </div>
-                    </div>
-
-                    {# Action row: insert saved items / save / submit for review #}
-                    <div class="flex flex-wrap items-center justify-between gap-3">
-                        <button type="button" data-slot="dialog-trigger" data-target="#report-insert-dialog" aria-controls="report-insert-dialog"
-                            class="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-input bg-background px-3 text-xs font-medium shadow-xs/5 hover:bg-accent/50">
-                            Insert Saved Items
-                            <span x-show="pendingInsertCount()" x-text="pendingInsertCount()" class="flex size-4 items-center justify-center rounded-full bg-primary text-[.6875rem] text-primary-foreground"></span>
-                        </button>
-                        <div class="flex items-center gap-3">
-                            <span x-show="reportFlash" x-text="reportFlash" class="text-xs text-success-soft"></span>
-                            {% call button(variant="outline", size="sm", attrs={"@click": "saveDraft()"}) %}Save Draft{% endcall %}
-                            {% call button(variant="outline", size="sm", disabled=true, attrs={"title": "Review workflow will be available when team roles are enabled."}) %}Submit for Review{% endcall %}
-                        </div>
-                    </div>
-
-                    {# Editor #}
-                    <div class="overflow-hidden rounded-2xl border bg-card shadow-xs/5">
-                        <p class="border-b px-5 py-3 text-sm font-medium">Report Editor</p>
-                        <div class="p-5">
-                            {{ textarea(rows=22, class="font-mono text-sm leading-relaxed", attrs={"x-model": "report.markdownContent"}) }}
-                        </div>
-                    </div>
-
-                    {# Footer actions #}
-                    <div class="flex flex-wrap justify-center gap-3 pb-2">
-                        <button type="button" @click="openReportPreview()" class="{{ cancel_classes }}">Preview</button>
-                        {% call button(variant="outline", attrs={"@click": "exportReportPdf()"}) %}Export PDF{% endcall %}
-                        {% call button(variant="outline", attrs={"@click": "exportReportDocx()"}) %}Export DOCX{% endcall %}
-                    </div>
-                </div>
-            {% endcall %}
-
-            {# ── Notes ─────────────────────────────────────────────────────── #}
-            {% call tabs_panel(value="notes", class="mt-4 space-y-3") %}
-                <div class="flex items-center justify-between">
-                    <p class="text-sm text-muted-foreground">Shared scratchpad for this case — visible to all members.</p>
-                    <div class="flex items-center gap-2">
-                        <span class="text-xs text-muted-foreground" x-text="noteFlash"></span>
-                        <button type="button"
-                            class="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-                            :disabled="!noteContent.trim()"
-                            @click="saveNote()">
-                            Save note
-                        </button>
-                    </div>
-                </div>
-                <textarea
-                    class="min-h-[420px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono leading-relaxed placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-                    placeholder="Start typing investigation notes here…"
-                    x-model="noteContent"
-                ></textarea>
-            {% endcall %}
-
-            {# ── Members ───────────────────────────────────────────────────── #}
-            {% call tabs_panel(value="members", class="mt-4 w-full space-y-4") %}
-                <p class="text-sm text-muted-foreground">Manage analysts, reviewers, roles, and access for this case.</p>
-                {% call card(class="w-full") %}
-                    {% call card_header() %}
-                        {{ card_title("Access") }}
-                        {{ card_description("Only the case's creator and the members below can see or manage it.") }}
-                    {% endcall %}
-                    {% call card_panel(class="pt-0 space-y-4") %}
-                        {% if not member_rows %}
-                        <div class="rounded-lg border px-3 py-6 text-center text-sm text-muted-foreground">No members added yet.</div>
-                        {% else %}
-                        {% call table.table(variant="card", class="w-full") %}
-                            {% call table.table_header() %}
-                                {% call table.table_row() %}
-                                    {{ table.table_head("Name") }}
-                                    {{ table.table_head("Role") }}
-                                    {{ table.table_head("Last Activity") }}
-                                    {{ table.table_head("Actions", class="text-right") }}
-                                {% endcall %}
-                            {% endcall %}
-                            {% call table.table_body() %}
-                                {% for row in member_rows %}
-                                {% call table.table_row() %}
-                                    {% call table.table_cell() %}
-                                        <div class="min-w-0">
-                                            <div class="truncate font-medium">{{ row.name }}</div>
-                                            <div class="truncate text-xs text-muted-foreground">{{ row.email }}</div>
-                                        </div>
-                                    {% endcall %}
-                                    {% call table.table_cell() %}{{ badge(row.role_label, variant="default" if row.is_creator else "secondary") }}{% endcall %}
-                                    {% call table.table_cell() %}<span class="text-muted-foreground">{{ row.last_activity.strftime("%b %d, %Y %H:%M") }}</span>{% endcall %}
-                                    {% call table.table_cell(class="text-right") %}
-                                        {% if not row.is_creator and (is_owner or row.id != g.user_id) %}
-                                        <form method="post" action="{{ url_for('cases.remove_member_view', case_id=case.id, user_id=row.id) }}" class="inline">
-                                            {{ csrf_field() }}
-                                            {% call button(variant="ghost", size="icon-xs", type="submit", class="text-muted-foreground hover:bg-destructive/10 hover:text-destructive", attrs={"aria-label": "Remove " ~ row.name}) %}
-                                            <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
-                                            {% endcall %}
-                                        </form>
-                                        {% else %}
-                                        <span class="text-xs text-muted-foreground">—</span>
-                                        {% endif %}
-                                    {% endcall %}
-                                {% endcall %}
-                                {% endfor %}
-                            {% endcall %}
-                        {% endcall %}
-                        {% endif %}
-
-                        <div class="space-y-2 border-t border-border pt-4">
-                            <p class="text-sm font-medium">Add member</p>
-                            {{ input(name="q", type="search", placeholder="Search this org's members…", attrs={ "hx-get": url_for('cases.search_members_view', case_id=case.id), "hx-trigger": "input changed delay:300ms", "hx-target": "#case-member-results" }) }}
-                            <div id="case-member-results" class="flex flex-col gap-1"></div>
-                        </div>
-                    {% endcall %}
-                {% endcall %}
-            {% endcall %}
-
-            {# ── Activity ──────────────────────────────────────────────────── #}
-            {% call tabs_panel(value="activity", class="mt-4 space-y-4") %}
-                <p class="text-sm text-muted-foreground">View the complete audit trail of actions performed inside this case.</p>
-                {% call card() %}
-                    {% call card_header() %}
-                        {{ card_title("Audit Trail") }}
-                        {{ card_description("Backend-recorded log of who did what, when, and whether it succeeded.") }}
-                    {% endcall %}
-                    {% call card_panel(class="pt-0") %}
-                        {% if not activity_log %}
-                        <p class="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">No activity recorded yet.</p>
-                        {% else %}
-                        <div>
-                            {% for item in activity_log %}
-                            {{ activity_row(item, is_last=loop.last) }}
-                            {% endfor %}
-                        </div>
-                        {% endif %}
-                    {% endcall %}
-                {% endcall %}
-            {% endcall %}
-            {% endcall %}
-        </div>
-    </main>
+        {% call tabs_panel(value="activity", class="mt-4 space-y-4") %}<p class="text-sm text-muted-foreground">Complete audit trail for this case.</p>{% call card() %}{% call card_header() %}{{ card_title("Audit Trail") }}{{ card_description("Backend-recorded log of who did what and when.") }}{% endcall %}{% call card_panel(class="pt-0") %}{% if not activity_log %}<p class="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">No activity recorded yet.</p>{% else %}<div>{% for item in activity_log %}{{ activity_row(item, is_last=loop.last) }}{% endfor %}</div>{% endif %}{% endcall %}{% endcall %}{% endcall %}
+      {% endcall %}
+    </div>
+  </main>
 </div>
 
-{% call dialog(attrs={"id": "edit-case-dialog"}) %}
-    {% call dialog_header() %}
-        {{ dialog_title("Edit case") }}
-        {{ dialog_description(case.case_number) }}
-    {% endcall %}
-    <form method="post" action="{{ url_for('cases.update_view', case_id=case.id) }}">
-        {{ csrf_field() }}
-        {% call field_group() %}
-            {% call field() %}
-                {{ field_label("Case title", for_id="edit-title") }}
-                {{ input(name="title", value=case.title, required=True, attrs={"id": "edit-title"}) }}
-            {% endcall %}
-            {% call field() %}
-                {{ field_label("Description", for_id="edit-description") }}
-                {{ textarea(name="description", value=case.description or "", attrs={"id": "edit-description"}) }}
-            {% endcall %}
-            <div class="grid gap-4 sm:grid-cols-2">
-                {% call field() %}
-                    {{ field_label("Classification") }}
-                    {{ select_simple("classification", classifications, value=case.classification, placeholder="Select classification", key="edit-classification") }}
-                {% endcall %}
-                {% call field() %}
-                    {{ field_label("Severity") }}
-                    {{ select_simple("severity", severities, value=case.severity, placeholder="Select severity", key="edit-severity") }}
-                {% endcall %}
-            </div>
-            <div class="grid gap-4 sm:grid-cols-2">
-                {% call field() %}
-                    {{ field_label("Case status") }}
-                    {{ select_simple("status", case_statuses, value=case.status, placeholder="Select status", key="edit-case-status") }}
-                {% endcall %}
-                {% call field() %}
-                    {{ field_label("Forensic examination status") }}
-                    {{ select_simple("forensic_status", forensic_statuses, value=case.forensic_status, placeholder="Select status", key="edit-forensic-status") }}
-                {% endcall %}
-            </div>
-        {% endcall %}
-        {% call dialog_footer(class="mt-4") %}
-            {% call dialog_close(class=cancel_classes) %}Cancel{% endcall %}
-            {% call button(type="submit") %}Save changes{% endcall %}
-        {% endcall %}
-    </form>
-{% endcall %}
+<div id="case-delete-dialog" class="fixed inset-0 z-50 flex items-center justify-center p-4" hidden><div class="absolute inset-0 bg-black/50 backdrop-blur-sm" data-case-delete-close></div><div class="relative z-10 w-full max-w-sm rounded-xl border bg-card shadow-xl overflow-hidden"><div class="border-b px-6 py-4"><h2 class="font-semibold">Delete “{{ case.title }}”?</h2></div><div class="px-6 py-5"><p class="text-sm text-muted-foreground">This permanently deletes the case, evidence, findings, and report.</p></div><div class="flex justify-end gap-2 border-t px-6 py-4">{% call button(variant="outline", attrs={"data-case-delete-close":""}) %}Cancel{% endcall %}{% call form_ui.form(method="post", action=url_for('cases.delete_view', case_id=case.id), unstyled=true) %}{{ csrf_field() }}{% call button(variant="destructive", type="submit") %}Delete{% endcall %}{% endcall %}</div></div></div>
 
-{% call dialog(attrs={"id": "evidence-upload-dialog"}) %}
-    {% call dialog_header() %}
-        {{ dialog_title("Upload evidence") }}
-        {{ dialog_description("Drag and drop up to 5 files. Uploads are sent straight to object storage in parts - you can pause and continue later.") }}
-    {% endcall %}
-    <div data-evidence-dropzone data-case-id="{{ case.id }}" class="rounded-lg border-2 border-dashed border-input p-8 text-center text-sm text-muted-foreground">
-        Drop files here, or
-        <button type="button" data-evidence-browse class="font-medium text-primary underline-offset-4 hover:underline">browse</button>
-        <input type="file" data-evidence-file-input multiple hidden>
-        <p class="mt-1 text-xs">Up to 5 files per upload.</p>
-    </div>
-    {% call table.table(variant="card", class="mt-4 hidden", attrs={"data-evidence-upload-table": ""}) %}
-        {% call table.table_header() %}
-            {% call table.table_row() %}
-                {{ table.table_head("File Name") }}
-                {{ table.table_head("Format", class="w-24") }}
-                {{ table.table_head("Size", class="w-28") }}
-                {{ table.table_head("Progress", class="w-40") }}
-                {{ table.table_head("Action", class="w-20 text-right") }}
-            {% endcall %}
-        {% endcall %}
-        {% call table.table_body(attrs={"data-evidence-upload-rows": ""}) %}{% endcall %}
-    {% endcall %}
-    {% call dialog_footer() %}
-        {% call dialog_close(class=cancel_classes) %}Done{% endcall %}
-    {% endcall %}
-{% endcall %}
+{% call dialog(attrs={"id":"edit-case-dialog"}) %}{% call dialog_header() %}{{ dialog_title("Edit case") }}{{ dialog_description(case.case_number) }}{% endcall %}{% call form_ui.form(method="post", action=url_for('cases.update_view', case_id=case.id), unstyled=true) %}{{ csrf_field() }}{% call field_group() %}{% call field() %}{{ field_label("Case title", for_id="edit-title") }}{{ input(name="title", value=case.title, required=True, attrs={"id":"edit-title"}) }}{% endcall %}{% call field() %}{{ field_label("Description", for_id="edit-description") }}{{ textarea(name="description", value=case.description or "", attrs={"id":"edit-description"}) }}{% endcall %}<div class="grid gap-4 sm:grid-cols-2">{% call field() %}{{ field_label("Classification") }}{{ select_simple("classification", classifications, value=case.classification, key="edit-classification") }}{% endcall %}{% call field() %}{{ field_label("Severity") }}{{ select_simple("severity", severities, value=case.severity, key="edit-severity") }}{% endcall %}</div><div class="grid gap-4 sm:grid-cols-2">{% call field() %}{{ field_label("Case status") }}{{ select_simple("status", case_statuses, value=case.status, key="edit-case-status") }}{% endcall %}{% call field() %}{{ field_label("Forensic examination status") }}{{ select_simple("forensic_status", forensic_statuses, value=case.forensic_status, key="edit-forensic-status") }}{% endcall %}</div>{% endcall %}{% call dialog_footer(class="mt-4") %}{% call dialog_close(class=cancel_classes) %}Cancel{% endcall %}{% call button(type="submit") %}Save changes{% endcall %}{% endcall %}{% endcall %}{% endcall %}
 
-{# ── Analyze Evidence: per-file module chooser + configuration ──────────── #}
-{% call dialog(attrs={"id": "analyze-evidence-dialog", "style": "max-width: 64rem"}) %}
-    <div class="flex items-start justify-between gap-4">
-        {% call dialog_title(class="min-w-0") %}
-            <span class="block truncate" x-text="analyzingEvidence ? ('Choose Compatible Modules for ' + analyzingEvidence.filename) : ''"></span>
-        {% endcall %}
-        {% call dialog_close(class=cancel_classes + " shrink-0") %}Back{% endcall %}
-    </div>
-    <template x-if="analyzingEvidence">
-        <div class="mt-3 flex flex-wrap gap-1.5">
-            <span class="rounded-sm bg-muted px-1.5 py-0.5 text-xs text-muted-foreground" x-text="'Type: ' + evidenceTypeLabelOf(analyzingEvidence)"></span>
-            <span class="rounded-sm bg-muted px-1.5 py-0.5 text-xs text-muted-foreground" x-text="'Size: ' + formatBytes(analyzingEvidence.size_bytes)"></span>
-            <span class="rounded-sm bg-muted px-1.5 py-0.5 text-xs font-mono text-muted-foreground" x-text="'SHA256: ' + (analyzingEvidence.sha256 ? analyzingEvidence.sha256.slice(0, 16) + '…' : 'Computing…')"></span>
-        </div>
-    </template>
+{% call dialog(attrs={"id":"evidence-upload-dialog"}) %}{% call dialog_header() %}{{ dialog_title("Upload evidence") }}{{ dialog_description("Drag and drop up to 5 files. Uploads are streamed to object storage.") }}{% endcall %}<div data-evidence-dropzone data-case-id="{{ case.id }}" class="rounded-lg border-2 border-dashed border-input p-8 text-center text-sm text-muted-foreground">Drop files here, or {% call button_ui.button(type="button", unstyled=true, class="font-medium text-primary hover:underline", attrs={"data-evidence-browse":true}) %}browse{% endcall %}{{ input_ui.file_input(attrs={"data-evidence-file-input":true, "multiple":true, "hidden":true}) }}<p class="mt-1 text-xs">Up to 5 files per upload.</p></div>{% call table.table(variant="card", class="mt-4 hidden", attrs={"data-evidence-upload-table":""}) %}{% call table.table_header() %}{% call table.table_row() %}{{ table.table_head("File Name") }}{{ table.table_head("Format") }}{{ table.table_head("Size") }}{{ table.table_head("Progress") }}{{ table.table_head("Action", class="text-right") }}{% endcall %}{% endcall %}{% call table.table_body(attrs={"data-evidence-upload-rows":""}) %}{% endcall %}{% endcall %}{% call dialog_footer() %}{% call dialog_close(class=cancel_classes) %}Done{% endcall %}{% endcall %}{% endcall %}
 
-    <div class="mt-4 grid gap-4 lg:grid-cols-2">
-        {# Left panel: Compatible Modules - checkboxes stage modules for this
-           run, grouped by execution tier, only showing tiers that actually
-           have a compatible module for this file's type. #}
-        {% call card() %}
-            {% call card_header() %}{{ card_title("Compatible Modules") }}{% endcall %}
-            {% call card_panel(class="pt-0 space-y-3") %}
-                {{ input(type="search", placeholder="Search modules…", attrs={"x-model": "moduleQuery"}) }}
-                <div class="flex flex-wrap gap-1.5">
-                    <button type="button" @click="tierFilter = 'all'"
-                        class="rounded-full border px-2.5 py-1 text-xs font-medium transition-colors"
-                        :class="tierFilter === 'all' ? 'border-primary bg-primary/10 text-primary' : 'border-input text-muted-foreground hover:bg-accent/50'">All</button>
-                    <template x-for="tier in availableTiers()" :key="tier">
-                        <button type="button" @click="tierFilter = tier" x-text="moduleTierLabels[tier]"
-                            class="rounded-full border px-2.5 py-1 text-xs font-medium transition-colors"
-                            :class="tierFilter === tier ? 'border-primary bg-primary/10 text-primary' : 'border-input text-muted-foreground hover:bg-accent/50'"></button>
-                    </template>
-                </div>
+{% call dialog(attrs={"id":"analyze-evidence-dialog", "style":"max-width:64rem"}) %}<div class="flex items-start justify-between gap-4"><div><h2 id="analyze-title" class="font-semibold text-lg"></h2><div id="analyze-meta" class="mt-2 flex flex-wrap gap-1.5 text-xs text-muted-foreground"></div></div>{% call dialog_close(class=cancel_classes) %}Back{% endcall %}</div><div class="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]"><section class="space-y-3"><div class="flex gap-2">{{ input(type="search", placeholder="Search modules…", attrs={"id":"analyze-module-search"}) }}{% call select_ui.select_native(unstyled=true, class="h-9 rounded-lg border bg-background px-3 text-sm", attrs={"id":"analyze-tier-filter"}) %}<option value="all">All tiers</option>{% endcall %}</div><p id="analyze-loading" class="text-sm text-muted-foreground" hidden>Loading compatible modules…</p><div id="analyze-module-list" class="space-y-3"></div></section><aside class="rounded-xl border bg-muted/20 p-4"><h3 class="text-sm font-semibold">Module configuration</h3><div id="analyze-module-config" class="mt-3 space-y-3"><p class="text-sm text-muted-foreground">Select a module to configure it.</p></div></aside></div><div class="mt-4 flex items-center justify-between border-t pt-4"><p id="analyze-summary" class="text-sm text-muted-foreground">No modules selected.</p>{% call button(attrs={"data-analysis-start":"", "disabled":true}) %}Start Analysis{% endcall %}</div>{% endcall %}
 
-                <div class="max-h-96 space-y-3 overflow-y-auto">
-                    <template x-for="group in compatibleModuleGroups()" :key="group.tier">
-                        <div>
-                            <p class="mb-1.5 text-xs font-medium text-muted-foreground" x-text="group.label"></p>
-                            <div class="space-y-1.5">
-                                <template x-for="mod in group.modules" :key="mod.id">
-                                    <div class="flex items-center gap-2.5 rounded-lg border px-3 py-2 transition-colors"
-                                        :class="[selectedModule === mod.id ? 'border-primary bg-primary/5' : 'border-input', isModuleLocked(mod.id) ? 'opacity-60' : 'hover:bg-accent/30']">
-                                        {{ checkbox(attrs={":checked": "isModuleChecked(mod.id)", ":disabled": "isModuleLocked(mod.id)", "@change": "toggleModuleChecked(mod.id)"}) }}
-                                        <button type="button" class="min-w-0 flex-1 text-left text-sm" @click="isModuleLocked(mod.id) ? openUpgradeDialog(mod.id) : selectModuleForConfig(mod.id)">
-                                            <span class="block truncate" x-text="mod.name"></span>
-                                            <span class="block truncate text-xs text-muted-foreground" x-text="mod.tool"></span>
-                                        </button>
-                                        <svg x-show="isModuleLocked(mod.id)" class="size-4 shrink-0 text-muted-foreground" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-                                    </div>
-                                </template>
-                            </div>
-                        </div>
-                    </template>
-                    <p x-show="!compatibleModuleGroups().length" class="rounded-lg border border-dashed p-4 text-center text-xs text-muted-foreground">No compatible modules match.</p>
-                </div>
-            {% endcall %}
-        {% endcall %}
+{% call dialog(attrs={"id":"current-job-queue", "style":"max-width:56rem"}) %}{% call dialog_header() %}{{ dialog_title("Analysis Progress") }}{{ dialog_description("Queued and running tasks update automatically.") }}{% endcall %}<div id="analysis-progress-jobs" class="space-y-4"></div><p id="analysis-progress-empty" class="text-center text-sm text-muted-foreground">No jobs queued.</p>{% call dialog_footer() %}{% call dialog_close(class=cancel_classes) %}Close{% endcall %}{% call button(attrs={"data-progress-canvas":""}) %}Open Result Canvas{% endcall %}{% endcall %}{% endcall %}
 
-        {# Right panel: Module Configuration - shows whichever checked
-           module was last clicked; each module keeps its own option set. #}
-        {% call card() %}
-            {% call card_header() %}{{ card_title("Module Configuration") }}{% endcall %}
-            {% call card_panel(class="pt-0 space-y-4") %}
-                <template x-if="!selectedModule">
-                    <p class="rounded-lg border border-dashed p-4 text-center text-xs text-muted-foreground">Check a module on the left to configure it.</p>
-                </template>
-                <template x-if="selectedModule">
-                    <div class="space-y-4">
-                        <div>
-                            <p class="text-sm">Selected Module: <span class="font-medium" x-text="moduleMap[selectedModule].name"></span></p>
-                            <p class="text-xs text-muted-foreground" x-text="moduleMap[selectedModule].description"></p>
-                            <div class="mt-2 flex flex-wrap gap-1.5">
-                                <span class="rounded-sm bg-muted px-1.5 py-0.5 text-xs text-muted-foreground" x-text="'Required Plan: ' + requiredPlanOf(selectedModule)"></span>
-                                <span class="rounded-sm bg-muted px-1.5 py-0.5 text-xs text-muted-foreground" x-text="'Runtime: ' + moduleMap[selectedModule].estimatedRuntime"></span>
-                                <span class="rounded-sm bg-muted px-1.5 py-0.5 text-xs text-muted-foreground" x-text="'Output: ' + moduleMap[selectedModule].outputType"></span>
-                                <span class="rounded-sm bg-muted px-1.5 py-0.5 text-xs text-muted-foreground" x-text="'Batchable: ' + (isBatchable(selectedModule) ? 'Yes' : 'No')"></span>
-                            </div>
-                        </div>
+{% call dialog(attrs={"id":"upgrade-plan-dialog"}) %}{% call dialog_header() %}{{ dialog_title("Plan upgrade required") }}{{ dialog_description(attrs={"id":"upgrade-plan-description"}) }}{% endcall %}<p id="upgrade-plan-body" class="text-sm text-muted-foreground"></p>{% call dialog_footer() %}{% call dialog_close(class=cancel_classes) %}Close{% endcall %}{% endcall %}{% endcall %}
 
-                        <template x-for="f in moduleMap[selectedModule].fields" :key="f.key">
-                            <div class="space-y-1.5">
-                                <label class="text-xs font-medium text-muted-foreground" x-text="f.label"></label>
-                                <template x-if="f.type === 'select'">
-                                    <select class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm shadow-xs outline-none focus-visible:ring-2 focus-visible:ring-ring dark:bg-input/32" x-model="moduleOptionsByModule[selectedModule][f.key]">
-                                        <template x-for="opt in f.options" :key="opt">
-                                            <option :value="opt" x-text="opt"></option>
-                                        </template>
-                                    </select>
-                                </template>
-                                <template x-if="f.type === 'number'">
-                                    <input type="number" class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm shadow-xs outline-none focus-visible:ring-2 focus-visible:ring-ring dark:bg-input/32" x-model.number="moduleOptionsByModule[selectedModule][f.key]">
-                                </template>
-                                <template x-if="f.type === 'checkbox'">
-                                    <label class="flex items-center gap-2 text-sm">
-                                        {{ checkbox("", attrs={"x-model": "moduleOptionsByModule[selectedModule][f.key]"}) }}
-                                        <span x-text="moduleOptionsByModule[selectedModule][f.key] ? 'Yes' : 'No'"></span>
-                                    </label>
-                                </template>
-                                <template x-if="f.type === 'checklist'">
-                                    <div class="flex flex-wrap gap-3" role="group">
-                                        <template x-for="opt in f.options" :key="opt">
-                                            <label class="flex items-center gap-1.5 text-sm">
-                                                {{ checkbox("", attrs={":checked": "moduleOptionsByModule[selectedModule][f.key].includes(opt)", "@change": "toggleChecklistValue(selectedModule, f.key, opt)"}) }}
-                                                <span x-text="opt"></span>
-                                            </label>
-                                        </template>
-                                    </div>
-                                </template>
-                            </div>
-                        </template>
-                    </div>
-                </template>
-            {% endcall %}
-        {% endcall %}
-    </div>
+{% call dialog(attrs={"id":"result-canvas-dialog", "style":"max-width:72rem"}) %}<div class="flex flex-wrap items-center justify-between gap-3"><div><h2 id="canvas-title" class="font-semibold text-lg"></h2><p class="text-xs text-muted-foreground">Module outputs, notes, findings, and indicators.</p></div><div class="flex gap-2">{% call button(variant="outline", size="sm", attrs={"data-canvas-reanalyze":""}) %}Re-Analyze{% endcall %}{% call button(variant="outline", size="sm", attrs={"data-canvas-export":""}) %}Export{% endcall %}{% call dialog_close(class=cancel_classes) %}Close{% endcall %}</div></div><div class="mt-4 grid min-h-[32rem] gap-4 lg:grid-cols-[18rem_minmax(0,1fr)_16rem]"><aside id="canvas-module-list" class="overflow-y-auto rounded-xl border p-3"></aside><main id="canvas-output" class="overflow-y-auto rounded-xl border p-4"><p class="text-sm text-muted-foreground">Select a module.</p></main><aside class="space-y-3 rounded-xl border p-3"><h3 class="text-sm font-semibold">Analyst note</h3>{% call textarea(rows=5, placeholder="Write a note about this output…", attrs={"id":"canvas-note"}) %}{% endcall %}{% call button(variant="outline", size="sm", attrs={"data-canvas-note-save":""}) %}Save Note{% endcall %}<div class="grid gap-2 border-t pt-3">{% call button(variant="outline", size="sm", attrs={"data-canvas-indicator":""}) %}Add Indicator{% endcall %}{% call button(variant="outline", size="sm", attrs={"data-canvas-finding":""}) %}Create Finding{% endcall %}{% call button(variant="outline", size="sm", attrs={"data-canvas-timeline":""}) %}Add to Timeline{% endcall %}{% call button(variant="outline", size="sm", attrs={"data-canvas-report":""}) %}Add to Report{% endcall %}</div><p id="canvas-flash" class="text-xs text-success-soft" hidden></p></aside></div>{% endcall %}
 
-    {# Bottom: live plan summary over whatever's checked, then Next. #}
-    <div class="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-muted/40 p-3">
-        <div class="flex flex-wrap gap-4 text-xs text-muted-foreground">
-            <span><span class="font-medium text-foreground" x-text="planSummary().moduleCount"></span> module(s) selected</span>
-            <span><span class="font-medium text-foreground" x-text="planSummary().taskCount"></span> task(s)</span>
-            <span><span class="font-medium text-foreground" x-text="planSummary().containerRuns"></span> container run(s)</span>
-            <span>~<span class="font-medium text-foreground" x-text="planSummary().estimatedMinutes"></span> min estimated</span>
-        </div>
-        {% call button(attrs={"@click": "startAnalysis()", ":disabled": "!checkedModuleIds.length"}) %}Next{% endcall %}
-    </div>
-{% endcall %}
+{% call dialog(attrs={"id":"case-saved-items-dialog", "style":"max-width:56rem"}) %}{% call dialog_header() %}{{ dialog_title("Insert Saved Items") }}{{ dialog_description("Insert saved findings, IOCs, or timeline events into the report draft.") }}{% endcall %}<div id="case-saved-items" class="space-y-5"></div>{% call dialog_footer() %}{% call dialog_close(class=cancel_classes) %}Done{% endcall %}{% endcall %}{% endcall %}
 
-{# ── Analysis Progress: grouped job/task table for the run just started ── #}
-{% call dialog(attrs={"id": "current-job-queue", "style": "max-width: 44rem"}) %}
-    {% call dialog_header() %}
-        {{ dialog_title("Analysis Progress") }}
-        {{ dialog_description(attrs={"x-text": "progressJobs().length ? ('Evidence: ' + progressJobs()[0].evidenceName) : ''"}) }}
-    {% endcall %}
-
-    <div class="mt-2 max-h-96 space-y-4 overflow-y-auto">
-        <template x-for="job in progressJobs()" :key="job.id">
-            {% call table.table(variant="card") %}
-                {% call table.table_header() %}
-                    {% call table.table_row() %}
-                        {{ table.table_head(attrs={"colspan": "4", "x-text": "job.tierLabel"}) }}
-                    {% endcall %}
-                    {% call table.table_row() %}
-                        {{ table.table_head("Module Task") }}
-                        {{ table.table_head("Status") }}
-                        {{ table.table_head("Progress") }}
-                        {{ table.table_head("Action") }}
-                    {% endcall %}
-                {% endcall %}
-                {% call table.table_body() %}
-                    <template x-for="task in job.tasks" :key="task.id">
-                        {% call table.table_row() %}
-                            {% call table.table_cell() %}<span x-text="task.moduleName"></span>{% endcall %}
-                            {% call table.table_cell() %}
-                                <span x-show="task.status === 'Completed'">{{ badge("Completed", variant="success") }}</span>
-                                <span x-show="task.status === 'Running'">{{ badge("Running", variant="info") }}</span>
-                                <span x-show="task.status === 'Queued'">{{ badge("Queued", variant="outline") }}</span>
-                                <span x-show="task.status === 'Failed'">{{ badge("Failed", variant="error") }}</span>
-                            {% endcall %}
-                            {% call table.table_cell() %}
-                                <div class="h-2 w-24 overflow-hidden rounded-full bg-muted">
-                                    <div class="h-full transition-all" :class="task.status === 'Completed' ? 'bg-success' : (task.status === 'Failed' ? 'bg-destructive' : 'bg-primary')" :style="'width:' + task.progress + '%'"></div>
-                                </div>
-                            {% endcall %}
-                            {% call table.table_cell() %}
-                                <button type="button" x-show="task.status === 'Completed' || task.status === 'Failed'" @click="deleteTaskRow(job.id, task.id)" class="text-xs text-muted-foreground hover:text-destructive">Delete</button>
-                                <button type="button" x-show="task.status === 'Queued' || task.status === 'Running'" @click="cancelTask(job.id, task.id)" class="text-xs text-muted-foreground hover:text-destructive">Cancel</button>
-                            {% endcall %}
-                        {% endcall %}
-                    </template>
-                {% endcall %}
-            {% endcall %}
-        </template>
-    </div>
-    <div x-show="!progressJobs().length" class="mt-2 text-center text-sm text-muted-foreground">No jobs queued.</div>
-
-    {% call dialog_footer(class="mt-4") %}
-        {% call dialog_close(class=cancel_classes) %}Close{% endcall %}
-        {% call button(attrs={"@click": "openResultCanvas()"}) %}Open Result Canvas{% endcall %}
-    {% endcall %}
-{% endcall %}
-
-{# ── Upgrade Plan: shown when a locked, above-plan module is clicked ───── #}
-{% call dialog(attrs={"id": "upgrade-plan-dialog", "style": "max-width: 28rem"}) %}
-    {% call dialog_header() %}
-        {{ dialog_title("Upgrade Required") }}
-        {{ dialog_description(attrs={"x-text": "lockedModule ? (lockedModule.name + ' requires the ' + requiredPlanOf(lockedModule.id) + ' plan.') : ''"}) }}
-    {% endcall %}
-    <p class="rounded-lg border bg-muted/40 p-3 text-sm text-muted-foreground">
-        Your organization is currently on the <span class="font-medium text-foreground" x-text="userPlan"></span> plan. Upgrade to unlock this module and others at the same tier.
-    </p>
-    {% call dialog_footer(class="mt-4") %}
-        {% call dialog_close(class=cancel_classes) %}Maybe later{% endcall %}
-        {% call button() %}View Plans{% endcall %}
-    {% endcall %}
-{% endcall %}
-
-{# ── Result Canvas: deep-dive into one evidence file's module outputs ──── #}
-{% call dialog(attrs={"id": "result-canvas-dialog", "style": "max-width: 72rem"}) %}
-    <div class="flex items-start justify-between gap-4">
-        {% call dialog_title(class="min-w-0") %}
-            <span class="block truncate" x-text="canvasEvidenceName"></span>
-        {% endcall %}
-        <div class="flex shrink-0 items-center gap-2">
-            {% call button(variant="outline", size="sm", attrs={"@click": "reAnalyzeCurrentModule()", ":disabled": "!canvasSelectedModuleId"}) %}Re-Analyze{% endcall %}
-            {% call button(variant="outline", size="sm", attrs={"@click": "exportCanvasEvidence()"}) %}Export{% endcall %}
-            {% call dialog_close(class=cancel_classes) %}Close{% endcall %}
-        </div>
-    </div>
-
-    <div class="mt-4 grid gap-4 lg:grid-cols-[15rem_1fr_17rem]">
-        {# Left: Module Outputs #}
-        {% call card() %}
-            {% call card_header() %}{{ card_title("Module Outputs") }}{% endcall %}
-            {% call card_panel(class="pt-0") %}
-                <div class="max-h-[28rem] space-y-3 overflow-y-auto">
-                    <template x-for="group in canvasModuleGroups()" :key="group.tier">
-                        <div>
-                            <p class="mb-1.5 text-xs font-medium text-muted-foreground" x-text="group.label"></p>
-                            <div class="space-y-1">
-                                <template x-for="mod in group.modules" :key="mod.moduleId">
-                                    <button type="button" @click="selectCanvasModule(mod.moduleId)"
-                                        class="flex w-full items-center gap-2 rounded-lg border px-2.5 py-2 text-left transition-colors"
-                                        :class="canvasSelectedModuleId === mod.moduleId ? 'border-primary bg-primary/5' : 'border-transparent hover:bg-accent/40'">
-                                        {{ module_status_icon("mod.status") }}
-                                        <span class="min-w-0 flex-1 truncate text-sm" x-text="mod.moduleName"></span>
-                                    </button>
-                                </template>
-                            </div>
-                        </div>
-                    </template>
-                    <p x-show="!canvasModuleGroups().length" class="rounded-lg border border-dashed p-4 text-center text-xs text-muted-foreground">No compatible modules.</p>
-                </div>
-            {% endcall %}
-        {% endcall %}
-
-        {# Center: Output Viewer - shows raw stdout/stderr directly. No
-           parsed-summary view - modules write raw tool output only, there's
-           no parser stage to produce a summary/findings/IOCs from. #}
-        {% call card() %}
-            {% call card_header() %}
-                {{ card_title("Output Viewer") }}
-            {% endcall %}
-            {% call card_panel(class="pt-0") %}
-                <div class="max-h-[28rem] overflow-y-auto">
-                <template x-if="!canvasSelectedModuleId">
-                    <p class="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">Select a module on the left to view its output.</p>
-                </template>
-
-                <template x-if="canvasSelectedModuleId && canvasSelectedOutput().status === 'not_run'">
-                    <p class="rounded-lg border border-dashed p-4 text-center text-sm text-muted-foreground">This module hasn't been run yet. Use Re-Analyze to queue it.</p>
-                </template>
-                <template x-if="canvasSelectedModuleId && (canvasSelectedOutput().status === 'queued' || canvasSelectedOutput().status === 'running')">
-                    <div class="space-y-2 text-sm">
-                        <p class="text-muted-foreground">Analysis in progress…</p>
-                        <div class="h-2 w-full overflow-hidden rounded-full bg-muted">
-                            <div class="h-full bg-primary transition-all" :style="'width:' + canvasSelectedOutput().progress + '%'"></div>
-                        </div>
-                    </div>
-                </template>
-
-                <template x-if="canvasSelectedModuleId && (canvasSelectedOutput().status === 'completed' || canvasSelectedOutput().status === 'failed')">
-                    <div class="space-y-3 text-sm">
-                        <template x-if="canvasSelectedOutput().status === 'failed'">
-                            <p class="rounded-lg border border-destructive/36 bg-destructive/8 p-4 text-destructive-soft">This module failed to complete. See stderr below for details.</p>
-                        </template>
-                        <div class="flex justify-end gap-2">
-                            {% call button(variant="outline", size="sm", attrs={"@click": "copyRawOutput()"}) %}Copy{% endcall %}
-                            {% call button(variant="outline", size="sm", attrs={"@click": "downloadRawOutput()"}) %}Download{% endcall %}
-                        </div>
-                        <div>
-                            <p class="mb-1 text-xs font-medium text-muted-foreground">stdout</p>
-                            <pre class="max-h-48 overflow-auto rounded-lg border bg-muted/40 p-3 text-xs text-muted-foreground"><template x-for="(line, i) in canvasSelectedOutput().rawOutput.stdout" :key="i"><div x-text="line"></div></template><span x-show="!canvasSelectedOutput().rawOutput.stdout.length">(empty)</span></pre>
-                        </div>
-                        <div>
-                            <p class="mb-1 text-xs font-medium text-muted-foreground">stderr</p>
-                            <pre class="max-h-48 overflow-auto rounded-lg border bg-muted/40 p-3 text-xs text-muted-foreground"><template x-for="(line, i) in canvasSelectedOutput().rawOutput.stderr" :key="i"><div x-text="line"></div></template><span x-show="!canvasSelectedOutput().rawOutput.stderr.length">(empty)</span></pre>
-                        </div>
-                    </div>
-                </template>
-                </div>
-            {% endcall %}
-        {% endcall %}
-
-        {# Right: Analyst Notes / Actions #}
-        {% call card() %}
-            {% call card_header() %}{{ card_title("Analyst Notes") }}{% endcall %}
-            {% call card_panel(class="pt-0 space-y-4") %}
-                {{ textarea(placeholder="Write a note about this output…", rows=5, attrs={"x-model": "canvasNoteDraft", ":disabled": "!canvasSelectedModuleId"}) }}
-                {% call button(variant="outline", size="sm", attrs={"@click": "saveCanvasNote()", ":disabled": "!canvasSelectedModuleId"}) %}Save Note{% endcall %}
-
-                <div class="space-y-2 border-t border-border pt-4">
-                    <p class="text-xs font-medium text-muted-foreground">Actions</p>
-                    {% call button(variant="outline", size="sm", class="w-full justify-start", attrs={"@click": "addIndicator()", ":disabled": "!canvasSelectedOutput() || !canvasSelectedOutput().iocs.length || indicatorsAddedForCurrent()"}) %}Add Indicator{% endcall %}
-                    {% call button(variant="outline", size="sm", class="w-full justify-start", attrs={"@click": "createFinding()", ":disabled": "!canvasSelectedModuleId || canvasSelectedOutput().status === 'not_run'"}) %}Create Finding{% endcall %}
-                    {% call button(variant="outline", size="sm", class="w-full justify-start", attrs={"@click": "addToTimeline()", ":disabled": "!canvasSelectedModuleId || canvasSelectedOutput().status === 'not_run'"}) %}Add to Timeline{% endcall %}
-                    {% call button(variant="outline", size="sm", class="w-full justify-start", attrs={"@click": "addCurrentToReport()", ":disabled": "!canvasSelectedOutput() || canvasSelectedOutput().status !== 'completed'"}) %}Add to Report{% endcall %}
-                    <p x-show="canvasFlash" x-text="canvasFlash" class="text-xs text-success-soft"></p>
-                </div>
-            {% endcall %}
-        {% endcall %}
-    </div>
-{% endcall %}
-
-{# ── Insert Saved Items: findings / IOCs / timeline events pending insertion into the report draft ── #}
-{% call dialog(attrs={"id": "report-insert-dialog", "style": "max-width: 40rem"}) %}
-    {% call dialog_header() %}
-        {{ dialog_title("Insert Saved Items") }}
-        {{ dialog_description("Findings, IOCs, and timeline events saved from the Result Canvas. Insert any of them into the report draft.") }}
-    {% endcall %}
-
-    <div class="mt-2 max-h-[28rem] space-y-5 overflow-y-auto">
-        <div>
-            <p class="mb-2 text-xs font-medium text-muted-foreground">Findings</p>
-            <div class="space-y-2">
-                <template x-for="f in pendingFindings()" :key="f.id">
-                    <div class="space-y-1.5 rounded-lg border px-3 py-2.5">
-                        <div class="flex items-start justify-between gap-3">
-                            <p class="min-w-0 text-sm font-medium" x-text="f.title"></p>
-                            <button type="button" @click="insertFindingIntoReport(f.id)" class="shrink-0 text-xs font-medium text-primary hover:underline">Insert into Report</button>
-                        </div>
-                        <div class="flex flex-wrap items-center gap-1.5">
-                            {{ severity_badge("f.severity") }}
-                            {{ confidence_badge("f.confidence") }}
-                            <span class="text-xs text-muted-foreground" x-text="f.sourceEvidence + ' → ' + f.sourceModule"></span>
-                        </div>
-                        <p class="text-xs text-muted-foreground" x-text="f.description"></p>
-                    </div>
-                </template>
-            </div>
-            <p x-show="!pendingFindings().length" class="rounded-lg border border-dashed p-3 text-center text-xs text-muted-foreground">No pending findings - use Create Finding on a module in the Result Canvas.</p>
-        </div>
-
-        <div>
-            <p class="mb-2 text-xs font-medium text-muted-foreground">IOCs</p>
-            <div class="space-y-2">
-                <template x-for="ioc in pendingIocs()" :key="ioc.id">
-                    <div class="flex items-start justify-between gap-3 rounded-lg border px-3 py-2.5">
-                        <div class="min-w-0 space-y-1">
-                            <p class="truncate text-sm"><span class="font-medium uppercase" x-text="ioc.type"></span> <span class="font-mono text-xs" x-text="ioc.value"></span></p>
-                            <div class="flex flex-wrap items-center gap-1.5">
-                                {{ severity_badge("ioc.severity") }}
-                                {{ confidence_badge("ioc.confidence") }}
-                                <span class="text-xs text-muted-foreground" x-text="ioc.sourceEvidence + ' → ' + ioc.sourceModule"></span>
-                            </div>
-                        </div>
-                        <button type="button" @click="insertIocIntoReport(ioc.id)" class="shrink-0 text-xs font-medium text-primary hover:underline">Insert</button>
-                    </div>
-                </template>
-            </div>
-            <p x-show="!pendingIocs().length" class="rounded-lg border border-dashed p-3 text-center text-xs text-muted-foreground">No pending IOCs - use Add Indicator on a completed module in the Result Canvas.</p>
-        </div>
-
-        <div>
-            <p class="mb-2 text-xs font-medium text-muted-foreground">Timeline Events</p>
-            <div class="space-y-2">
-                <template x-for="ev in pendingTimelineEvents()" :key="ev.id">
-                    <div class="flex items-start justify-between gap-3 rounded-lg border px-3 py-2.5">
-                        <div class="min-w-0 space-y-1">
-                            <p class="truncate text-sm font-medium" x-text="ev.title"></p>
-                            <p class="text-xs text-muted-foreground" x-text="ev.eventTime + ' · ' + ev.eventType + ' · ' + ev.source"></p>
-                        </div>
-                        <button type="button" @click="insertTimelineIntoReport(ev.id)" class="shrink-0 text-xs font-medium text-primary hover:underline">Insert</button>
-                    </div>
-                </template>
-            </div>
-            <p x-show="!pendingTimelineEvents().length" class="rounded-lg border border-dashed p-3 text-center text-xs text-muted-foreground">No pending timeline events - use Add to Timeline on a completed module in the Result Canvas.</p>
-        </div>
-    </div>
-
-    {% call dialog_footer(class="mt-4") %}
-        {% call dialog_close(class=cancel_classes) %}Close{% endcall %}
-    {% endcall %}
-{% endcall %}
-
-{# ── Report Preview: rendered Markdown, read-only ────────────────────── #}
-{% call dialog(attrs={"id": "report-preview-dialog", "style": "max-width: 44rem"}) %}
-    {% call dialog_header() %}
-        {{ dialog_title(attrs={"x-text": "report.title"}) }}
-        {{ dialog_description("Rendered preview - the report editor remains the source of truth.") }}
-    {% endcall %}
-    <div class="prose-report max-h-[28rem] overflow-y-auto rounded-lg border bg-background p-5 text-sm" x-ref="reportPreviewBody"></div>
-    {% call dialog_footer(class="mt-4") %}
-        {% call dialog_close(class=cancel_classes) %}Close{% endcall %}
-    {% endcall %}
-{% endcall %}
+{% call dialog(attrs={"id":"report-preview-dialog", "style":"max-width:56rem"}) %}{% call dialog_header() %}{{ dialog_title("Report Preview", attrs={"id":"report-preview-title"}) }}{% endcall %}<div id="report-preview-body" class="prose-report max-h-[32rem] overflow-y-auto rounded-lg border bg-background p-5 text-sm"></div>{% call dialog_footer() %}{% call dialog_close(class=cancel_classes) %}Close{% endcall %}{% endcall %}{% endcall %}
 </div>
+{% endblock %}
 
-<style>
-  .prose-report h1 { font-size: 1.25rem; font-weight: 600; margin: 0 0 .75rem; }
-  .prose-report h2 { font-size: 1.05rem; font-weight: 600; margin: 1.25rem 0 .5rem; border-bottom: 1px solid var(--border); padding-bottom: .25rem; }
-  .prose-report h2:first-child { margin-top: 0; }
-  .prose-report h3 { font-size: .95rem; font-weight: 600; margin: 1rem 0 .35rem; }
-  .prose-report p { margin: 0 0 .75rem; color: var(--muted-foreground); }
-  .prose-report table { width: 100%; border-collapse: collapse; margin: .5rem 0 1rem; font-size: .8125rem; }
-  .prose-report th, .prose-report td { border: 1px solid var(--border); padding: .4rem .6rem; text-align: left; }
-  .prose-report th { background: var(--muted); }
-  .prose-report a { color: var(--primary); text-decoration: underline; }
-  .prose-report img { max-width: 100%; border-radius: .5rem; margin: .5rem 0; }
-</style>
-
+{% block body_scripts %}
+<script src="{{ url_for('static', filename='js/vendor/htmx.min.js') }}"></script>
+<script src="{{ url_for('static', filename='js/pages/case-workspace.js') }}?v={{ asset_version('js/pages/case-workspace.js') }}"></script>
+<script src="{{ url_for('static', filename='js/pages/case-evidence-upload.js') }}?v={{ asset_version('js/pages/case-evidence-upload.js') }}"></script>
 {% endblock %}

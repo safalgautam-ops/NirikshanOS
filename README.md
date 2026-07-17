@@ -41,8 +41,25 @@
 - Argon2id password hashing, server-side Redis-backed sessions, CSRF protection, and rate limiting
 - Two-factor authentication (TOTP) and WebAuthn support
 - Full audit logging of case, evidence, and organization actions
-- Strict Content-Security-Policy throughout, including a CSP-safe (no `unsafe-eval`) Alpine.js build
+- Strict Content-Security-Policy throughout; jsDelivr is permitted only for Tailwind’s browser compiler, while application scripts remain same-origin
 
 ---
 
-*This README covers the project's purpose and current feature set only. A complete README — including setup, architecture, and configuration instructions — will follow.*
+## Development and startup
+
+The application is a Flask WSGI service with an existing asynchronous data and
+worker layer. Tailwind follows the same no-build Jinja setup as the CodeSandbox
+reference: `layouts/base.html` loads Tailwind’s browser runtime and includes the
+single `app/templates/style.css` source directly.
+
+```bash
+docker compose up --build
+```
+
+No Node installation, compiled Tailwind artifact, or frontend build step is
+required. MySQL, Redis, and MinIO are provided by Compose. The existing Docker
+migration startup and all SQL migration files remain unchanged by this
+frontend refactor.
+
+See `structure.md` for the current architecture and
+`docs/design-system.md` for component conventions.

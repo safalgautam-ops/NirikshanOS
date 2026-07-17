@@ -1,4 +1,5 @@
 {% extends "layouts/base.html" %}
+{% import "components/ui/form.html" as form_ui %}
 {% from "components/ui/card.html" import card, card_panel %}
 {% from "components/ui/field.html" import field_group, field, field_label, field_description %}
 {% from "components/ui/input.html" import input %}
@@ -18,7 +19,7 @@
 
 <div class="flex flex-col md:pl-60">
   {{ topbar("Settings") }}
-  <main class="flex-1 p-4 md:p-6">
+  <main class="flex-1 p-2 md:p-4">
     <div class="mx-auto max-w-2xl space-y-6">
       {{ flash("error", error) }}
       {{ flash("success", "Changes saved." if success else None) }}
@@ -35,7 +36,7 @@
       {% call card() %}
       {% call card_panel(class="space-y-4") %}
         <h2 class="text-lg font-semibold">Profile</h2>
-        <form method="post" action="{{ url_for('auth.update_profile_view') }}" enctype="multipart/form-data" class="space-y-4">
+        {% call form_ui.form(method="post", action=url_for('auth.update_profile_view'), class="space-y-4", unstyled=true, attrs={"enctype": "multipart/form-data"}) %}
           {{ csrf_field() }}
 
           <div class="flex items-center gap-4">
@@ -68,7 +69,7 @@
               {% call button(type="submit") %}Save profile{% endcall %}
             {% endcall %}
           {% endcall %}
-        </form>
+        {% endcall %}
       {% endcall %}
       {% endcall %}
       {% endcall %}
@@ -80,7 +81,7 @@
       {% call card() %}
       {% call card_panel(class="space-y-4") %}
         <h2 class="text-lg font-semibold">Change password</h2>
-        <form method="post" action="{{ url_for('auth.change_password_settings_view') }}">
+        {% call form_ui.form(method="post", action=url_for('auth.change_password_settings_view'), unstyled=true) %}
           {{ csrf_field() }}
           {% call field_group() %}
             {% call field() %}
@@ -99,7 +100,7 @@
               {% call button(type="submit") %}Change password{% endcall %}
             {% endcall %}
           {% endcall %}
-        </form>
+        {% endcall %}
       {% endcall %}
       {% endcall %}
       {% else %}
@@ -126,10 +127,10 @@
             </p>
           </div>
           {% if two_factor %}
-          <form method="post" action="{{ url_for('auth.disable_2fa') }}">
+          {% call form_ui.form(method="post", action=url_for('auth.disable_2fa'), unstyled=true) %}
             {{ csrf_field() }}
             {% call button(variant="destructive", size="sm", type="submit") %}Disable 2FA{% endcall %}
-          </form>
+          {% endcall %}
           {% else %}
           {% call button_link(href=url_for('auth.setup_2fa'), size="sm") %}Enable 2FA{% endcall %}
           {% endif %}
@@ -164,10 +165,10 @@
             </div>
           </div>
           {% if "google" in connected %}
-          <form method="post" action="{{ url_for('auth.disconnect_provider_view', provider='google') }}">
+          {% call form_ui.form(method="post", action=url_for('auth.disconnect_provider_view', provider='google'), unstyled=true) %}
             {{ csrf_field() }}
             {% call button(variant="outline", size="sm", type="submit") %}Disconnect{% endcall %}
-          </form>
+          {% endcall %}
           {% else %}
           {% call button_link(href=url_for('auth.connect_provider', provider='google'), variant="outline", size="sm") %}Connect{% endcall %}
           {% endif %}
@@ -191,10 +192,10 @@
             </div>
           </div>
           {% if "github" in connected %}
-          <form method="post" action="{{ url_for('auth.disconnect_provider_view', provider='github') }}">
+          {% call form_ui.form(method="post", action=url_for('auth.disconnect_provider_view', provider='github'), unstyled=true) %}
             {{ csrf_field() }}
             {% call button(variant="outline", size="sm", type="submit") %}Disconnect{% endcall %}
-          </form>
+          {% endcall %}
           {% else %}
           {% call button_link(href=url_for('auth.connect_provider', provider='github'), variant="outline", size="sm") %}Connect{% endcall %}
           {% endif %}

@@ -1,5 +1,8 @@
+{% import "components/ui/form.html" as form_ui %}
 {% from "components/ui/button.html" import button %}
 {% from "macros/csrf.html" import csrf_field %}
+
+{% import "components/ui/input.html" as input_ui %}
 
 {% for user in users %}
 <div class="flex items-center justify-between rounded-md border border-border px-3 py-2">
@@ -7,11 +10,11 @@
     <p class="text-sm font-medium">{{ user.name }}</p>
     <p class="text-xs text-muted-foreground">{{ user.email }}</p>
   </div>
-  <form method="post" action="{{ url_for('onboarding.org_roles_add_member', role_id=role_id) }}">
+  {% call form_ui.form(method="post", action=url_for('onboarding.org_roles_add_member', role_id=role_id), unstyled=true) %}
     {{ csrf_field() }}
-    <input type="hidden" name="user_id" value="{{ user.id }}">
+    {{ input_ui.hidden_input(name="user_id", value=user.id) }}
     {% call button(variant="outline", size="sm", type="submit") %}Add{% endcall %}
-  </form>
+  {% endcall %}
 </div>
 {% else %}
 <p class="text-sm text-muted-foreground">No matching members.</p>

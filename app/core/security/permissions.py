@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from functools import wraps
 
-from quart import abort, g, url_for
+from flask import abort, g, url_for
 
 from app.core.db.orm import db
 from app.core.security.htmx import redirect_or_htmx

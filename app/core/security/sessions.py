@@ -19,14 +19,14 @@ import time
 from datetime import datetime, timedelta, timezone
 from functools import wraps
 
-# Quart is an async web framework (like Flask, but async). These are its request/response tools:
-#   Quart    -> the app type
+# Flask owns HTTP/Jinja handling; async route hooks are dispatched by AsyncFlask. These are its request/response tools:
+#   Flask    -> the app type
 #   Response -> an outgoing HTTP response (where we set/clear cookies)
 #   g        -> a per-request scratchpad; data put here is available during that one request
 #   redirect -> send the browser to another URL
 #   request  -> the incoming HTTP request (where we read cookies)
 #   url_for  -> build a URL from a route name
-from quart import Quart, Response, g, request, url_for
+from flask import Flask, Response, g, request, url_for
 
 from app.core.db.orm import db, raw_sql  # the query builder + safe raw-SQL wrapper
 from app.core.security.htmx import redirect_or_htmx
@@ -116,7 +116,7 @@ def clear_session_cookie(response: Response) -> None:
     response.delete_cookie(SESSION_COOKIE)
 
 
-def apply_session_loader(app: Quart) -> None:
+def apply_session_loader(app: Flask) -> None:
     """
     Wire up automatic session loading. Call this once at startup with the app.
     It registers a function that runs BEFORE every request, so each request already
@@ -164,7 +164,7 @@ def apply_session_loader(app: Quart) -> None:
             # staff role with zero permissions assigned is still staff.
             g.is_platform_staff = await user_has_any_role(g.user_id)
             # Drives the sidebar's lock icons - templates read g.org_locked
-            # directly (Quart injects g into every template context).
+            # directly (Flask injects g into every template context).
             g.org_locked = await needs_organization_onboarding(g.user_id)
             # Drives the sidebar's "Your Organization" group - same g-injection
             # pattern as g.org_locked above, read directly by sidebar.html.

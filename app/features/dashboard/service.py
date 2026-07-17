@@ -33,11 +33,8 @@ _CASE_STATUSES = [("open", "Open"), ("active", "Active"), ("closed", "Closed"), 
 #
 # Uses the raw (unprefixed) token names, not the --color-* Tailwind-utility
 # aliases (--color-info etc) that @theme declares for `bg-info`/`text-info`
-# class generation - those aliases are not guaranteed to exist as real,
-# directly-`var()`-able custom properties under this app's dev-mode
-# @tailwindcss/browser runtime compiler (confirmed empty via
-# getComputedStyle in a real browser), while the underlying --info/
-# --warning/--success/--secondary tokens they point to always resolve.
+# class generation. The underlying --info/--warning/--success/--secondary
+# tokens are the stable runtime values consumed by the chart renderer.
 _CASE_STATUS_COLORS = {
     "open": "var(--info)",
     "active": "var(--warning)",

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 
-from quart import Blueprint, g, jsonify, render_template, request
+from flask import Blueprint, g, jsonify, render_template, request
 
 from app.core.db.pool import ForeignKeyError
 from app.core.security.permissions import get_visible_nav_keys, require_permission
@@ -63,7 +63,7 @@ def _validate_instance_fields(body: dict) -> tuple[dict | None, str | None]:
 async def list_view():
     instances = await repository.list_instances()
     visible_keys = await get_visible_nav_keys(g.user_id)
-    return await render_template(
+    return render_template(
         "admin/instances/list.html",
         instances=instances,
         visible_keys=visible_keys,
@@ -73,7 +73,7 @@ async def list_view():
 @instances_bp.route("/", methods=["POST"])
 @require_permission(INSTANCE_EDIT)
 async def create_view():
-    body = await request.get_json(silent=True) or {}
+    body = request.get_json(silent=True) or {}
     instance_id = (body.get("id") or "").strip().lower().replace(" ", "_")
     if not instance_id or not _ID_RE.match(instance_id):
         return jsonify({"error": "ID must be 1–64 lowercase alphanumeric/underscore/hyphen characters"}), 400
@@ -96,7 +96,7 @@ async def update_view(instance_id: str):
     existing = await repository.get_instance(instance_id)
     if not existing:
         return jsonify({"error": "not found"}), 404
-    body = await request.get_json(silent=True) or {}
+    body = request.get_json(silent=True) or {}
     fields, error = _validate_instance_fields(body)
     if error:
         return jsonify({"error": error}), 400

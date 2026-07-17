@@ -1,7 +1,7 @@
 """Admin routes for plans and org subscriptions."""
 from __future__ import annotations
 
-from quart import Blueprint, g, jsonify, redirect, render_template, request, url_for
+from flask import Blueprint, g, jsonify, redirect, render_template, request, url_for
 
 from app.core.security.permissions import get_visible_nav_keys, require_permission
 from app.features.instances import repository as instances_repository
@@ -31,7 +31,7 @@ async def list_view():
     selected = None
     if selected_id and not is_new:
         selected = await repository.get_plan(selected_id)
-    return await render_template(
+    return render_template(
         "admin/plans/list.html",
         plans=plans,
         instances_for_js=instances_for_js,
@@ -46,7 +46,7 @@ async def list_view():
 @plans_bp.route("/", methods=["POST"])
 @require_permission(PLAN_EDIT)
 async def create_view():
-    form = await request.form
+    form = request.form
     plan_id = (form.get("id") or "").strip().lower().replace(" ", "_")
     if not plan_id:
         return redirect(url_for("plans.list_view") + "?p=new")
@@ -77,7 +77,7 @@ async def create_view():
 async def update_view(plan_id: str):
     if not await repository.get_plan(plan_id):
         return jsonify({"error": "Not found"}), 404
-    body = await request.get_json(silent=True) or {}
+    body = request.get_json(silent=True) or {}
     ram_gb = body.get("ram_gb")
     vcpu = body.get("vcpu")
     storage_gb = body.get("storage_gb")

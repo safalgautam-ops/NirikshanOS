@@ -1,11 +1,12 @@
-{% macro table(variant="default", class="", attrs={}) -%}
-<div
-    class="relative w-full"
+{% macro table(variant="default", class="", unstyled=false, wrapped=true, attrs={}) -%}
+{% if wrapped %}<div
+    class="relative w-full overflow-x-auto"
     data-slot="table-container"
     data-variant="{{ variant }}"
 >
+{% endif %}
     <table
-        class="{{ cn('w-full caption-bottom in-data-[variant=card]:border-separate in-data-[variant=card]:border-spacing-0 text-sm', class) }}"
+        class="{{ class if unstyled else cn('w-full caption-bottom in-data-[variant=card]:border-separate in-data-[variant=card]:border-spacing-0 text-sm', class) }}"
         data-slot="table"
         {{
         html_attrs(**attrs)
@@ -13,10 +14,10 @@
     >
         {% if caller is defined %}{{ caller() }}{% endif %}
     </table>
-</div>
-{%- endmacro %} {% macro table_header(columns=[], class="", attrs={}) -%}
+{% if wrapped %}</div>{% endif %}
+{%- endmacro %} {% macro table_header(columns=[], class="", unstyled=false, attrs={}) -%}
 <thead
-    class="{{ cn('[&_tr]:border-b', class) }}"
+    class="{{ class if unstyled else cn('[&_tr]:border-b', class) }}"
     data-slot="table-header"
     {{
     html_attrs(**attrs)
@@ -28,9 +29,9 @@
     </tr>
     {% endif %}
 </thead>
-{%- endmacro %} {% macro table_body(class="", attrs={}) -%}
+{%- endmacro %} {% macro table_body(class="", unstyled=false, attrs={}) -%}
 <tbody
-    class="{{ cn('relative in-data-[variant=card]:rounded-xl in-data-[variant=card]:shadow-xs/5 before:pointer-events-none before:absolute before:inset-px not-in-data-[variant=card]:before:hidden before:rounded-[calc(var(--radius-xl)-1px)] before:shadow-[0_1px_--theme(--color-black/4%)] dark:before:shadow-[0_-1px_--theme(--color-white/8%)] [&_tr:last-child]:border-0 in-data-[variant=card]:*:[tr]:border-0 in-data-[variant=card]:*:[tr]:*:[td]:border-b in-data-[variant=card]:*:[tr]:*:[td]:bg-card in-data-[variant=card]:*:[tr]:first:*:[td]:first:rounded-ss-xl in-data-[variant=card]:*:[tr]:*:[td]:first:border-s in-data-[variant=card]:*:[tr]:first:*:[td]:border-t in-data-[variant=card]:*:[tr]:last:*:[td]:last:rounded-ee-xl in-data-[variant=card]:*:[tr]:*:[td]:last:border-e in-data-[variant=card]:*:[tr]:first:*:[td]:last:rounded-se-xl in-data-[variant=card]:*:[tr]:last:*:[td]:first:rounded-es-xl in-data-[variant=card]:*:[tr]:hover:*:[td]:bg-[color-mix(in_srgb,var(--card),var(--color-black)_2%)] in-data-[variant=card]:*:[tr]:data-[state=selected]:*:[td]:bg-[color-mix(in_srgb,var(--card),var(--color-black)_4%)] dark:in-data-[variant=card]:*:[tr]:data-[state=selected]:*:[td]:bg-[color-mix(in_srgb,var(--card),var(--color-white)_4%)] dark:in-data-[variant=card]:*:[tr]:hover:*:[td]:bg-[color-mix(in_srgb,var(--card),var(--color-white)_2%)]', class) }}"
+    class="{{ class if unstyled else cn('relative in-data-[variant=card]:rounded-xl in-data-[variant=card]:shadow-xs/5 before:pointer-events-none before:absolute before:inset-px not-in-data-[variant=card]:before:hidden before:rounded-[calc(var(--radius-xl)-1px)] before:shadow-[0_1px_--theme(--color-black/4%)] dark:before:shadow-[0_-1px_--theme(--color-white/8%)] [&_tr:last-child]:border-0 in-data-[variant=card]:*:[tr]:border-0 in-data-[variant=card]:*:[tr]:*:[td]:border-b in-data-[variant=card]:*:[tr]:*:[td]:bg-card in-data-[variant=card]:*:[tr]:first:*:[td]:first:rounded-ss-xl in-data-[variant=card]:*:[tr]:*:[td]:first:border-s in-data-[variant=card]:*:[tr]:first:*:[td]:border-t in-data-[variant=card]:*:[tr]:last:*:[td]:last:rounded-ee-xl in-data-[variant=card]:*:[tr]:*:[td]:last:border-e in-data-[variant=card]:*:[tr]:first:*:[td]:last:rounded-se-xl in-data-[variant=card]:*:[tr]:last:*:[td]:first:rounded-es-xl in-data-[variant=card]:*:[tr]:hover:*:[td]:bg-[color-mix(in_srgb,var(--card),var(--color-black)_2%)] in-data-[variant=card]:*:[tr]:data-[state=selected]:*:[td]:bg-[color-mix(in_srgb,var(--card),var(--color-black)_4%)] dark:in-data-[variant=card]:*:[tr]:data-[state=selected]:*:[td]:bg-[color-mix(in_srgb,var(--card),var(--color-white)_4%)] dark:in-data-[variant=card]:*:[tr]:hover:*:[td]:bg-[color-mix(in_srgb,var(--card),var(--color-white)_2%)]', class) }}"
     data-slot="table-body"
     {{
     html_attrs(**attrs)
@@ -38,9 +39,9 @@
 >
     {% if caller is defined %}{{ caller() }}{% endif %}
 </tbody>
-{%- endmacro %} {% macro table_footer(class="", attrs={}) -%}
+{%- endmacro %} {% macro table_footer(class="", unstyled=false, attrs={}) -%}
 <tfoot
-    class="{{ cn('border-t in-data-[variant=card]:border-none bg-transparent not-in-data-[variant=card]:bg-[color-mix(in_srgb,var(--card),var(--color-black)_2%)] font-medium dark:not-in-data-[variant=card]:bg-[color-mix(in_srgb,var(--card),var(--color-white)_2%)] [&>tr]:last:border-b-0', class) }}"
+    class="{{ class if unstyled else cn('border-t in-data-[variant=card]:border-none bg-transparent not-in-data-[variant=card]:bg-[color-mix(in_srgb,var(--card),var(--color-black)_2%)] font-medium dark:not-in-data-[variant=card]:bg-[color-mix(in_srgb,var(--card),var(--color-white)_2%)] [&>tr]:last:border-b-0', class) }}"
     data-slot="table-footer"
     {{
     html_attrs(**attrs)
@@ -48,10 +49,10 @@
 >
     {% if caller is defined %}{{ caller() }}{% endif %}
 </tfoot>
-{%- endmacro %} {% macro table_row(cells=[], selected=false, class="", attrs={})
+{%- endmacro %} {% macro table_row(cells=[], selected=false, class="", unstyled=false, attrs={})
 -%}
 <tr
-    class="{{ cn('relative border-b not-in-data-[variant=card]:hover:bg-[color-mix(in_srgb,var(--background),var(--color-black)_2%)] not-in-data-[variant=card]:data-[state=selected]:bg-[color-mix(in_srgb,var(--background),var(--color-black)_4%)] dark:not-in-data-[variant=card]:data-[state=selected]:bg-[color-mix(in_srgb,var(--background),var(--color-white)_4%)] dark:not-in-data-[variant=card]:hover:bg-[color-mix(in_srgb,var(--background),var(--color-white)_2%)]', class) }}"
+    class="{{ class if unstyled else cn('relative border-b not-in-data-[variant=card]:hover:bg-[color-mix(in_srgb,var(--background),var(--color-black)_2%)] not-in-data-[variant=card]:data-[state=selected]:bg-[color-mix(in_srgb,var(--background),var(--color-black)_4%)] dark:not-in-data-[variant=card]:data-[state=selected]:bg-[color-mix(in_srgb,var(--background),var(--color-white)_4%)] dark:not-in-data-[variant=card]:hover:bg-[color-mix(in_srgb,var(--background),var(--color-white)_2%)]', class) }}"
     data-slot="table-row"
     {%
     if
@@ -67,9 +68,9 @@
     {% if caller is defined %}{{ caller() }}{% else %}{% for cell in cells %}{{
     table_cell(cell) }}{% endfor %}{% endif %}
 </tr>
-{%- endmacro %} {% macro table_head(text="", class="", attrs={}) -%}
+{%- endmacro %} {% macro table_head(text="", class="", unstyled=false, attrs={}) -%}
 <th
-    class="{{ cn('h-10 whitespace-nowrap px-2.5 text-left align-middle font-medium text-muted-foreground leading-none has-[[role=checkbox]]:w-px last:has-[[role=checkbox]]:ps-0 first:has-[[role=checkbox]]:pe-0', class) }}"
+    class="{{ class if unstyled else cn('h-10 whitespace-nowrap px-2.5 text-left align-middle font-medium text-muted-foreground leading-none has-[[role=checkbox]]:w-px last:has-[[role=checkbox]]:ps-0 first:has-[[role=checkbox]]:pe-0', class) }}"
     data-slot="table-head"
     {{
     html_attrs(**attrs)
@@ -77,9 +78,9 @@
 >
     {% if caller is defined %}{{ caller() }}{% else %}{{ text }}{% endif %}
 </th>
-{%- endmacro %} {% macro table_cell(text="", class="", attrs={}) -%}
+{%- endmacro %} {% macro table_cell(text="", class="", unstyled=false, attrs={}) -%}
 <td
-    class="{{ cn('whitespace-nowrap bg-clip-padding p-2.5 in-data-[slot=table-footer]:py-3.5 align-middle leading-none in-data-[variant=card]:first:ps-[calc(--spacing(2.5)-1px)] in-data-[variant=card]:last:pe-[calc(--spacing(2.5)-1px)] has-[[role=checkbox]]:w-px last:has-[[role=checkbox]]:ps-0 first:has-[[role=checkbox]]:pe-0', class) }}"
+    class="{{ class if unstyled else cn('whitespace-nowrap bg-clip-padding p-2.5 in-data-[slot=table-footer]:py-3.5 align-middle leading-none in-data-[variant=card]:first:ps-[calc(--spacing(2.5)-1px)] in-data-[variant=card]:last:pe-[calc(--spacing(2.5)-1px)] has-[[role=checkbox]]:w-px last:has-[[role=checkbox]]:ps-0 first:has-[[role=checkbox]]:pe-0', class) }}"
     data-slot="table-cell"
     {{
     html_attrs(**attrs)
@@ -87,9 +88,9 @@
 >
     {% if caller is defined %}{{ caller() }}{% else %}{{ text }}{% endif %}
 </td>
-{%- endmacro %} {% macro table_caption(text="", class="", attrs={}) -%}
+{%- endmacro %} {% macro table_caption(text="", class="", unstyled=false, attrs={}) -%}
 <caption
-    class="{{ cn('in-data-[variant=card]:my-4 mt-4 text-muted-foreground text-sm', class) }}"
+    class="{{ class if unstyled else cn('in-data-[variant=card]:my-4 mt-4 text-muted-foreground text-sm', class) }}"
     data-slot="table-caption"
     {{
     html_attrs(**attrs)

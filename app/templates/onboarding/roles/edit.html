@@ -1,4 +1,6 @@
 {% extends "layouts/base.html" %}
+{% import "components/ui/form.html" as form_ui %}
+{% import "components/ui/label.html" as label_ui %}
 {% import "components/ui/button.html" as button %}
 {% import "components/ui/input.html" as input %}
 {% import "components/ui/textarea.html" as textarea %}
@@ -12,6 +14,7 @@
 {% from "components/ui/toast.html" import flash %}
 {% from "macros/csrf.html" import csrf_field %}
 
+
 {% block title %}{{ role.name }} - Organization Roles - NirikshanOS{% endblock %}
 
 {% macro lock_icon() %}<svg class="size-3.5 shrink-0 text-muted-foreground" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>{% endmacro %}
@@ -24,20 +27,20 @@
         <a href="{{ url_for('onboarding.org_roles_list_view') }}" class="inline-flex size-8 items-center justify-center rounded-md hover:bg-accent" aria-label="Back to roles">
             <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
         </a>
-        <form method="post" action="{{ url_for('onboarding.org_roles_create_view') }}">
+        {% call form_ui.form(method="post", action=url_for('onboarding.org_roles_create_view'), unstyled=true) %}
             {{ csrf_field() }}
             {% call button.button(variant="outline", size="icon", type="submit", attrs={"aria-label": "Create new role"}) %}+{% endcall %}
-        </form>
+        {% endcall %}
         <h1 class="text-lg font-semibold">Role settings</h1>
         {% set save_form_id = {"display": "role-display-form", "permissions": "role-permissions-form", "sidebar": "role-sidebar-form"}.get(active_tab) %}
         <div class="ml-auto">
-            <button type="submit" form="{{ save_form_id or 'role-display-form' }}" data-global-save-button {% if not save_form_id %}hidden{% endif %} class="inline-flex size-9 items-center justify-center rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors" aria-label="Save">
+            {% call button.button(type="submit", unstyled=true, class="inline-flex size-9 items-center justify-center rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors", attrs={"form": save_form_id or "role-display-form", "data-global-save-button": true, "hidden": true if not save_form_id else false, "aria-label": "Save"}) %}
                 <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z"/><path d="M17 21v-8H7v8M7 3v5h8"/></svg>
-            </button>
+            {% endcall %}
         </div>
     </header>
 
-    <main class="flex-1 p-4 md:p-6">
+    <main class="flex-1 p-2 md:p-4">
         {{ flash("error", error) }}
 
         <div class="flex gap-6">
@@ -61,7 +64,7 @@
                 {% endcall %}
 
                 {% call tabs_ui.tabs_panel(value="display", active=(active_tab == "display"), class="max-w-lg") %}
-                <form id="role-display-form" method="post" action="{{ url_for('onboarding.org_roles_update_display', role_id=role.id) }}">
+                {% call form_ui.form(id="role-display-form", method="post", action=url_for('onboarding.org_roles_update_display', role_id=role.id), unstyled=true) %}
                     {{ csrf_field() }}
                     {% if role.is_system %}
                     <div class="mb-4 flex items-center gap-2 rounded-lg border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
@@ -76,7 +79,7 @@
                         {% call field.field() %}
                             {{ field.field_label("Color", for_id="color") }}
                             <div class="flex items-center gap-2">
-                                <input type="color" id="color" name="color" value="{{ role.color }}" class="h-9 w-16 cursor-pointer rounded-lg border border-input bg-background p-1" />
+                                {{ input.input(type="color", name="color", value=role.color, bare=true, class="h-9 w-16 cursor-pointer rounded-lg border border-input bg-background p-1", attrs={"id": "color"}) }}
                                 <span class="text-sm text-muted-foreground tabular-nums">{{ role.color }}</span>
                             </div>
                         {% endcall %}
@@ -85,13 +88,13 @@
                             {{ textarea.textarea(name="description", value=role.description or "", placeholder="Role purpose", attrs={"id": "description"}) }}
                         {% endcall %}
                     {% endcall %}
-                </form>
+                {% endcall %}
                 {% endcall %}
 
                 {% call tabs_ui.tabs_panel(value="permissions", active=(active_tab == "permissions"), class="max-w-2xl space-y-4") %}
                 <div data-slot="command">
                     {{ command_input(placeholder="Search permissions...") }}
-                    <form id="role-permissions-form" method="post" action="{{ url_for('onboarding.org_roles_update_permissions', role_id=role.id) }}" class="mt-4 space-y-6">
+                    {% call form_ui.form(id="role-permissions-form", method="post", action=url_for('onboarding.org_roles_update_permissions', role_id=role.id), class="mt-4 space-y-6", unstyled=true) %}
                         {{ csrf_field() }}
                         {% call accordion_ui.accordion() %}
                         {% for category, perms in permission_groups %}
@@ -114,22 +117,22 @@
                         {% endcall %}
                         {% endfor %}
                         {% endcall %}
-                    </form>
+                    {% endcall %}
                 </div>
                 {% endcall %}
 
                 {% call tabs_ui.tabs_panel(value="sidebar", active=(active_tab == "sidebar"), class="max-w-md space-y-4") %}
                 <p class="text-sm text-muted-foreground">Choose which pages members with this role can see.</p>
-                <form id="role-sidebar-form" method="post" action="{{ url_for('onboarding.org_roles_update_sidebar', role_id=role.id) }}" class="space-y-3">
+                {% call form_ui.form(id="role-sidebar-form", method="post", action=url_for('onboarding.org_roles_update_sidebar', role_id=role.id), class="space-y-3", unstyled=true) %}
                     {{ csrf_field() }}
                     <div class="flex flex-col gap-2">
                         {% for key, label in nav_keys %}
-                        <label class="inline-flex items-center gap-2 text-sm">
+                        {% call label_ui.label(class="inline-flex items-center gap-2 text-sm", unstyled=true) %}
                             {{ checkbox_ui.checkbox(name="nav_keys", checked=(key in checked_nav_keys), attrs={"value": key}) }} {{ label }}
-                        </label>
+                        {% endcall %}
                         {% endfor %}
                     </div>
-                </form>
+                {% endcall %}
                 {% endcall %}
 
                 {% call tabs_ui.tabs_panel(value="members", active=(active_tab == "members"), class="max-w-lg space-y-4") %}
@@ -144,12 +147,12 @@
                             <div class="truncate text-sm font-medium">{{ member.name }}</div>
                             <div class="truncate text-xs text-muted-foreground">{{ member.email }}</div>
                         </div>
-                        <form method="post" action="{{ url_for('onboarding.org_roles_remove_member', role_id=role.id, user_id=member.id) }}">
+                        {% call form_ui.form(method="post", action=url_for('onboarding.org_roles_remove_member', role_id=role.id, user_id=member.id), unstyled=true) %}
                             {{ csrf_field() }}
                             {% call button.button(variant="ghost", size="icon-xs", type="submit", class="text-muted-foreground hover:bg-destructive/10 hover:text-destructive", attrs={"aria-label": "Remove " ~ member.name}) %}
                             <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
                             {% endcall %}
-                        </form>
+                        {% endcall %}
                     </div>
                     {% endfor %}
                     {% endif %}
@@ -166,4 +169,8 @@
         </div>
     </main>
 </div>
+{% endblock %}
+
+{% block body_scripts %}
+<script src="{{ url_for('static', filename='js/vendor/htmx.min.js') }}"></script>
 {% endblock %}

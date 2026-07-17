@@ -9,7 +9,7 @@ it just prints the email to your terminal.
 from __future__ import annotations
 
 import httpx
-from quart import current_app, render_template
+from flask import current_app, render_template
 
 
 async def send_email(*, to: str, subject: str, html: str) -> None:
@@ -34,17 +34,17 @@ async def send_email(*, to: str, subject: str, html: str) -> None:
 
 
 async def send_activation_email(*, to: str, name: str, code: str) -> None:
-    html = await render_template("email/activate.html", name=name, code=code)
+    html = render_template("email/activate.html", name=name, code=code)
     await send_email(to=to, subject="Activate your NirikshanOS account", html=html)
 
 
 async def send_reset_email(*, to: str, code: str) -> None:
-    html = await render_template("email/reset_password.html", code=code)
+    html = render_template("email/reset_password.html", code=code)
     await send_email(to=to, subject="Reset your NirikshanOS password", html=html)
 
 
 async def send_staff_credentials_email(*, to: str, name: str, password: str) -> None:
-    html = await render_template(
+    html = render_template(
         "email/staff_credentials.html", name=name, email=to, password=password
     )
     await send_email(to=to, subject="Your NirikshanOS account", html=html)

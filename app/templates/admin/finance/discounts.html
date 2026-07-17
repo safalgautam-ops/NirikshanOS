@@ -1,6 +1,10 @@
 {% extends "layouts/base.html" %}
+{% import "components/ui/label.html" as label_ui %}
+{% import "components/ui/checkbox.html" as checkbox_ui %}
+{% import "components/ui/select-native.html" as select_ui %}
+
 {% block title %}Discounts — NirikshanOS{% endblock %}
-{% block scripts %}<script defer src="{{ url_for('static', filename='js/pages/admin/discounts-list.js') }}"></script>{% endblock %}
+
 
 {% from "dashboard/components/sidebar.html" import sidebar %}
 {% from "dashboard/components/topbar.html" import topbar %}
@@ -13,21 +17,17 @@
 {% import "components/ui/table.html" as table %}
 
 {% block body %}
-<div x-data="discountsPage({{ orgs | tojson | forceescape }})">
+<div data-discounts-page>
 
   {{ sidebar(active="admin_discounts", visible_keys=visible_keys) }}
 
   <div class="flex flex-col md:pl-60">
     {{ topbar("Discounts") }}
 
-    <main class="flex-1 overflow-y-auto p-6 space-y-8">
+    <main class="flex-1 overflow-y-auto p-6 space-y-4">
 
-      <div class="flex items-start justify-between gap-4">
-        <div>
-          <h1 class="text-xl font-semibold">Organization Discounts</h1>
-          <p class="mt-1 text-sm text-muted-foreground">Standing, no-code discounts granted directly to a specific organization.</p>
-        </div>
-        {% call button(attrs={"@click": "openDialog()"}) %}
+      <div class="flex items-start justify-end gap-4">
+        {% call button(attrs={"data-discount-new": true}) %}
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
           New Discount
         {% endcall %}
@@ -64,8 +64,8 @@
               {% endcall %}
               {% call table.table_cell(class="text-right") %}
                 <div class="flex justify-end gap-1.5">
-                  {% call button(variant="outline", size="xs", attrs={"@click": "openDialog(%s)" % (d | tojson)}) %}Edit{% endcall %}
-                  {% call button(variant="destructive-outline", size="xs", attrs={"@click": "remove('%s')" % d.id}) %}Delete{% endcall %}
+                  {% call button(variant="outline", size="xs", attrs={"data-discount-edit": d|tojson|forceescape}) %}Edit{% endcall %}
+                  {% call button(variant="destructive-outline", size="xs", attrs={"data-discount-delete": d.id}) %}Delete{% endcall %}
                 </div>
               {% endcall %}
             {% endcall %}
@@ -78,75 +78,36 @@
     </main>
   </div>
 
+  <script type="application/json" data-discount-orgs>{{ orgs|tojson }}</script>
   {# ── Create/Edit Discount dialog ──────────────────────────────────────────── #}
-  <template x-if="open">
-    <div class="fixed inset-0 z-50 flex items-center justify-center p-4" @keydown.escape.window="open = false">
-      <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="open = false"></div>
-
-      <div class="relative z-10 w-full max-w-sm rounded-xl border bg-card shadow-xl overflow-hidden">
-
-        <div class="flex items-center justify-between border-b px-6 py-4">
-          <h2 class="font-semibold text-base" x-text="editingId ? 'Edit Discount' : 'New Discount'"></h2>
-          {% call button(variant="ghost", size="icon-sm", attrs={"@click": "open = false"}) %}
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" x2="6" y1="6" y2="18"/><line x1="6" x2="18" y1="6" y2="18"/></svg>
-          {% endcall %}
+  <div data-discount-dialog hidden class="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" data-discount-close></div>
+    <div class="relative z-10 w-full max-w-sm rounded-xl border bg-card shadow-xl overflow-hidden">
+      <div class="flex items-center justify-between border-b px-6 py-4">
+        <h2 class="font-semibold text-base" data-discount-title>New Discount</h2>
+        {% call button(variant="ghost", size="icon-sm", attrs={"data-discount-close": true}) %}<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" x2="6" y1="6" y2="18"/><line x1="6" x2="18" y1="6" y2="18"/></svg>{% endcall %}
+      </div>
+      <div class="px-6 py-5 space-y-4 max-h-[70vh] overflow-y-auto">
+        <p data-discount-error hidden class="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive"></p>
+        <div class="space-y-1.5">{{ label(text="Organization", for_id="dc-org") }}{% call select_ui.select_native(unstyled=true, class="flex h-9 w-full rounded-lg border border-input bg-popover px-3 text-sm sm:h-8", attrs={"id":"dc-org","data-discount-field":"org_id"}) %}<option value="">Select an organization…</option>{% for org in orgs %}<option value="{{ org.id }}">{{ org.name }}</option>{% endfor %}{% endcall %}</div>
+        <div class="grid grid-cols-2 gap-3">
+          <div class="space-y-1.5">{{ label(text="Type", for_id="dc-type") }}{% call select_ui.select_native(unstyled=true, class="flex h-9 w-full rounded-lg border border-input bg-popover px-3 text-sm sm:h-8", attrs={"id":"dc-type","data-discount-field":"discount_type"}) %}<option value="percent">Percent</option><option value="flat">Flat (Rs.)</option>{% endcall %}</div>
+          <div class="space-y-1.5">{{ label(text="Value", for_id="dc-value") }}{{ input(type="text", placeholder="15", attrs={"id":"dc-value","data-discount-field":"discount_value"}) }}</div>
         </div>
-
-        <div class="px-6 py-5 space-y-4 max-h-[70vh] overflow-y-auto">
-          <template x-if="error">
-            <p class="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive" x-text="error"></p>
-          </template>
-
-          <div class="space-y-1.5">
-            {{ label(text="Organization", for_id="dc-org") }}
-            <select id="dc-org" x-model="form.org_id" :disabled="editingId !== null" class="flex h-9 w-full rounded-lg border border-input bg-popover px-3 text-sm sm:h-8">
-              <option value="">Select an organization…</option>
-              <template x-for="org in orgs" :key="org.id">
-                <option :value="org.id" x-text="org.name"></option>
-              </template>
-            </select>
-          </div>
-
-          <div class="grid grid-cols-2 gap-3">
-            <div class="space-y-1.5">
-              {{ label(text="Type", for_id="dc-type") }}
-              <select id="dc-type" x-model="form.discount_type" class="flex h-9 w-full rounded-lg border border-input bg-popover px-3 text-sm sm:h-8">
-                <option value="percent">Percent</option>
-                <option value="flat">Flat (Rs.)</option>
-              </select>
-            </div>
-            <div class="space-y-1.5">
-              {{ label(text="Value", for_id="dc-value") }}
-              {{ input(type="text", placeholder="15", attrs={"id": "dc-value", "x-model": "form.discount_value"}) }}
-            </div>
-          </div>
-
-          <div class="space-y-1.5">
-            {{ label(text="Reason (optional)", for_id="dc-reason") }}
-            {{ textarea(placeholder="Negotiated partner rate", rows=2, attrs={"id": "dc-reason", "x-model": "form.reason"}) }}
-          </div>
-
-          <div class="space-y-1.5">
-            {{ label(text="Valid until (optional)", for_id="dc-until") }}
-            {{ input(type="date", attrs={"id": "dc-until", "x-model": "form.valid_until"}) }}
-          </div>
-
-          <label class="flex items-center gap-2 text-sm">
-            <input type="checkbox" x-model="form.is_active" class="accent-primary">
-            Active
-          </label>
-        </div>
-
-        <div class="flex justify-end gap-2 border-t px-6 py-4">
-          {% call button(variant="outline", attrs={"@click": "open = false"}) %}Cancel{% endcall %}
-          {% call button(attrs={"@click": "submit()", ":disabled": "saving"}) %}
-            <span x-text="saving ? 'Saving…' : 'Save'"></span>
-          {% endcall %}
-        </div>
-
+        <div class="space-y-1.5">{{ label(text="Reason (optional)", for_id="dc-reason") }}{{ textarea(placeholder="Negotiated partner rate", rows=2, attrs={"id":"dc-reason","data-discount-field":"reason"}) }}</div>
+        <div class="space-y-1.5">{{ label(text="Valid until (optional)", for_id="dc-until") }}{{ input(type="date", attrs={"id":"dc-until","data-discount-field":"valid_until"}) }}</div>
+        {% call label_ui.label(class="flex items-center gap-2 text-sm", unstyled=true) %}{{ checkbox_ui.checkbox(class="accent-primary", attrs={"data-discount-field":"is_active"}) }}Active{% endcall %}
+      </div>
+      <div class="flex justify-end gap-2 border-t px-6 py-4">
+        {% call button(variant="outline", attrs={"data-discount-close": true}) %}Cancel{% endcall %}
+        {% call button(attrs={"data-discount-save": true}) %}<span data-discount-save-label>Save</span>{% endcall %}
       </div>
     </div>
-  </template>
+  </div>
 
 </div>
+{% endblock %}
+
+{% block body_scripts %}
+<script src="{{ url_for('static', filename='js/pages/admin-discounts.js') }}"></script>
 {% endblock %}

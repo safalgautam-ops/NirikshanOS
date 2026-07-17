@@ -25,7 +25,7 @@
         <div>
             <h2 class="text-xl font-semibold">Welcome, {{ user.name }}</h2>
             {% if not admin and not org_dash %}
-            <p class="text-sm text-muted-foreground">Foundation is up: Quart + uvicorn behind nginx, MySQL and Redis connected.</p>
+            <p class="text-sm text-muted-foreground">Foundation is up: Flask + Gunicorn behind nginx, MySQL and Redis connected.</p>
             {% endif %}
         </div>
 
@@ -38,7 +38,7 @@
             {{ stat_card("Active Subscriptions", admin.stats.active_subs) }}
         </div>
 
-        <div class="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
+        <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
             {% call card() %}
                 {% call card_header() %}
                     {{ card_title("Revenue (last 6 months)") }}
@@ -60,7 +60,7 @@
             {% endcall %}
         </div>
 
-        <div class="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
+        <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
             {% call card() %}
                 {% call card_header() %}
                     {{ card_title("Popular modules") }}
@@ -90,7 +90,7 @@
             {% endcall %}
         </div>
 
-        <div class="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
+        <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
             {% call card() %}
                 {% call card_header() %}
                     {{ card_title("Recent organizations") }}

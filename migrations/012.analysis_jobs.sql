@@ -2,10 +2,13 @@
 -- compatible modules, or one non-batchable module running alone), with one
 -- task row per module inside that job.
 --
--- Drop order matters: analysis_tasks must go before analysis_jobs because of
--- the at_job_fk foreign key. The other drops remove earlier design attempts
--- that are no longer needed (all were empty when dropped).
-DROP TABLE IF EXISTS `analysis_tasks`;
+-- Drop order matters. Migration 001 created chat_threads.ct_job_fk against the
+-- original analysis_jobs table, so that external foreign key must be removed
+-- before the table can be rebuilt. It is restored after the replacement table
+-- has been created. The remaining drops remove the earlier analysis design.
+ALTER TABLE `chat_threads`
+  DROP FOREIGN KEY `ct_job_fk`;
+
 DROP TABLE IF EXISTS `analysis_tasks`;
 DROP TABLE IF EXISTS `analysis_results`;
 DROP TABLE IF EXISTS `job_assignees`;
@@ -16,7 +19,7 @@ CREATE TABLE `analysis_jobs` (
   `case_id`         char(36)     NOT NULL,
   `evidence_id`     char(36)     NOT NULL,
   `org_id`          char(36)     NOT NULL,    -- denormalized from case.organization_id for fast org-scoped queries
-  `created_by`      char(36)     NOT NULL,
+  `created_by`      varchar(191) NOT NULL,
   `job_type`        varchar(100) NOT NULL,    -- e.g. "basic_triage", "generic.yara_scan", "binary.ghidra_decompile"
   `queue_name`      enum('fast_queue','standard_queue','heavy_queue','sandbox_queue') NOT NULL,
   `runtime_image`   varchar(255) NOT NULL,
@@ -55,3 +58,9 @@ CREATE TABLE `analysis_tasks` (
   CONSTRAINT `at_job_fk` FOREIGN KEY (`job_id`) REFERENCES `analysis_jobs`(`id`) ON DELETE CASCADE,
   KEY `at_job_idx` (`job_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Restore the job-thread relationship removed before rebuilding analysis_jobs.
+ALTER TABLE `chat_threads`
+  ADD CONSTRAINT `ct_job_fk`
+    FOREIGN KEY (`job_id`) REFERENCES `analysis_jobs` (`id`)
+    ON DELETE CASCADE;

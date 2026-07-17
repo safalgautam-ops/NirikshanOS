@@ -1,10 +1,13 @@
 {% extends "layouts/base.html" %}
+{% import "components/ui/form.html" as form_ui %}
 {% from "components/ui/card.html" import card, card_panel %}
 {% from "components/ui/field.html" import field_group, field, field_label, field_description %}
 {% from "components/ui/input.html" import input %}
 {% from "components/ui/button.html" import button %}
 {% from "components/ui/toast.html" import flash %}
 {% from "macros/csrf.html" import csrf_field %}
+
+{% import "components/ui/input.html" as input_ui %}
 
 {% block title %}Set up 2FA - NirikshanOS{% endblock %}
 
@@ -13,7 +16,7 @@
   <div class="flex w-full max-w-md flex-col gap-6">
     {% call card() %}
       {% call card_panel(class="p-6 md:p-8") %}
-        <form method="post" action="{{ url_for('auth.setup_2fa') }}">
+        {% call form_ui.form(method="post", action=url_for('auth.setup_2fa'), unstyled=true) %}
           {{ csrf_field() }}
           {% call field_group() %}
             <div class="flex flex-col gap-1">
@@ -32,7 +35,7 @@
               <p class="mt-2 break-all rounded bg-muted px-3 py-2 font-mono text-xs">{{ secret }}</p>
             </details>
 
-            <input type="hidden" name="secret" value="{{ secret }}" />
+            {{ input_ui.hidden_input(name="secret", value=secret) }}
 
             {% call field() %}
               {{ field_label("Verification code", for_id="code") }}
@@ -48,7 +51,7 @@
               <a class="underline underline-offset-4 hover:text-foreground" href="{{ url_for('auth.settings_connections', tab='security') }}">Cancel</a>
             </p>
           {% endcall %}
-        </form>
+        {% endcall %}
       {% endcall %}
     {% endcall %}
   </div>

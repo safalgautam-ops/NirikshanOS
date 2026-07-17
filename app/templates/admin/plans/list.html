@@ -1,148 +1,81 @@
 {% extends "layouts/base.html" %}
+{% import "components/ui/label.html" as label_ui %}
+{% import "components/ui/table.html" as table_ui %}
+{% import "components/ui/button.html" as button_ui %}
+{% import "components/ui/input.html" as input_ui %}
+{% import "components/ui/textarea.html" as textarea_ui %}
+{% import "components/ui/form.html" as form_ui %}
+
 {% block title %}Plans - NirikshanOS{% endblock %}
-{% block scripts %}<script defer src="{{ url_for('static', filename='js/pages/admin/plans-list.js') }}"></script>{% endblock %}
+
 
 {% from "dashboard/components/sidebar.html" import sidebar %}
 {% from "dashboard/components/topbar.html" import topbar %}
-{% from "macros/csrf.html" import csrf_field %}
 {% from "components/ui/fieldset.html" import fieldset, fieldset_legend %}
 {% from "components/ui/checkbox.html" import checkbox %}
 
 {% set SUBSCRIPTION_STATUS_STYLES = {
-  "active":        "bg-green-500/15 text-green-600",
+  "active": "bg-green-500/15 text-green-600",
   "grandfathered": "bg-yellow-500/15 text-yellow-600",
-  "expired":       "bg-red-500/15 text-red-600",
-  "cancelled":     "bg-muted text-muted-foreground",
+  "expired": "bg-red-500/15 text-red-600",
+  "cancelled": "bg-muted text-muted-foreground",
 } %}
 
 {% block body %}
 {{ sidebar(active="admin_plans", visible_keys=visible_keys) }}
-
-<div class="flex flex-col md:pl-60" x-data="plansPage({{ plans | tojson | forceescape }}, {{ known_tiers | tojson | forceescape }}, {{ instances_for_js | tojson | forceescape }})">
+<script type="application/json" id="plans-data">{{ plans|tojson }}</script>
+<div class="flex flex-col md:pl-60" data-plans-page>
   {{ topbar("Plans") }}
   <main class="flex flex-col gap-6 p-6 overflow-y-auto" style="height:calc(100dvh - 3.5rem)">
-
-    {# Header row #}
-    <div class="flex items-center justify-between">
-      <div>
-        <h1 class="text-lg font-semibold">Subscription Plans</h1>
-        <p class="text-sm text-muted-foreground mt-0.5">Manage plans and resource allocations. Changes to a plan do not affect existing subscribers.</p>
-      </div>
-      <div class="flex items-center gap-3">
-        <button @click="openCreate()"
-                class="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors">
-          <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
-          New Plan
-        </button>
-      </div>
+    <div class="flex items-center justify-end">
+      {% call button_ui.button(type="button", unstyled=true, class="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90", attrs={"data-plan-create": ""}) %}
+        <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14"/><path d="M12 5v14"/></svg>New Plan
+      {% endcall %}
     </div>
 
-    {# Plan cards grid #}
     <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-      <template x-for="plan in planList" :key="plan.id">
-        <div class="relative flex flex-col rounded-xl border bg-card overflow-hidden transition-shadow hover:shadow-md">
-
-          {# Active indicator #}
-          <div class="h-1 w-full"
-               :class="plan.is_active ? 'bg-green-500' : 'bg-muted'"></div>
-
-          <div class="flex flex-col gap-4 p-5 flex-1">
-
-            {# Name + price #}
-            <div class="flex items-start justify-between gap-2">
-              <div class="min-w-0">
-                <h2 class="font-semibold text-base leading-tight truncate" x-text="plan.display_name"></h2>
-                <p class="text-xs text-muted-foreground mt-0.5" x-text="plan.id"></p>
-              </div>
-              <div class="shrink-0 text-right">
-                <template x-if="plan.price_monthly > 0">
-                  <div>
-                    <span class="text-xl font-bold" x-text="'Rs. ' + plan.price_monthly.toFixed(0)"></span>
-                    <span class="text-xs text-muted-foreground">/mo</span>
-                  </div>
-                </template>
-                <template x-if="plan.price_monthly === 0">
-                  <span class="text-lg font-bold text-muted-foreground">Free</span>
-                </template>
-              </div>
-            </div>
-
-            {# Description #}
-            <p class="text-sm text-muted-foreground leading-relaxed line-clamp-2 min-h-[2.5rem]"
-               x-text="plan.description || 'No description.'"></p>
-
-            {# Resource badges #}
-            <div class="flex flex-wrap gap-1.5">
-              <span class="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-1 text-xs font-medium">
-                <svg class="size-3 text-muted-foreground" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="14" height="8" x="5" y="2" rx="2"/><path d="M5 12H2v6h20v-6h-3"/><path d="M12 12v4"/></svg>
-                <span x-text="(plan.resources?.ram_gb || 2) + 'GB RAM'"></span>
-              </span>
-              <span class="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-1 text-xs font-medium">
-                <svg class="size-3 text-muted-foreground" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="6" height="14" x="2" y="5" rx="1"/><rect width="6" height="10" x="9" y="9" rx="1"/><rect width="6" height="6" x="16" y="13" rx="1"/></svg>
-                <span x-text="(plan.resources?.vcpu || 2) + ' vCPU'"></span>
-              </span>
-              <span class="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-1 text-xs font-medium">
-                <svg class="size-3 text-muted-foreground" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>
-                <span x-text="(plan.resources?.storage_gb || 20) + 'GB'"></span>
-              </span>
-            </div>
-
-            {# Tier access #}
-            <div class="space-y-1.5">
-              <p class="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Module Access</p>
-              <template x-for="tier in allTiers" :key="tier">
-                <div class="flex items-center gap-2">
-                  <template x-if="plan.allowed_tiers && plan.allowed_tiers.includes(tier)">
-                    <svg class="size-3.5 shrink-0 text-green-500" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
-                  </template>
-                  <template x-if="!plan.allowed_tiers || !plan.allowed_tiers.includes(tier)">
-                    <svg class="size-3.5 shrink-0 text-muted-foreground/40" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" x2="6" y1="6" y2="18"/><line x1="6" x2="18" y1="6" y2="18"/></svg>
-                  </template>
-                  <span class="text-xs capitalize"
-                        :class="plan.allowed_tiers && plan.allowed_tiers.includes(tier) ? 'text-foreground' : 'text-muted-foreground/50'"
-                        x-text="tier.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())"></span>
-                </div>
-              </template>
-            </div>
-
-          </div>
-
-          {# Card footer: status + actions #}
-          <div class="flex items-center justify-between border-t px-5 py-3 bg-muted/20">
-            <span class="inline-flex items-center gap-1.5 text-xs font-medium"
-                  :class="plan.is_active ? 'text-green-600' : 'text-muted-foreground'">
-              <span class="size-1.5 rounded-full" :class="plan.is_active ? 'bg-green-500' : 'bg-muted-foreground/50'"></span>
-              <span x-text="plan.is_active ? 'Active' : 'Inactive'"></span>
-            </span>
-            <div class="flex items-center gap-1">
-              <button @click="openEdit(plan)"
-                      class="rounded-md px-2.5 py-1.5 text-xs font-medium hover:bg-accent transition-colors">
-                Edit
-              </button>
-              <button @click="deletePlan(plan)"
-                      class="rounded-md px-2.5 py-1.5 text-xs font-medium text-destructive hover:bg-destructive/10 transition-colors">
-                Delete
-              </button>
+      {% for plan in plans %}
+      {% set resources = plan.resources if plan.resources is mapping else {} %}
+      {% set allowed = plan.allowed_tiers or [] %}
+      <article class="relative flex flex-col rounded-xl border bg-card overflow-hidden transition-shadow hover:shadow-md">
+        <div class="h-1 w-full {{ 'bg-green-500' if plan.is_active else 'bg-muted' }}"></div>
+        <div class="flex flex-col gap-4 p-5 flex-1">
+          <div class="flex items-start justify-between gap-2">
+            <div class="min-w-0"><h2 class="font-semibold text-base leading-tight truncate">{{ plan.display_name }}</h2><p class="text-xs text-muted-foreground mt-0.5">{{ plan.id }}</p></div>
+            <div class="shrink-0 text-right">
+              {% if plan.price_monthly|float > 0 %}<span class="text-xl font-bold">Rs. {{ plan.price_monthly|float|round(0)|int }}</span><span class="text-xs text-muted-foreground">/mo</span>{% else %}<span class="text-lg font-bold text-muted-foreground">Free</span>{% endif %}
             </div>
           </div>
-
+          <p class="text-sm text-muted-foreground leading-relaxed line-clamp-2 min-h-[2.5rem]">{{ plan.description or 'No description.' }}</p>
+          <div class="flex flex-wrap gap-1.5">
+            <span class="rounded-md bg-muted px-2 py-1 text-xs font-medium">{{ resources.get('ram_gb', 2) }}GB RAM</span>
+            <span class="rounded-md bg-muted px-2 py-1 text-xs font-medium">{{ resources.get('vcpu', 2) }} vCPU</span>
+            <span class="rounded-md bg-muted px-2 py-1 text-xs font-medium">{{ resources.get('storage_gb', 20) }}GB</span>
+          </div>
+          <div class="space-y-1.5">
+            <p class="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Module Access</p>
+            {% for tier in known_tiers %}
+            <div class="flex items-center gap-2 text-xs {{ 'text-foreground' if tier in allowed else 'text-muted-foreground/50' }}">
+              {% if tier in allowed %}<span class="text-green-500">✓</span>{% else %}<span>×</span>{% endif %}
+              <span>{{ tier.replace('_', ' ')|title }}</span>
+            </div>
+            {% endfor %}
+          </div>
         </div>
-      </template>
-
-      {# Empty state #}
-      <template x-if="planList.length === 0">
-        <div class="col-span-full flex flex-col items-center justify-center py-20 text-muted-foreground">
-          <svg class="size-10 opacity-30 mb-3" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect width="20" height="14" x="2" y="5" rx="2"/><path d="M2 10h20"/></svg>
-          <p class="text-sm">No plans yet.</p>
-          <button @click="openCreate()" class="mt-3 text-sm text-primary hover:underline">Create your first plan</button>
+        <div class="flex items-center justify-between border-t px-5 py-3 bg-muted/20">
+          <span class="inline-flex items-center gap-1.5 text-xs font-medium {{ 'text-green-600' if plan.is_active else 'text-muted-foreground' }}"><span class="size-1.5 rounded-full {{ 'bg-green-500' if plan.is_active else 'bg-muted-foreground/50' }}"></span>{{ 'Active' if plan.is_active else 'Inactive' }}</span>
+          <div class="flex items-center gap-1">
+            {% call button_ui.button(type="button", unstyled=true, class="rounded-md px-2.5 py-1.5 text-xs font-medium hover:bg-accent", attrs={"data-plan-edit": plan.id}) %}Edit{% endcall %}
+            {% call button_ui.button(type="button", unstyled=true, class="rounded-md px-2.5 py-1.5 text-xs font-medium text-destructive hover:bg-destructive/10", attrs={"data-plan-delete": plan.id}) %}Delete{% endcall %}
+          </div>
         </div>
-      </template>
+      </article>
+      {% else %}
+      <div class="col-span-full flex flex-col items-center justify-center py-20 text-muted-foreground"><p class="text-sm">No plans yet.</p>{% call button_ui.button(type="button", unstyled=true, class="mt-3 text-sm text-primary hover:underline", attrs={"data-plan-create": ""}) %}Create your first plan{% endcall %}</div>
+      {% endfor %}
     </div>
 
-    {# Subscriptions - read-only audit view directly on this page (no
-    separate route/button). Orgs take and cancel their own plan entirely
-    from their own Billing page via eSewa (see finance/billing_routes.py) -
-    there is deliberately no admin-side assign/cancel action here. #}
+    {# Subscriptions - read-only audit view. #}
     <div class="rounded-xl border bg-card overflow-hidden">
       <div class="flex items-center justify-between px-5 py-4 border-b">
         <h2 class="text-sm font-semibold">All Subscriptions</h2>
@@ -150,45 +83,41 @@
       </div>
 
       {% if subscriptions %}
-      <table class="w-full text-sm">
-        <thead>
-          <tr class="border-b bg-muted/30">
-            <th class="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Organization</th>
-            <th class="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Plan</th>
-            <th class="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Period</th>
-            <th class="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Status</th>
-            <th class="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Expires</th>
-            <th class="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Resources</th>
-          </tr>
-        </thead>
-        <tbody class="divide-y">
+      {% call table_ui.table(class="w-full text-sm", unstyled=true, wrapped=false) %}
+        {% call table_ui.table_header(unstyled=true) %}
+          {% call table_ui.table_row(class="border-b bg-muted/30", unstyled=true) %}
+            {{ table_ui.table_head("Organization", unstyled=true, class="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground") }}
+            {{ table_ui.table_head("Plan", unstyled=true, class="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground") }}
+            {{ table_ui.table_head("Period", unstyled=true, class="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground") }}
+            {{ table_ui.table_head("Status", unstyled=true, class="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground") }}
+            {{ table_ui.table_head("Expires", unstyled=true, class="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground") }}
+            {{ table_ui.table_head("Resources", unstyled=true, class="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground") }}
+          {% endcall %}
+        {% endcall %}
+        {% call table_ui.table_body(class="divide-y", unstyled=true) %}
           {% for sub in subscriptions %}
           {% set snap = sub.plan_snapshot if sub.plan_snapshot is mapping else {} %}
           {% set res = snap.get('resources', {}) if snap else {} %}
-          <tr class="hover:bg-muted/20 transition-colors">
-            <td class="px-5 py-3 font-medium">{{ sub.org_name }}</td>
-            <td class="px-5 py-3">
+          {% call table_ui.table_row(class="hover:bg-muted/20 transition-colors", unstyled=true) %}
+            {% call table_ui.table_cell(unstyled=true, class="px-5 py-3 font-medium") %}{{ sub.org_name }}{% endcall %}
+            {% call table_ui.table_cell(unstyled=true, class="px-5 py-3") %}
               <div class="font-medium">{{ snap.get('display_name', sub.plan_id) }}</div>
               <div class="text-xs text-muted-foreground">{{ sub.plan_id }}</div>
-            </td>
-            <td class="px-5 py-3 capitalize text-muted-foreground">{{ sub.billing_period }}</td>
-            <td class="px-5 py-3">
-              <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium {{ SUBSCRIPTION_STATUS_STYLES.get(sub.status, 'bg-muted text-muted-foreground') }}">
-                {{ sub.status }}
-              </span>
-            </td>
-            <td class="px-5 py-3 text-muted-foreground text-xs">
+            {% endcall %}
+            {% call table_ui.table_cell(unstyled=true, class="px-5 py-3 capitalize text-muted-foreground") %}{{ sub.billing_period }}{% endcall %}
+            {% call table_ui.table_cell(unstyled=true, class="px-5 py-3") %}
+              <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium {{ SUBSCRIPTION_STATUS_STYLES.get(sub.status, 'bg-muted text-muted-foreground') }}">{{ sub.status }}</span>
+            {% endcall %}
+            {% call table_ui.table_cell(unstyled=true, class="px-5 py-3 text-muted-foreground text-xs") %}
               {% if sub.ends_at %}{{ sub.ends_at | string | truncate(16, True, '') }}{% else %}<span class="italic">No expiry</span>{% endif %}
-            </td>
-            <td class="px-5 py-3 text-xs text-muted-foreground">
-              {% if res %}
-                {{ res.get('ram_gb', '?') }}GB RAM · {{ res.get('vcpu', '?') }} vCPU · {{ res.get('storage_gb', '?') }}GB
-              {% else %}—{% endif %}
-            </td>
-          </tr>
+            {% endcall %}
+            {% call table_ui.table_cell(unstyled=true, class="px-5 py-3 text-xs text-muted-foreground") %}
+              {% if res %}{{ res.get('ram_gb', '?') }}GB RAM · {{ res.get('vcpu', '?') }} vCPU · {{ res.get('storage_gb', '?') }}GB{% else %}—{% endif %}
+            {% endcall %}
+          {% endcall %}
           {% endfor %}
-        </tbody>
-      </table>
+        {% endcall %}
+      {% endcall %}
       {% else %}
       <div class="flex flex-col items-center justify-center py-16 text-center text-muted-foreground">
         <svg class="size-10 opacity-30 mb-3" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect width="20" height="14" x="2" y="5" rx="2"/><path d="M2 10h20"/></svg>
@@ -200,179 +129,46 @@
   </main>
 </div>
 
-{# ── Create / Edit dialog ───────────────────────────────────────────── #}
-<div x-data="plansDialog()" @open-plan-dialog.window="receive($event.detail)">
-  <template x-if="open">
-    <div class="fixed inset-0 z-50 flex items-center justify-center">
-      {# Backdrop #}
-      <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="close()"></div>
-
-      {# Panel #}
-      <div class="relative z-10 w-full max-w-xl mx-4 rounded-xl border bg-card shadow-xl overflow-hidden"
-           @keydown.escape.window="close()">
-
-        {# Dialog header #}
-        <div class="flex items-center justify-between border-b px-6 py-4">
-          <div>
-            <h2 class="font-semibold text-base" x-text="isEdit ? 'Edit Plan' : 'New Plan'"></h2>
-            <p class="text-xs text-muted-foreground mt-0.5" x-text="isEdit ? 'Changes take effect immediately. Existing subscribers keep their snapshotted plan.' : 'Set up a new subscription tier.'"></p>
-          </div>
-          <button @click="close()" class="rounded-md p-1.5 hover:bg-accent transition-colors">
-            <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" x2="6" y1="6" y2="18"/><line x1="6" x2="18" y1="6" y2="18"/></svg>
-          </button>
-        </div>
-
-        {# Tabs #}
-        <div class="flex border-b px-6 gap-4">
-          <button @click="tab='general'"
-                  class="py-2.5 text-sm font-medium border-b-2 transition-colors"
-                  :class="tab==='general' ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground'">
-            General
-          </button>
-          <button @click="tab='resources'"
-                  class="py-2.5 text-sm font-medium border-b-2 transition-colors"
-                  :class="tab==='resources' ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground'">
-            Resources &amp; Tiers
-          </button>
-        </div>
-
-        {# Tab: General #}
-        <div x-show="tab==='general'" class="p-6 space-y-4">
-          <template x-if="!isEdit">
-            <div class="space-y-1">
-              <label class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Plan ID <span class="text-destructive">*</span></label>
-              <input x-model="form.id" placeholder="e.g. startup" pattern="[a-z0-9_]+"
-                     class="w-full rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
-              <p class="text-xs text-muted-foreground">Lowercase letters, numbers, underscores. Cannot change after creation.</p>
-            </div>
-          </template>
-
-          <div class="grid grid-cols-2 gap-4">
-            <div class="space-y-1" :class="!isEdit ? '' : 'col-span-2 sm:col-span-1'">
-              <label class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Display Name <span class="text-destructive">*</span></label>
-              <input x-model="form.display_name" placeholder="Startup"
-                     class="w-full rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
-            </div>
-            <div class="space-y-1">
-              <label class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Sort Order</label>
-              <input x-model.number="form.sort_order" type="number" min="0"
-                     class="w-full rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
-            </div>
-          </div>
-
-          <div class="space-y-1">
-            <label class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Description</label>
-            <textarea x-model="form.description" rows="2" placeholder="What's included in this plan…"
-                      class="w-full rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring resize-none"></textarea>
-          </div>
-
-          {% call fieldset() %}
-            {{ fieldset_legend("Pricing") }}
-            <div class="grid grid-cols-2 gap-4">
-              <div class="space-y-1">
-                <label class="text-xs font-medium text-muted-foreground">Monthly (NPR)</label>
-                <div class="relative">
-                  <span class="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">Rs.</span>
-                  <input x-model.number="form.price_monthly" type="number" step="0.01" min="0"
-                         class="w-full rounded-md border bg-background pl-10 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
-                </div>
-              </div>
-              <div class="space-y-1">
-                <label class="text-xs font-medium text-muted-foreground">Annual (NPR)</label>
-                <div class="relative">
-                  <span class="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">Rs.</span>
-                  <input x-model.number="form.price_annual" type="number" step="0.01" min="0"
-                         class="w-full rounded-md border bg-background pl-10 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
-                </div>
-              </div>
-            </div>
-            <p class="text-xs text-muted-foreground">Set 0 for free or custom/enterprise pricing.</p>
-          {% endcall %}
-
-          <div class="flex items-center gap-2 pt-1">
-            {{ checkbox("", attrs={"x-model": "form.is_active", "id": "dlg-is-active"}) }}
-            <label for="dlg-is-active" class="text-sm cursor-pointer">Active (visible to new subscribers)</label>
-          </div>
-        </div>
-
-        {# Tab: Resources & Tiers #}
-        <div x-show="tab==='resources'" class="p-6 space-y-6">
-          {% call fieldset() %}
-            {{ fieldset_legend("Resource Allocation per Instance") }}
-            <div class="grid grid-cols-3 gap-4">
-              <div class="space-y-1">
-                <label class="text-xs font-medium text-muted-foreground">RAM (GB)</label>
-                <input x-model.number="form.ram_gb" type="number" min="1"
-                       class="w-full rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
-              </div>
-              <div class="space-y-1">
-                <label class="text-xs font-medium text-muted-foreground">vCPU</label>
-                <input x-model.number="form.vcpu" type="number" min="1"
-                       class="w-full rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
-              </div>
-              <div class="space-y-1">
-                <label class="text-xs font-medium text-muted-foreground">Storage (GB)</label>
-                <input x-model.number="form.storage_gb" type="number" min="1"
-                       class="w-full rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
-              </div>
-            </div>
-          {% endcall %}
-
-          {% call fieldset() %}
-            {{ fieldset_legend("Module Tier Access") }}
-            <div class="space-y-2.5">
-              <template x-for="tier in allTiers" :key="tier">
-                <label class="flex items-start gap-3 cursor-pointer rounded-lg border p-3 transition-colors"
-                       :class="form.allowed_tiers.includes(tier) ? 'border-primary/40 bg-primary/5' : 'hover:bg-muted/40'">
-                  {{ checkbox("", class="mt-0.5", attrs={":value": "tier", ":checked": "form.allowed_tiers.includes(tier)", "@change": "toggleTier(tier)"}) }}
-                  <div>
-                    <p class="text-sm font-medium capitalize"
-                       x-text="tier.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())"></p>
-                    <p class="text-xs text-muted-foreground" x-text="tierDesc[tier] || ''"></p>
-                  </div>
-                </label>
-              </template>
-            </div>
-          {% endcall %}
-
-          {% call fieldset() %}
-            {{ fieldset_legend("Instance Access") }}
-            <template x-if="allInstances.length === 0">
-              <p class="text-sm text-muted-foreground">No active instances registered yet — <a class="underline" href="/admin/instances">register one</a> first.</p>
-            </template>
-            <div class="space-y-2.5">
-              <template x-for="inst in allInstances" :key="inst.id">
-                <label class="flex items-start gap-3 cursor-pointer rounded-lg border p-3 transition-colors"
-                       :class="form.allowed_instance_ids.includes(inst.id) ? 'border-primary/40 bg-primary/5' : 'hover:bg-muted/40'">
-                  {{ checkbox("", class="mt-0.5", attrs={":value": "inst.id", ":checked": "form.allowed_instance_ids.includes(inst.id)", "@change": "toggleInstance(inst.id)"}) }}
-                  <div>
-                    <p class="text-sm font-medium" x-text="inst.display_name"></p>
-                    <p class="text-xs text-muted-foreground font-mono" x-text="inst.image_tag"></p>
-                  </div>
-                </label>
-              </template>
-            </div>
-          {% endcall %}
-        </div>
-
-        {# Dialog footer #}
-        <div class="flex items-center justify-between border-t px-6 py-4 bg-muted/20">
-          <div class="text-xs text-muted-foreground" x-text="error" x-show="error" style="color:var(--destructive)"></div>
-          <div class="flex items-center gap-3 ml-auto">
-            <button @click="close()" class="rounded-md border px-4 py-2 text-sm font-medium hover:bg-accent transition-colors">
-              Cancel
-            </button>
-            <button @click="submit()" :disabled="saving"
-                    class="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors">
-              <span x-show="!saving" x-text="isEdit ? 'Save Changes' : 'Create Plan'"></span>
-              <span x-show="saving">Saving…</span>
-            </button>
-          </div>
-        </div>
-
-      </div>
+<div id="plan-dialog" class="fixed inset-0 z-50 flex items-center justify-center" hidden data-plan-dialog>
+  <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" data-plan-close></div>
+  <div class="relative z-10 w-full max-w-xl mx-4 rounded-xl border bg-card shadow-xl overflow-hidden max-h-[92vh] flex flex-col">
+    <div class="flex items-start justify-between border-b px-6 py-4">
+      <div><h2 id="plan-dialog-title" class="font-semibold text-base">New Plan</h2><p id="plan-dialog-description" class="text-xs text-muted-foreground mt-0.5">Set up a new subscription tier.</p></div>
+      {% call button_ui.button(type="button", unstyled=true, class="rounded-md p-1.5 hover:bg-accent", attrs={"data-plan-close": "", "aria-label": "Close"}) %}×{% endcall %}
     </div>
-  </template>
+    <div class="flex border-b px-6 gap-6">
+      {% call button_ui.button(type="button", unstyled=true, class="py-2.5 text-sm font-medium border-b-2 border-primary", attrs={"data-plan-tab": "general"}) %}General{% endcall %}
+      {% call button_ui.button(type="button", unstyled=true, class="py-2.5 text-sm font-medium border-b-2 border-transparent text-muted-foreground", attrs={"data-plan-tab": "resources"}) %}Resources & Access{% endcall %}
+    </div>
+    {% call form_ui.form(id="plan-form", unstyled=true, class="overflow-y-auto") %}
+      <section class="p-6 space-y-4" data-plan-panel="general">
+        <div id="plan-id-field" class="space-y-1"><label class="text-xs font-medium text-muted-foreground" for="plan-id">Plan ID</label>{{ input_ui.input(type="text", bare=true, name="id", required=true, placeholder="e.g. startup", class="w-full rounded-md border bg-background px-3 py-2 text-sm", attrs={"id":"plan-id", "pattern":"[a-z0-9_]+"}) }}</div>
+        <div class="grid gap-4 sm:grid-cols-2">
+          <div class="space-y-1"><label class="text-xs font-medium text-muted-foreground" for="plan-name">Display Name</label>{{ input_ui.input(type="text", bare=true, name="display_name", required=true, class="w-full rounded-md border bg-background px-3 py-2 text-sm", attrs={"id":"plan-name"}) }}</div>
+          <div class="space-y-1"><label class="text-xs font-medium text-muted-foreground" for="plan-sort">Sort Order</label>{{ input_ui.input(type="number", bare=true, name="sort_order", value="0", class="w-full rounded-md border bg-background px-3 py-2 text-sm", attrs={"id":"plan-sort", "min":"0"}) }}</div>
+        </div>
+        <div class="space-y-1"><label class="text-xs font-medium text-muted-foreground" for="plan-description">Description</label>{% call textarea_ui.textarea(bare=true, name="description", rows="2", class="w-full rounded-md border bg-background px-3 py-2 text-sm resize-none", attrs={"id":"plan-description"}) %}{% endcall %}</div>
+        <div class="grid gap-4 sm:grid-cols-2">
+          <div class="space-y-1"><label class="text-xs font-medium text-muted-foreground" for="plan-monthly">Monthly Price</label>{{ input_ui.input(type="number", bare=true, name="price_monthly", value="0", class="w-full rounded-md border bg-background px-3 py-2 text-sm", attrs={"id":"plan-monthly", "step":"0.01", "min":"0"}) }}</div>
+          <div class="space-y-1"><label class="text-xs font-medium text-muted-foreground" for="plan-annual">Annual Price</label>{{ input_ui.input(type="number", bare=true, name="price_annual", value="0", class="w-full rounded-md border bg-background px-3 py-2 text-sm", attrs={"id":"plan-annual", "step":"0.01", "min":"0"}) }}</div>
+        </div>
+        <label class="flex items-center gap-2 text-sm">{{ checkbox("is_active", checked=true, attrs={"id":"plan-active"}) }} Active</label>
+      </section>
+      <section class="p-6 space-y-6" data-plan-panel="resources" hidden>
+        <div class="grid gap-4 sm:grid-cols-3">
+          <div class="space-y-1"><label class="text-xs font-medium text-muted-foreground" for="plan-ram">RAM (GB)</label>{{ input_ui.input(type="number", bare=true, name="ram_gb", value="2", class="w-full rounded-md border bg-background px-3 py-2 text-sm", attrs={"id":"plan-ram", "min":"1"}) }}</div>
+          <div class="space-y-1"><label class="text-xs font-medium text-muted-foreground" for="plan-vcpu">vCPU</label>{{ input_ui.input(type="number", bare=true, name="vcpu", value="2", class="w-full rounded-md border bg-background px-3 py-2 text-sm", attrs={"id":"plan-vcpu", "min":"1"}) }}</div>
+          <div class="space-y-1"><label class="text-xs font-medium text-muted-foreground" for="plan-storage">Storage (GB)</label>{{ input_ui.input(type="number", bare=true, name="storage_gb", value="20", class="w-full rounded-md border bg-background px-3 py-2 text-sm", attrs={"id":"plan-storage", "min":"1"}) }}</div>
+        </div>
+        {% call fieldset() %}{{ fieldset_legend("Module Tiers") }}<div class="space-y-2">{% for tier in known_tiers %}<label class="flex items-start gap-3 rounded-lg border p-3 cursor-pointer">{{ checkbox("allowed_tiers", attrs={"value":tier, "data-plan-tier":tier}) }}<span><span class="block text-sm font-medium">{{ tier.replace('_',' ')|title }}</span></span></label>{% endfor %}</div>{% endcall %}
+        {% call fieldset() %}{{ fieldset_legend("Instance Access") }}<div class="space-y-2">{% for inst in instances_for_js %}<label class="flex items-start gap-3 rounded-lg border p-3 cursor-pointer">{{ checkbox("allowed_instance_ids", attrs={"value":inst.id, "data-plan-instance":inst.id}) }}<span><span class="block text-sm font-medium">{{ inst.display_name }}</span><span class="block text-xs text-muted-foreground font-mono">{{ inst.image_tag }}</span></span></label>{% else %}<p class="text-sm text-muted-foreground">No active instances registered.</p>{% endfor %}</div>{% endcall %}
+      </section>
+      <div class="flex items-center justify-between border-t px-6 py-4 bg-muted/20"><p id="plan-error" class="text-xs text-destructive" hidden></p><div class="flex items-center gap-3 ml-auto">{% call button_ui.button(type="button", unstyled=true, class="rounded-md border px-4 py-2 text-sm font-medium hover:bg-accent", attrs={"data-plan-close":""}) %}Cancel{% endcall %}{% call button_ui.button(type="submit", unstyled=true, class="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50", attrs={"id":"plan-submit"}) %}Create Plan{% endcall %}</div></div>
+    {% endcall %}
+  </div>
 </div>
+{% endblock %}
 
+{% block body_scripts %}
+<script src="{{ url_for('static', filename='js/pages/admin-plans.js') }}?v={{ asset_version('js/pages/admin-plans.js') }}"></script>
 {% endblock %}

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from quart import Blueprint, abort, g, jsonify, request
+from flask import Blueprint, abort, g, jsonify, request
 
 from app.core.security.org_permissions import get_user_org_membership, is_org_owner
 from app.core.security.sessions import login_required
@@ -33,7 +33,7 @@ async def get_note_view(case_id: str):
 @login_required
 async def save_note_view(case_id: str):
     await _require_visible_case(case_id)
-    body = await request.get_json(silent=True) or {}
+    body = request.get_json(silent=True) or {}
     content: str = (body.get("content") or "").strip()
     if not content:
         return jsonify({"error": "content is required"}), 400

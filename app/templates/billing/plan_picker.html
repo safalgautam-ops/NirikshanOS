@@ -1,6 +1,10 @@
 {% extends "layouts/base.html" %}
+{% import "components/ui/form.html" as form_ui %}
+{% import "components/ui/label.html" as label_ui %}
+{% import "components/ui/input.html" as input_ui %}
+
 {% block title %}Billing — NirikshanOS{% endblock %}
-{% block scripts %}<script defer src="{{ url_for('static', filename='js/pages/billing/plan-picker.js') }}"></script>{% endblock %}
+
 
 {% from "dashboard/components/sidebar.html" import sidebar %}
 {% from "dashboard/components/topbar.html" import topbar %}
@@ -12,14 +16,15 @@
 {% from "components/ui/radio-group.html" import radio %}
 
 {% block body %}
-<div x-data="planPicker({{ current_sub | tojson | forceescape }})">
+<div data-plan-picker>
+  <script type="application/json" data-plan-picker-state>{{ {"plans": plans, "current_sub": current_sub}|tojson }}</script>
 
   {{ sidebar(active="org_billing", visible_keys=visible_keys) }}
 
   <div class="flex flex-col md:pl-60">
     {{ topbar("Billing") }}
 
-    <main class="flex-1 overflow-y-auto p-6 space-y-8">
+    <main class="flex-1 overflow-y-auto p-6 space-y-4">
 
       <div>
         <h1 class="text-xl font-semibold">Billing</h1>
@@ -61,7 +66,7 @@
             </div>
           {% endcall %}
           {% call card_footer() %}
-            {% call button(class="w-full", attrs={"@click": "openDialog(%s)" % (plan | tojson), "disabled": current_sub and current_sub.plan_id == plan.id}) %}
+            {% call button(class="w-full", attrs={"data-plan-open": plan.id, "disabled": current_sub and current_sub.plan_id == plan.id}) %}
               {% if current_sub and current_sub.plan_id == plan.id %}Current Plan{% else %}Subscribe{% endif %}
             {% endcall %}
           {% endcall %}
@@ -73,69 +78,65 @@
   </div>
 
   {# ── Pay dialog ────────────────────────────────────────────────────────────── #}
-  <template x-if="open">
-    <div class="fixed inset-0 z-50 flex items-center justify-center p-4" @keydown.escape.window="open = false">
-      <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="open = false"></div>
+  <div data-plan-dialog hidden class="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" data-plan-close></div>
 
-      <form method="POST" :action="isFree ? '{{ url_for('billing.subscribe_free_view') }}' : '{{ url_for('billing.pay_view') }}'" class="relative z-10 w-full max-w-sm rounded-xl border bg-card shadow-xl overflow-hidden">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <input type="hidden" name="plan_id" :value="plan.id">
+    {% call form_ui.form(method="POST", class="relative z-10 w-full max-w-sm rounded-xl border bg-card shadow-xl overflow-hidden", unstyled=true, attrs={"data-plan-form": true, "data-pay-action": url_for('billing.pay_view'), "data-free-action": url_for('billing.subscribe_free_view')}) %}
+      {{ input_ui.hidden_input(name="csrf_token", value=csrf_token()) }}
+      {{ input_ui.hidden_input(name="plan_id", attrs={"data-plan-id": true}) }}
 
-        <div class="flex items-center justify-between border-b px-6 py-4">
-          <h2 class="font-semibold text-base">Subscribe to <span x-text="plan.display_name"></span></h2>
-          {% call button(variant="ghost", size="icon-sm", attrs={"@click": "open = false", "type": "button"}) %}
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" x2="6" y1="6" y2="18"/><line x1="6" x2="18" y1="6" y2="18"/></svg>
-          {% endcall %}
-        </div>
+      <div class="flex items-center justify-between border-b px-6 py-4">
+        <h2 class="font-semibold text-base">Subscribe to <span data-plan-name></span></h2>
+        {% call button(variant="ghost", size="icon-sm", type="button", attrs={"data-plan-close": true}) %}
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" x2="6" y1="6" y2="18"/><line x1="6" x2="18" y1="6" y2="18"/></svg>
+        {% endcall %}
+      </div>
 
-        <div class="px-6 py-5 space-y-4">
-          <div class="space-y-1.5">
-            {{ label(text="Billing period") }}
-            <div class="flex gap-2" role="radiogroup">
-              <label class="flex-1 flex items-center justify-center gap-2 rounded-lg border p-3 cursor-pointer text-sm"
-                     :class="billingPeriod === 'monthly' ? 'border-primary/40 bg-primary/5' : ''">
-                {{ radio(name="billing_period", value="monthly", attrs={"x-model": "billingPeriod"}) }}
-                Monthly — <span x-text="'Rs. ' + plan.price_monthly"></span>
-              </label>
-              <label class="flex-1 flex items-center justify-center gap-2 rounded-lg border p-3 cursor-pointer text-sm"
-                     :class="billingPeriod === 'annual' ? 'border-primary/40 bg-primary/5' : ''">
-                {{ radio(name="billing_period", value="annual", attrs={"x-model": "billingPeriod"}) }}
-                Annual — <span x-text="'Rs. ' + plan.price_annual"></span>
-              </label>
-            </div>
+      <div class="px-6 py-5 space-y-4">
+        <div class="space-y-1.5">
+          {{ label(text="Billing period") }}
+          <div class="flex gap-2" role="radiogroup">
+            {% call label_ui.label(class="flex-1 flex items-center justify-center gap-2 rounded-lg border p-3 cursor-pointer text-sm", unstyled=true, attrs={"data-period-label": "monthly"}) %}
+              {{ radio(name="billing_period", value="monthly", attrs={"data-billing-period": true, "checked": true}) }}
+              Monthly — <span data-monthly-price></span>
+            {% endcall %}
+            {% call label_ui.label(class="flex-1 flex items-center justify-center gap-2 rounded-lg border p-3 cursor-pointer text-sm", unstyled=true, attrs={"data-period-label": "annual"}) %}
+              {{ radio(name="billing_period", value="annual", attrs={"data-billing-period": true}) }}
+              Annual — <span data-annual-price></span>
+            {% endcall %}
           </div>
-
-          <div class="space-y-1.5" x-show="!isFree">
-            {{ label(text="Coupon code (optional)", for_id="coupon-code") }}
-            {{ input(type="text", placeholder="SAVE20", attrs={"id": "coupon-code", "name": "coupon_code"}) }}
-          </div>
-
-          <template x-if="isSwitchingPlan">
-            <p class="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
-              Your current plan (<span x-text="currentSub.plan_snapshot.display_name" class="font-medium"></span>) will be
-              <span class="font-medium">cancelled immediately</span> and replaced with
-              <span x-text="plan.display_name" class="font-medium"></span>. This cannot be undone.
-            </p>
-          </template>
-
-          <p class="text-xs text-muted-foreground" x-show="!isFree">
-            You'll be redirected to eSewa to complete payment. The exact amount
-            (after any discount) is confirmed on the next screen before you pay.
-          </p>
-          <p class="text-xs text-muted-foreground" x-show="isFree">
-            This plan has no cost — it activates immediately, no payment needed.
-          </p>
         </div>
 
-        <div class="flex justify-end gap-2 border-t px-6 py-4">
-          {% call button(variant="outline", attrs={"@click": "open = false", "type": "button"}) %}Cancel{% endcall %}
-          {% call button(type="submit") %}
-            <span x-text="isSwitchingPlan ? (isFree ? 'Cancel current plan & switch' : 'Cancel current plan & pay') : (isFree ? 'Activate plan' : 'Continue to Payment')"></span>
-          {% endcall %}
+        <div class="space-y-1.5" data-paid-only>
+          {{ label(text="Coupon code (optional)", for_id="coupon-code") }}
+          {{ input(type="text", placeholder="SAVE20", attrs={"id": "coupon-code", "name": "coupon_code"}) }}
         </div>
-      </form>
-    </div>
-  </template>
+
+        <p data-switch-warning hidden class="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+          Your current plan (<span data-current-plan-name class="font-medium"></span>) will be
+          <span class="font-medium">cancelled immediately</span> and replaced with
+          <span data-switch-plan-name class="font-medium"></span>. This cannot be undone.
+        </p>
+
+        <p class="text-xs text-muted-foreground" data-payment-copy>
+          You'll be redirected to eSewa to complete payment. The exact amount
+          (after any discount) is confirmed on the next screen before you pay.
+        </p>
+        <p class="text-xs text-muted-foreground" data-free-copy hidden>
+          This plan has no cost — it activates immediately, no payment needed.
+        </p>
+      </div>
+
+      <div class="flex justify-end gap-2 border-t px-6 py-4">
+        {% call button(variant="outline", type="button", attrs={"data-plan-close": true}) %}Cancel{% endcall %}
+        {% call button(type="submit") %}<span data-plan-submit-label>Continue to Payment</span>{% endcall %}
+      </div>
+    {% endcall %}
+  </div>
 
 </div>
+{% endblock %}
+
+{% block body_scripts %}
+<script src="{{ url_for('static', filename='js/pages/billing-plan-picker.js') }}"></script>
 {% endblock %}

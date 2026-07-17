@@ -5,10 +5,8 @@
     {% from "components/ui/theme-toggle.html" import theme_toggle %}
     {{ theme_toggle() }}
 
-  The click handler lives in static/js/theme.js (id="theme-toggle"), not an
-  Alpine @click - the CSP build's expression parser only allows a single,
-  simple expression and can't touch globals like `document`/`localStorage`.
-  That same file also applies the saved theme before first paint.
+  The click handler and pre-paint preference bootstrap live in static/js/app.js
+  so the theme remains independent of page-specific controllers.
 #}
 {% macro theme_toggle() %}
 <button

@@ -1,5 +1,8 @@
-{% extends "layouts/base.html" %} {% block title %}{{ role.name }} - Staff Roles
-- NirikshanOS{% endblock %} {% import "components/ui/button.html" as button %}
+{% extends "layouts/base.html" %}
+{% import "components/ui/form.html" as form_ui %}
+{% import "components/ui/label.html" as label_ui %}
+
+{% block title %}{{ role.name }} - Staff Roles - NirikshanOS{% endblock %} {% import "components/ui/button.html" as button %}
 {% import "components/ui/input.html" as input %} {% import
 "components/ui/textarea.html" as textarea %} {% import
 "components/ui/checkbox.html" as checkbox_ui %} {% import
@@ -47,19 +50,14 @@ visible_keys=visible_keys) }}
                 <path d="M19 12H5M12 19l-7-7 7-7" />
             </svg>
         </a>
-        <form method="post" action="{{ url_for('rbac.create_view') }}">
+        {% call form_ui.form(method="post", action=url_for('rbac.create_view'), unstyled=true) %}
             {{ csrf_field() }} {% call button.button(variant="outline",
             size="icon", type="submit", attrs={"aria-label": "Create new role"})
             %}+{% endcall %}
-        </form>
+        {% endcall %}
         <h1 class="text-lg font-semibold">Role settings</h1>
         <div class="ml-auto">
-            <button
-                type="submit"
-                form="role-display-form"
-                class="inline-flex size-9 items-center justify-center rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
-                aria-label="Save display settings"
-            >
+            {% call button.button(type="submit", unstyled=true, class="inline-flex size-9 items-center justify-center rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors", attrs={"form": "role-display-form", "aria-label": "Save display settings"}) %}
                 <svg
                     class="size-4"
                     viewBox="0 0 24 24"
@@ -72,11 +70,11 @@ visible_keys=visible_keys) }}
                     />
                     <path d="M17 21v-8H7v8M7 3v5h8" />
                 </svg>
-            </button>
+            {% endcall %}
         </div>
     </header>
 
-    <main class="flex-1 p-4 md:p-6">
+    <main class="flex-1 p-2 md:p-4">
         {{ flash("error", error) }}
 
         <div class="flex gap-6">
@@ -116,11 +114,7 @@ visible_keys=visible_keys) }}
                 endcall %} {# ── Display tab ── #} {% call
                 tabs_ui.tabs_panel(value="display", active=(active_tab ==
                 "display"), class="max-w-lg") %}
-                <form
-                    id="role-display-form"
-                    method="post"
-                    action="{{ url_for('rbac.update_display', role_id=role.id) }}"
-                >
+                {% call form_ui.form(id="role-display-form", method="post", action=url_for('rbac.update_display', role_id=role.id), unstyled=true) %}
                     {{ csrf_field() }} {% if role.is_system %}
                     <div
                         class="mb-4 flex items-center gap-2 rounded-lg border bg-muted/40 px-3 py-2 text-sm text-muted-foreground"
@@ -134,13 +128,7 @@ visible_keys=visible_keys) }}
                     call field.field() %} {{ field.field_label("Color",
                     for_id="color") }}
                     <div class="flex items-center gap-2">
-                        <input
-                            type="color"
-                            id="color"
-                            name="color"
-                            value="{{ role.color }}"
-                            class="h-9 w-16 cursor-pointer rounded-lg border border-input bg-background p-1"
-                        />
+                        {{ input.input(type="color", bare=true, name="color", value=role.color, class="h-9 w-16 cursor-pointer rounded-lg border border-input bg-background p-1", attrs={"id": "color"}) }}
                         <span class="text-sm text-muted-foreground tabular-nums"
                             >{{ role.color }}</span
                         >
@@ -150,17 +138,13 @@ visible_keys=visible_keys) }}
                     textarea.textarea(name="description", value=role.description
                     or "", placeholder="Role purpose", attrs={"id":
                     "description"}) }} {% endcall %} {% endcall %}
-                </form>
+                {% endcall %}
                 {% endcall %} {# ── Permissions tab ── #} {% call
                 tabs_ui.tabs_panel(value="permissions", active=(active_tab ==
                 "permissions"), class="max-w-2xl space-y-4") %}
                 <div data-slot="command">
                     {{ command_input(placeholder="Search permissions...") }}
-                    <form
-                        method="post"
-                        action="{{ url_for('rbac.update_permissions', role_id=role.id) }}"
-                        class="mt-4 space-y-6"
-                    >
+                    {% call form_ui.form(method="post", action=url_for('rbac.update_permissions', role_id=role.id), class="mt-4 space-y-6", unstyled=true) %}
                         {{ csrf_field() }} {% call accordion_ui.accordion() %}
                         {% for category, perms in permission_groups %} {% set
                         visible_count = perms|selectattr("id", "in",
@@ -195,7 +179,7 @@ visible_keys=visible_keys) }}
                         {% endcall %} {% endcall %} {% endfor %} {% endcall %}
                         {% call button.button(type="submit") %}Save
                         permissions{% endcall %}
-                    </form>
+                    {% endcall %}
                 </div>
                 {% endcall %} {# ── Sidebar tab ── #} {% call
                 tabs_ui.tabs_panel(value="sidebar", active=(active_tab ==
@@ -203,24 +187,20 @@ visible_keys=visible_keys) }}
                 <p class="text-sm text-muted-foreground">
                     Choose which dashboard pages members with this role can see.
                 </p>
-                <form
-                    method="post"
-                    action="{{ url_for('rbac.update_sidebar', role_id=role.id) }}"
-                    class="space-y-3"
-                >
+                {% call form_ui.form(method="post", action=url_for('rbac.update_sidebar', role_id=role.id), class="space-y-3", unstyled=true) %}
                     {{ csrf_field() }}
                     <div class="flex flex-col gap-2">
                         {% for key, label in nav_keys %}
-                        <label class="inline-flex items-center gap-2 text-sm">
+                        {% call label_ui.label(class="inline-flex items-center gap-2 text-sm", unstyled=true) %}
                             {{ checkbox_ui.checkbox(name="nav_keys",
                             checked=(key in checked_nav_keys), attrs={"value":
                             key}) }} {{ label }}
-                        </label>
+                        {% endcall %}
                         {% endfor %}
                     </div>
                     {% call button.button(type="submit") %}Save sidebar{%
                     endcall %}
-                </form>
+                {% endcall %}
                 {% endcall %} {# ── Members tab ── #} {% call
                 tabs_ui.tabs_panel(value="members", active=(active_tab ==
                 "members"), class="max-w-lg space-y-4") %}
@@ -245,10 +225,7 @@ visible_keys=visible_keys) }}
                                 {{ member.email }}
                             </div>
                         </div>
-                        <form
-                            method="post"
-                            action="{{ url_for('rbac.remove_member', role_id=role.id, user_id=member.id) }}"
-                        >
+                        {% call form_ui.form(method="post", action=url_for('rbac.remove_member', role_id=role.id, user_id=member.id), unstyled=true) %}
                             {{ csrf_field() }} {% call
                             button.button(variant="ghost", size="icon-xs",
                             type="submit", class="text-muted-foreground
@@ -269,7 +246,7 @@ visible_keys=visible_keys) }}
                                 <path d="m6 6 12 12" />
                             </svg>
                             {% endcall %}
-                        </form>
+                        {% endcall %}
                     </div>
                     {% endfor %} {% endif %}
                 </div>
@@ -288,4 +265,8 @@ visible_keys=visible_keys) }}
         </div>
     </main>
 </div>
+{% endblock %}
+
+{% block body_scripts %}
+<script src="{{ url_for('static', filename='js/vendor/htmx.min.js') }}"></script>
 {% endblock %}

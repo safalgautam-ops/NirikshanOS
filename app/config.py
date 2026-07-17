@@ -11,7 +11,7 @@ import os
 class Config:
     # Used to sign sessions/CSRF tokens later - override via .env in real use.
     SECRET_KEY = os.environ.get("SECRET_KEY", "dev-secret-key")
-    DEBUG = os.environ.get("QUART_DEBUG", "false").lower() == "true"
+    DEBUG = os.environ.get("FLASK_DEBUG", "false").lower() == "true"
 
     # MySQL connection details - "mysql"/"redis" as defaults match the
     # service names in docker-compose.yml, so this works inside containers
@@ -60,8 +60,8 @@ class Config:
     )  # bucket for the private file
 
     # A file upload is a part of the request body, so this affects uploads.
-    # This is the Quart app outer limit.
-    # Now, Nginx and quart app allows up to 100GB uploads.
+    # This is the Flask app outer limit.
+    # Now, Nginx and the Flask app allows up to 100GB uploads.
     # platform-level maxmium
     MAX_CONTENT_LENGTH = 100 * 1024 * 1024 * 1024  # 100 GB
 

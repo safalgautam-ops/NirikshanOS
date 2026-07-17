@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 
-from quart import Blueprint, g, jsonify, render_template, request
+from flask import Blueprint, g, jsonify, render_template, request
 
 from app.core.security.permissions import get_visible_nav_keys, require_permission
 from app.features.categories import repository
@@ -20,7 +20,7 @@ _ID_RE = re.compile(r"^[a-z0-9_\-]{1,64}$")
 async def list_view():
     categories = await repository.list_categories()
     visible_keys = await get_visible_nav_keys(g.user_id)
-    return await render_template(
+    return render_template(
         "admin/categories/list.html",
         categories=categories,
         visible_keys=visible_keys,
@@ -30,7 +30,7 @@ async def list_view():
 @categories_bp.route("/", methods=["POST"])
 @require_permission(CATEGORY_EDIT)
 async def create_view():
-    body = await request.get_json(silent=True) or {}
+    body = request.get_json(silent=True) or {}
     name = (body.get("name") or "").strip()
     if not name:
         return jsonify({"error": "Name is required"}), 400
@@ -53,7 +53,7 @@ async def create_view():
 async def update_view(category_id: str):
     if not await repository.get_category(category_id):
         return jsonify({"error": "not found"}), 404
-    body = await request.get_json(silent=True) or {}
+    body = request.get_json(silent=True) or {}
     name = (body.get("name") or "").strip()
     if not name:
         return jsonify({"error": "Name is required"}), 400

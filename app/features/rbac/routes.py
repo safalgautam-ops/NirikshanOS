@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from quart import Blueprint, g, redirect, render_template, request, url_for
+from flask import Blueprint, g, redirect, render_template, request, url_for
 
 from app.core.security.permissions import NAV_KEYS, get_visible_nav_keys, require_permission
 from app.features.rbac import repository, service
@@ -20,7 +20,7 @@ async def list_view():
     result = await service.get_roles_page(search=search, page=page)
     visible_keys = await get_visible_nav_keys(g.user_id)
 
-    return await render_template(
+    return render_template(
         "admin/rbac/list.html",
         page=result,
         search=search,
@@ -53,7 +53,7 @@ async def edit_view(role_id: str):
         {key for key, _ in NAV_KEYS} if role["sidebar_keys"] is None else set(role["sidebar_keys"])
     )
 
-    return await render_template(
+    return render_template(
         "admin/rbac/edit.html",
         role=role,
         all_roles=all_roles,
@@ -71,7 +71,7 @@ async def edit_view(role_id: str):
 @rbac_bp.route("/<role_id>/display", methods=["POST"])
 @require_permission(ROLE_EDIT)
 async def update_display(role_id: str):
-    form = await request.form
+    form = request.form
     try:
         await service.update_role_display(
             role_id,
@@ -87,7 +87,7 @@ async def update_display(role_id: str):
 @rbac_bp.route("/<role_id>/permissions", methods=["POST"])
 @require_permission(ROLE_EDIT)
 async def update_permissions(role_id: str):
-    form = await request.form
+    form = request.form
     await service.update_role_permissions(role_id, form.getlist("permission_ids"))
     return redirect(url_for("rbac.edit_view", role_id=role_id, tab="permissions"))
 
@@ -95,7 +95,7 @@ async def update_permissions(role_id: str):
 @rbac_bp.route("/<role_id>/sidebar", methods=["POST"])
 @require_permission(ROLE_EDIT)
 async def update_sidebar(role_id: str):
-    form = await request.form
+    form = request.form
     await service.update_role_sidebar(role_id, form.getlist("nav_keys"))
     return redirect(url_for("rbac.edit_view", role_id=role_id, tab="sidebar"))
 
@@ -103,7 +103,7 @@ async def update_sidebar(role_id: str):
 @rbac_bp.route("/<role_id>/members/add", methods=["POST"])
 @require_permission(ROLE_EDIT)
 async def add_member(role_id: str):
-    form = await request.form
+    form = request.form
     user_id = form.get("user_id", "")
     try:
         if user_id:
@@ -155,6 +155,6 @@ async def delete_view(role_id: str):
 async def search_members(role_id: str):
     search = request.args.get("q", "").strip()
     users = await repository.search_assignable_users(role_id, search)
-    return await render_template(
+    return render_template(
         "admin/rbac/_member_options.html", users=users, role_id=role_id
     )

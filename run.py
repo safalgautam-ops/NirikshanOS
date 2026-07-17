@@ -1,10 +1,9 @@
-"""ASGI entry point.
+"""WSGI entry point.
 
-Run with: uvicorn run:app
+Development:  flask --app run:app run --host 0.0.0.0 --port 8000 --debug
+Production:   gunicorn --bind 0.0.0.0:8000 --workers 1 --threads 8 run:app
 """
 
 from app import create_app
 
-# Build the Quart instance once at import time - this is the object
-# uvicorn loads when run as `uvicorn run:app`.
 app = create_app()
