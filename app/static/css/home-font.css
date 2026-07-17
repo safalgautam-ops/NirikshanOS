@@ -1,0 +1,18 @@
+/* Self-hosted variable font for the public marketing page only (home/index.html).
+   Not applied app-wide - the dashboard/admin UI keeps Tailwind's default
+   system font stack. Inter, SIL OFL licensed, single variable woff2 file
+   covering weights 400-800 so no extra network requests per weight. */
+@font-face {
+    font-family: "Inter";
+    font-style: normal;
+    font-weight: 400 800;
+    font-display: swap;
+    src: url("../fonts/inter-latin-variable.woff2") format("woff2");
+}
+body {
+    font-family:
+        "Inter",
+        ui-sans-serif,
+        system-ui,
+        sans-serif;
+}

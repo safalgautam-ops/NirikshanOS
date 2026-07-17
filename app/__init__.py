@@ -199,6 +199,12 @@ def create_app() -> Quart:
         await close_redis()
 
     @app.route("/")
+    async def home():
+        return await render_template(
+            "home/index.html"
+        )
+
+    @app.route("/dashboard")
     @login_required
     async def dashboard():
         user = await get_user_by_id(g.user_id)

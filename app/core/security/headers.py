@@ -25,10 +25,17 @@ BASE_SECURITY_HEADERS = {
 # dynamic progress bar widths). img-src adds data: on top of 'self' - without
 # it, default-src's 'self' silently blocks data: URIs, which is how the TOTP
 # setup page embeds its QR code (no origin to fetch it from, it's generated
-# server-side and inlined directly). Production keeps script-src at the
-# strict default-src 'self' - no third-party script origins, ever.
+# server-side and inlined directly). img-src also adds blob: - the public
+# homepage's Rive hero animation (a WASM-based renderer, see
+# app/static/vendor/rive/) decodes its images internally and hands them back
+# to the canvas via blob: URLs; without blob: here those loads are silently
+# blocked and the animation renders empty. script-src stays same-origin only
+# (no third-party script origins, ever) but needs 'wasm-unsafe-eval' for that
+# same renderer - without this token, WebAssembly.instantiate() is blocked
+# even though the .wasm file itself is same-origin.
 PRODUCTION_CSP = (
-    "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; "
+    "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; "
+    "script-src 'self' 'wasm-unsafe-eval'; "
     f"connect-src 'self' {Config.MINIO_PRESIGN_ENDPOINT}"
 )
 
@@ -43,7 +50,7 @@ PRODUCTION_CSP = (
 # it's gated to QUART_DEBUG and never applied in production.
 DEV_CSP = (
     "default-src 'self'; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
-    "img-src 'self' data:; "
+    "img-src 'self' data: blob:; "
     "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://cdn.jsdelivr.net; "
     f"connect-src 'self' {Config.MINIO_PRESIGN_ENDPOINT}"
 )

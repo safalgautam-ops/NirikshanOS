@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="en" class="dark">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <meta name="csrf-token" content="{{ csrf_token() }}" />
+        <title>{% block title %}NirikshanOS{% endblock %}</title>
+        <link
+            rel="icon"
+            href="/static/img/favlogo.ico"
+            type="image/x-icon"
+            h-24
+        />
+        <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+        <link
+            rel="stylesheet"
+            flex
+            flex-col
+            p-10
+            justify-between
+            gap-20
+            items-center
+            md:items-start
+            href="{{ url_for('static', filename='css/tailwind.css') }}"
+        />
+        <link
+            rel="stylesheet"
+            href="{{ url_for('static', filename='css/home-font.css') }}?v={{ asset_version('css/home-font.css') }}"
+        />
+        <link
+            rel="stylesheet"
+            href="{{ url_for('static', filename='css/hero-animation.css') }}?v={{ asset_version('css/hero-animation.css') }}"
+        />
+    </head>
+    <body class="min-h-screen bg-background text-foreground antialiased">
+        <header
+            class="wrapper px-6 py-5 flex items-center justify-between relative border-b border-stroke border-nickel"
+        >
+            <div class="flex gap-10 self-stretch h-[40px]">
+                <a
+                    href="/"
+                    class="flex flex-col items-start justify-center -mx-2 px-2"
+                >
+                    <img
+                        class="h-4 block"
+                        src="/static/img/logo.ico"
+                        alt="NirikshanOS"
+                    />
+                </a>
+            </div>
+            <div class="flex items-center gap-5 self-stretch h-[40px]">
+                <a
+                    href="{{ url_for('auth.login') }}"
+                    class="inline-flex items-center justify-center rounded-md border border-white/15 bg-white/5 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-white/10"
+                >
+                    Login
+                </a>
+            </div>
+        </header>
+        <div style="position: relative">
+            <div class="wrapper wrapper--ticks grid md:grid-cols-2 w-full border-nickel md:divide-x">
+                <div class="flex flex-col p-10 justify-between gap-20 items-start">
+                    <div class="flex flex-col gap-5 items-start text-center text-left">
+                        <a class="flex items-center gap-2"
+                            href="{{ url_for('home') }}"
+                            >
+                            <span class="text-grey text-xs font-mono font-semibold uppercase tracking-wide">Platform</span>
+                            <span class="font-semibold">NirikshanOS</span>
+                        </a>
+                        <h1 class="text-white text-pretty max-w-[25rem] text-4xl sm:text-5xl font-bold tracking-tight leading-[1.1]">
+                            The Operating System for Digital Forensics
+                        </h1>
+                        <p class="text-white/70 md:text-lg max-w-[27rem] text-pretty leading-relaxed" >
+                            NirikshanOS is a secure, multi-tenant platform for
+                            managing forensic cases, uploading evidence with
+                            integrity verification, and running specialized
+                            analysis modules — all from one collaborative
+                            workspace.
+                        </p>
+                        <div class="flex items-center gap-5 mt-8">
+                            <a href="{{ url_for('auth.register_view') }}" class="inline-flex items-center justify-center rounded-md bg-white px-5 py-2.5 text-sm font-semibold text-neutral-900 transition-colors hover:bg-white/90">Get Started</a>
+                        </div>
+                    </div>
+                </div>
+                <div class="flex flex-col justify-center sm:min-h-[30rem]">
+                    <div
+                        id="hero-animation"
+                        data-base="{{ url_for('static', filename='vendor/rive') }}"
+                        data-img-base="{{ url_for('static', filename='img/hero') }}"
+                    >
+                        <canvas width="1280" height="552"></canvas>
+                        <i class="hero-anim-side left"></i>
+                        <i class="hero-anim-side right"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <section
+            class="wrapper wrapper--ticks border-t px-10 py-6 md:py-8 flex flex-col justify-center gap-5"
+        >
+            <h6 class="text-center md:text-start text-white/50 text-xs sm:text-sm font-semibold uppercase tracking-widest">
+                Trusted by security teams and forensic investigators
+            </h6>
+        </section>
+        <section
+            class="wrapper wrapper--ticks border-t px-5 sm:px-10 py-14 sm:py-28 flex flex-col justify-center gap-3 text-center items-center"
+        >
+            <h2 class="text-white max-w-2xl text-balance text-center text-3xl sm:text-4xl font-bold tracking-tight">
+                Built for real investigations
+            </h2>
+            <p class="max-w-md text-white/70 text-balance sm:text-pretty leading-relaxed">
+                From evidence intake to court-ready reports — one platform,
+                start to finish.
+            </p>
+        </section>
+
+        <section
+            class="wrapper wrapper--ticks border-t grid lg:grid-cols-2 divide-x divide-y divide-nickel"
+        >
+            <div class="p-5 sm:p-10 flex flex-col gap-3">
+                <h5 class="text-balance sm:text-pretty text-white text-lg sm:text-xl font-semibold tracking-tight">
+                    Modular Analysis Pipeline
+                </h5>
+                <p class="sm:max-w-[28rem] text-pretty leading-relaxed">
+                    Run Tshark, ExifTool, Volatility3, binwalk, Plaso, MVT and
+                    more — each module executes in an isolated,
+                    resource-limited container sized to the job.
+                </p>
+            </div>
+            <div class="flex flex-col gap-3 border-r-0 justify-between">
+                <div class="p-5 sm:p-10 flex flex-col gap-3">
+                    <h5 class="text-white text-lg sm:text-xl font-semibold tracking-tight">Organization-Scoped RBAC</h5>
+                    <p class="max-w-[26rem] text-pretty leading-relaxed">
+                        Fine-grained roles decide who can upload evidence, run
+                        analysis, or approve findings.
+                    </p>
+                </div>
+                <div
+                    class="relative p-5 sm:p-10 flex justify-center bg-[#370a7f]"
+                >
+                    <img
+                        class="absolute inset-0 h-full w-full object-cover filter grayscale"
+                        src="/static/img/panel-background.jpg"
+                        alt=""
+                        inert=""
+                        loading="lazy"
+                    />
+                </div>
+            </div>
+            <div class="p-5 sm:p-10 flex flex-col gap-3 lg:border-b-0">
+                <h5 class="text-white text-lg sm:text-xl font-semibold tracking-tight">Chain-of-Custody &amp; Audit Trail</h5>
+                <p class="sm:max-w-[28rem] text-pretty leading-relaxed mb-12 sm:mb-16">
+                    Every upload, analysis run, and report edit is hashed and
+                    logged — a complete, tamper-evident audit trail for every
+                    case.
+                </p>
+            </div>
+            <div class="flex flex-col gap-3 justify-between">
+                <div class="p-5 sm:p-10 flex flex-col gap-3">
+                    <h5 class="text-white text-lg sm:text-xl font-semibold tracking-tight">Tiered Plans &amp; Billing</h5>
+                    <p class="max-w-[25rem] text-pretty leading-relaxed">
+                        From a single-analyst free tier to full enterprise
+                        pipelines — organizations subscribe, pay via eSewa,
+                        and get exactly the modules and instances their plan
+                        grants.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <section class="wrapper wrapper--ticks border-t h-16 sm:h-30"></section>
+        <section class="wrapper">
+            <div class="relative w-full">
+                <img
+                    src="/static/img/footer-background.jpg"
+                    alt="Footer background"
+                    inert=""
+                    loading="lazy"
+                    class="absolute inset-0 w-full h-full object-cover z-0 filter grayscale"
+                />
+                <div
+                    class="relative z-10 w-full sm:w-2xl flex flex-col justify-start items-center gap-5 px-5 sm:px-0 py-10 md:py-30 mx-auto"
+                >
+                    <h2
+                        class="text-center text-white text-balance drop-shadow-sm/70 text-3xl sm:text-4xl font-bold tracking-tight"
+                    >
+                        Start your investigation
+                    </h2>
+                    <p
+                        class="text-white max-w-md text-balance text-center drop-shadow-sm/70 leading-relaxed"
+                    >
+                        Upload evidence, run analysis, and build your report —
+                        all in one secure workspace.
+                    </p>
+                    <a href="{{ url_for('auth.register_view') }}" class="inline-flex items-center justify-center rounded-md bg-white px-5 py-2.5 text-sm font-semibold text-neutral-900 transition-colors hover:bg-white/90 mt-5"
+                        >Get Started</a
+                    >
+                </div>
+            </div>
+        </section>
+        <section
+            class="wrapper wrapper--ticks border-t py-5 px-5 md:px-24 flex flex-col md:flex-row gap-3 md:gap-0 justify-between items-start md:items-center"
+        >
+            <p class="text-sm">
+                © 2026 NirikshanOS. All rights reserved.
+            </p>
+            <div class="gap-10 text-sm hidden md:flex"></div>
+        </section>
+        <script
+            type="module"
+            src="{{ url_for('static', filename='js/pages/home/hero-animation.js') }}?v={{ asset_version('js/pages/home/hero-animation.js') }}"
+        ></script>
+    </body>
+</html>

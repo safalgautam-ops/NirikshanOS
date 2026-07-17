@@ -6,6 +6,7 @@
 
 /* Maps design tokens below onto Tailwind utilities, e.g. bg-background, text-foreground, border-border */
 @theme inline {
+  --color-nickel: #3b3440;
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
