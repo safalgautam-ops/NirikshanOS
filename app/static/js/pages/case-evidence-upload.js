@@ -120,17 +120,21 @@ class EvidenceUpload {
     if (this.status !== "uploading") return;
     this._pauseRequested = true;
     for (const xhr of this._activeXhrs.values()) xhr.abort();
+    // Flip status immediately rather than waiting on xhr.onabort - onabort
+    // only fires if a part happened to be in flight at the moment of the
+    // click, so relying on it alone left the UI stuck showing "Uploading"
+    // (and no Resume button) whenever pause landed between chunks.
+    this.status = "paused";
+    this.onStatusChange(this);
     const form = new FormData();
     form.append("csrf_token", this.csrfToken);
     fetch(`/cases/${this.caseId}/evidence/${this.evidenceId}/pause`, { method: "POST", body: form });
   }
 
-  async resume() {
-    if (this.status !== "paused") return;
-    this._pauseRequested = false;
-    const form = new FormData();
-    form.append("csrf_token", this.csrfToken);
-    await fetch(`/cases/${this.caseId}/evidence/${this.evidenceId}/resume`, { method: "POST", body: form });
+  // Shared by resume() (after a deliberate pause) and retry() (after a
+  // failure) - re-checks MinIO's actual received parts via /status and
+  // continues uploading only what's still missing.
+  async _resyncAndContinue() {
     try {
       const res = await fetch(`/cases/${this.caseId}/evidence/${this.evidenceId}/status`);
       const state = await res.json();
@@ -146,8 +150,30 @@ class EvidenceUpload {
       this._recalculateUploadedBytes();
     } catch (_err) {}
     this.status = "uploading";
+    this.errorMessage = "";
     this.onStatusChange(this);
     this._pump();
+  }
+
+  async resume() {
+    if (this.status !== "paused") return;
+    this._pauseRequested = false;
+    const form = new FormData();
+    form.append("csrf_token", this.csrfToken);
+    await fetch(`/cases/${this.caseId}/evidence/${this.evidenceId}/resume`, { method: "POST", body: form });
+    await this._resyncAndContinue();
+  }
+
+  // Retry after a network/transient failure. Distinct from resume(): the
+  // server was never told this upload was "paused" (a dropped connection
+  // doesn't call the /pause endpoint), so calling /resume here would be
+  // rejected server-side ("Only a paused upload can be resumed."). Once
+  // evidenceId exists, the same MinIO-backed /status check resume() uses
+  // is enough on its own to pick back up from wherever it actually stopped.
+  async retry() {
+    if (this.status !== "failed" || !this.evidenceId) return;
+    this._pauseRequested = false;
+    await this._resyncAndContinue();
   }
 
   cancel() {
@@ -207,10 +233,13 @@ class EvidenceUpload {
     xhr.onabort = () => {
       this._activeXhrs.delete(partNumber);
       this._inFlightCount -= 1;
+      // Status is already flipped to "paused" by pause() itself; this only
+      // needs to put the interrupted part back in the queue and correct
+      // the progress total once every in-flight part has unwound.
       if (this._pauseRequested) {
         this._partBytesDone.set(partNumber, 0);
         this._pendingParts.push(partNumber);
-        if (this._inFlightCount === 0) { this._recalculateUploadedBytes(); this.status = "paused"; this.onStatusChange(this); }
+        if (this._inFlightCount === 0) this._recalculateUploadedBytes();
       }
     };
     xhr.send(blob);
@@ -297,6 +326,11 @@ function initEvidenceUpload({ caseId, csrfToken }) {
       play.innerHTML = iconPlay();
       play.addEventListener("click", () => upload.resume());
       actions.appendChild(play);
+    } else if (upload.status === "failed" && upload.evidenceId) {
+      const retry = actionButton("Retry", {});
+      retry.innerHTML = iconPlay();
+      retry.addEventListener("click", () => upload.retry());
+      actions.appendChild(retry);
     }
     if (upload.status !== "completed") {
       const del = actionButton("Cancel", { class: "hover:text-destructive" });

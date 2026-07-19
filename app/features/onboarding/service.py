@@ -16,6 +16,7 @@ from itertools import groupby
 from werkzeug.datastructures import FileStorage
 
 from app.core import storage
+from app.core.db.orm import db
 from app.core.security.org_permissions import ORG_NAV_KEYS
 from app.features.organizations import repository as org_repository
 from app.features.organizations.choices import EMPLOYEE_COUNT_RANGES, ORG_TYPES
@@ -95,55 +96,62 @@ async def create_and_join(
     except ValueError as exc:
         raise OnboardingError(str(exc)) from exc
 
-    org_id = await org_repository.create_organization(
-        name=name,
-        slug=slug,
-        description=description.strip(),
-        status="active",
-        created_by=created_by,
-        # Self-registered orgs wait for an administrator to review the
-        # submitted KYC details/documents before unlocking the rest of the
-        # app for their members - see app/core/security/organization_gate.py.
-        verification_status="pending",
-        logo_path=logo_path,
-        org_type=org_type,
-        employee_count=employee_count,
-        address=address,
-        country=country,
-        state=state.strip(),
-        city=city.strip(),
-        postal_code=postal_code.strip(),
-        registration_number=registration_number,
-        pan_number=pan_number.strip(),
-        owner_name=owner_name,
-    )
-
-    for file_path, original_filename in saved_documents:
-        await org_repository.add_document(org_id, file_path, original_filename)
-
-    # No roles exist until the owner creates some - ownership is a separate,
-    # role-independent seat (see org_permissions.is_org_owner) that already
-    # bypasses every permission check, and a fresh org has no other members
-    # yet to need one either. The owner builds out roles (Discord-style)
-    # from the Roles page and decides who gets what, instead of inheriting
-    # a "Org Admin"/"Member" pair nobody asked for.
-    await org_repository.add_member(org_id, created_by)
-
-    # Every new org starts on the zero-cost plan automatically — no payment
-    # step, no admin action needed. If no free-tier plan is configured yet
-    # (a fresh install before an admin has set one up), the org simply has
-    # no subscription until one is assigned later, same as before this
-    # existed - not a hard failure of org creation.
-    free_plan = await plans_repository.get_free_plan()
-    if free_plan:
-        await plans_service.assign_plan(
-            org_id=org_id,
-            plan_id=free_plan["id"],
-            billing_period="monthly",
-            ends_at=None,
-            notes="Auto-assigned on organization creation",
+    # Everything from here on writes to the database. Wrapped in one
+    # transaction so a failure partway through (e.g. add_member erroring
+    # after create_organization already succeeded) rolls back the whole
+    # sequence instead of leaving a half-created organization behind -
+    # note this does not cover the MinIO uploads above, which already
+    # happened and cannot be rolled back by a SQL transaction.
+    async with db.transaction():
+        org_id = await org_repository.create_organization(
+            name=name,
+            slug=slug,
+            description=description.strip(),
+            status="active",
             created_by=created_by,
+            # Self-registered orgs wait for an administrator to review the
+            # submitted KYC details/documents before unlocking the rest of the
+            # app for their members - see app/core/security/organization_gate.py.
+            verification_status="pending",
+            logo_path=logo_path,
+            org_type=org_type,
+            employee_count=employee_count,
+            address=address,
+            country=country,
+            state=state.strip(),
+            city=city.strip(),
+            postal_code=postal_code.strip(),
+            registration_number=registration_number,
+            pan_number=pan_number.strip(),
+            owner_name=owner_name,
         )
+
+        for file_path, original_filename in saved_documents:
+            await org_repository.add_document(org_id, file_path, original_filename)
+
+        # No roles exist until the owner creates some - ownership is a separate,
+        # role-independent seat (see org_permissions.is_org_owner) that already
+        # bypasses every permission check, and a fresh org has no other members
+        # yet to need one either. The owner builds out roles (Discord-style)
+        # from the Roles page and decides who gets what, instead of inheriting
+        # a "Org Admin"/"Member" pair nobody asked for.
+        await org_repository.add_member(org_id, created_by)
+
+        # Every new org starts on the zero-cost plan automatically — no payment
+        # step, no admin action needed. If no free-tier plan is configured yet
+        # (a fresh install before an admin has set one up), the org simply has
+        # no subscription until one is assigned later, same as before this
+        # existed - not a hard failure of org creation.
+        free_plan = await plans_repository.get_free_plan()
+        if free_plan:
+            await plans_service.assign_plan(
+                org_id=org_id,
+                plan_id=free_plan["id"],
+                billing_period="monthly",
+                ends_at=None,
+                notes="Auto-assigned on organization creation",
+                created_by=created_by,
+            )
 
     return org_id
 
