@@ -122,6 +122,14 @@ class AsyncFlask(Flask):
         self.before_request(self._ensure_started)
         atexit.register(self._shutdown_async_runtime)
 
+    def run_async(self, awaitable: Awaitable[T]) -> T:
+        """Run a coroutine on the app's own persistent loop from outside a
+        request - used by service/repository-layer tests (tests/integration)
+        to call async functions directly without a second, conflicting event
+        loop or a duplicate DB pool."""
+        self._ensure_started()
+        return self._async_runtime.run(awaitable)
+
     def ensure_sync(self, func: Callable[..., Any]) -> Callable[..., Any]:
         if not inspect.iscoroutinefunction(func):
             return func

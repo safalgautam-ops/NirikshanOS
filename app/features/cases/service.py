@@ -36,20 +36,24 @@ def _validate_fields(
     return title
 
 
-async def can_access_case(case, user_id: str, *, is_owner: bool) -> bool:
-    if is_owner or case["created_by"] == user_id:
+async def can_access_case(case, user_id: str, *, owner_org_id: str | None) -> bool:
+    """owner_org_id is the specific organization the caller owns (or None) -
+    never a bare "is this user an owner of *something*" bool. Ownership only
+    grants access to cases inside that same organization; a person who owns
+    a different org is just an ordinary outsider to this one."""
+    if owner_org_id == case["organization_id"] or case["created_by"] == user_id:
         return True
     return await repository.is_case_member(case["id"], user_id)
 
 
-async def get_case_for_user(case_id: str, user_id: str, *, is_owner: bool):
+async def get_case_for_user(case_id: str, user_id: str, *, owner_org_id: str | None):
     """The case row if this user may view it, else None. Callers should turn
     None into a 404 (not 403) so a non-member can't confirm a case id exists
     just by guessing it."""
     case = await repository.get_case(case_id)
     if not case:
         return None
-    if not await can_access_case(case, user_id, is_owner=is_owner):
+    if not await can_access_case(case, user_id, owner_org_id=owner_org_id):
         return None
     return case
 

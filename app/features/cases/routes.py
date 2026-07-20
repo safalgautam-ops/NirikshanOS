@@ -60,15 +60,24 @@ async def _require_org_id() -> str:
     return membership["organization_id"]
 
 
-async def _is_owner() -> bool:
+async def _owner_org_id() -> str | None:
+    """The id of the organization the current user OWNS (not just belongs
+    to), or None if they aren't an owner anywhere. Deliberately returns the
+    *specific* org rather than a bare bool - is_org_owner grants full access
+    within that one organization, never across organizations, so every
+    caller must compare this against the specific case/org in question
+    rather than treating "is an owner somewhere" as a blanket bypass (see
+    can_access_case)."""
     membership = await get_user_org_membership(g.user_id)
-    return bool(membership and is_org_owner(g.user_id, membership))
+    if membership and is_org_owner(g.user_id, membership):
+        return membership["organization_id"]
+    return None
 
 
 async def _require_visible_case(case_id: str):
     """The case row if the current user may access it, else a 404 - never a
     403, so a non-member can't confirm a case id exists just by guessing."""
-    case = await get_case_for_user(case_id, g.user_id, is_owner=await _is_owner())
+    case = await get_case_for_user(case_id, g.user_id, owner_org_id=await _owner_org_id())
     if not case:
         abort(404)
     return case
@@ -78,7 +87,7 @@ async def _require_visible_case(case_id: str):
 @login_required
 async def list_view():
     org_id = await _require_org_id()
-    is_owner = await _is_owner()
+    is_owner = await _owner_org_id() == org_id
     recent_cases = await list_cases_for_user(org_id, g.user_id, is_owner=is_owner, limit=6)
     all_cases = await list_cases_for_user(org_id, g.user_id, is_owner=is_owner)
     org_members = [m for m in await org_repository.list_members(org_id) if m["id"] != g.user_id]
@@ -188,7 +197,7 @@ async def detail_view(case_id: str):
     current_user = await get_user_by_id(g.user_id)
     current_user_name = current_user["name"] if current_user else "Analyst"
     visible_keys = await get_visible_nav_keys(g.user_id)
-    is_owner = await _is_owner()
+    is_owner = await _owner_org_id() == case["organization_id"]
     granted_permissions = await get_user_org_permission_names(g.user_id)
     can_edit = is_owner or CASE_EDIT.name in granted_permissions
     can_delete = is_owner or CASE_DELETE.name in granted_permissions
@@ -296,11 +305,12 @@ async def add_member_view(case_id: str):
 @cases_bp.route("/<case_id>/members/<user_id>/remove", methods=["POST"])
 @require_org_permission(CASE_EDIT)
 async def remove_member_view(case_id: str, user_id: str):
-    await _require_visible_case(case_id)
+    case = await _require_visible_case(case_id)
     target_user = await get_user_by_id(user_id)
     target_label = target_user["name"] if target_user else user_id
+    is_owner = await _owner_org_id() == case["organization_id"]
     try:
-        await remove_member(case_id, user_id, requested_by=g.user_id, is_owner=await _is_owner())
+        await remove_member(case_id, user_id, requested_by=g.user_id, is_owner=is_owner)
     except CaseError as exc:
         await audit_service.record_case_activity(
             case_id=case_id,

@@ -7,4 +7,5 @@ venv/
 storage/*
 
 .pytest_cache/
+tests/.reports/
 

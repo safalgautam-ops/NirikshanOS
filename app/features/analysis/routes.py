@@ -41,13 +41,15 @@ from app.features.evidence.service import get_evidence
 analysis_bp = Blueprint("analysis", __name__)
 
 
-async def _is_owner() -> bool:
+async def _owner_org_id() -> str | None:
     membership = await get_user_org_membership(g.user_id)
-    return bool(membership and is_org_owner(g.user_id, membership))
+    if membership and is_org_owner(g.user_id, membership):
+        return membership["organization_id"]
+    return None
 
 
 async def _require_visible_case(case_id: str):
-    case = await get_case_for_user(case_id, g.user_id, is_owner=await _is_owner())
+    case = await get_case_for_user(case_id, g.user_id, owner_org_id=await _owner_org_id())
     if not case:
         abort(404)
     return case
