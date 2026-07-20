@@ -34,3 +34,11 @@ aioboto3
 
 # YAML parsing for module execution specs
 PyYAML
+
+# Testing (tests/ - see tests/README.md). pytest-asyncio lets async test
+# functions be written directly; Playwright drives a real browser for the
+# end-to-end tier (needs a one-time `playwright install chromium` after pip
+# install - not part of the pip package itself).
+pytest
+pytest-asyncio
+playwright

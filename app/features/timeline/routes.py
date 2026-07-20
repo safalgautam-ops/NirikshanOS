@@ -29,9 +29,11 @@ def _ip() -> str | None:
     return request.remote_addr
 
 
-async def _is_owner() -> bool:
+async def _owner_org_id() -> str | None:
     membership = await get_user_org_membership(g.user_id)
-    return bool(membership and is_org_owner(g.user_id, membership))
+    if membership and is_org_owner(g.user_id, membership):
+        return membership["organization_id"]
+    return None
 
 
 async def _require_org_id() -> str:
@@ -42,7 +44,7 @@ async def _require_org_id() -> str:
 
 
 async def _require_visible_case(case_id: str):
-    case = await get_case_for_user(case_id, g.user_id, is_owner=await _is_owner())
+    case = await get_case_for_user(case_id, g.user_id, owner_org_id=await _owner_org_id())
     if not case:
         abort(404)
     return case
@@ -52,7 +54,7 @@ async def _require_visible_case(case_id: str):
 @login_required
 async def center_view():
     org_id = await _require_org_id()
-    is_owner = await _is_owner()
+    is_owner = await _owner_org_id() == org_id
     cases = await list_cases_for_user(org_id, g.user_id, is_owner=is_owner)
     summaries = await case_timeline_summaries(cases)
     visible_keys = await get_visible_nav_keys(g.user_id)

@@ -1,5 +1,5 @@
-// Apply the saved theme before first paint.
-if (localStorage.theme === "light") document.documentElement.classList.remove("dark");
+// Apply the saved theme before first paint. Light is the default; dark is opt-in.
+if (localStorage.theme === "dark") document.documentElement.classList.add("dark");
 
 document.addEventListener("DOMContentLoaded", () => {
   const toggle = document.getElementById("theme-toggle");
