@@ -80,7 +80,7 @@
           </div>
           <div class="space-y-1.5">{{ label(text="Description") }}{% call textarea_ui.textarea(bare=true, rows="3", class="w-full rounded-md border bg-background px-3 py-2 text-sm resize-none", attrs={"id":"ide-description"}) %}{% endcall %}</div>
           <div class="grid gap-4 sm:grid-cols-2">
-            <div class="space-y-1.5">{{ label(text="Tier") }}{% call select_ui.select_native(unstyled=true, class="w-full rounded-md border bg-background px-3 py-2 text-sm", attrs={"id":"ide-tier"}) %}{% for tier in tiers %}<option value="{{ tier }}">{{ tier.replace('_',' ')|title }}</option>{% endfor %}{% endcall %}</div>
+            <div class="space-y-1.5">{{ label(text="Tier") }}{% call select_ui.select_native(unstyled=true, class="w-full rounded-md border bg-background px-3 py-2 text-sm", attrs={"id":"ide-tier"}) %}{% for tier in known_tiers %}<option value="{{ tier }}">{{ tier.replace('_',' ')|title }}</option>{% endfor %}{% endcall %}</div>
             <div class="space-y-1.5">{{ label(text="Module ID") }}{{ input_ui.input(type="text", bare=true, value=module.id, disabled=true, class="w-full rounded-md border bg-muted/50 px-3 py-2 text-sm text-muted-foreground") }}</div>
           </div>
           <div class="space-y-1.5">{{ label(text="Instance") }}{% call select_ui.select_native(unstyled=true, class="w-full rounded-md border bg-background px-3 py-2 text-sm", attrs={"id":"ide-instance"}) %}<option value="">No instance assigned</option>{% for inst in instances %}<option value="{{ inst.id }}">{{ inst.display_name }} ({{ inst.image_tag }}){% if inst.image_status != "ready" %} — not built{% endif %}</option>{% endfor %}{% endcall %}</div>

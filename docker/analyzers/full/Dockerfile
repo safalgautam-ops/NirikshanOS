@@ -1,7 +1,9 @@
-FROM debian:12-slim
+FROM nirikshan/base:1.0
 
 # Enterprise tier — threat hunting and reverse engineering. capa and FLOSS
-# are pip-only.
+# are pip-only. python3/python3-yaml and the shared
+# run_analysis.py/registry.py/loader.py/utils.py engine come from the base
+# image.
 #
 # Not included here (need custom binary/repo/build work well beyond apt+pip
 # — see the module registration notes for why these are registered as
@@ -13,8 +15,6 @@ FROM debian:12-slim
 # osquery (needs its own apt repo + signing key).
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
-        python3 \
-        python3-yaml \
         python3-pip \
         python3-dev \
         build-essential \
@@ -28,8 +28,4 @@ RUN apt-get update \
  && git clone --depth 1 https://github.com/mandiant/capa-rules /opt/capa-rules \
  && rm -rf /opt/capa-rules/.git
 
-WORKDIR /analyzer
-COPY . /analyzer/
-
-VOLUME ["/case", "/work", "/output"]
-ENTRYPOINT ["python3", "/analyzer/run_analysis.py"]
+COPY modules/ /analyzer/modules/
