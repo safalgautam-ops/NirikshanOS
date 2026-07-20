@@ -8,7 +8,7 @@ persistent event loop per Flask process.
 The actual WSGI app instance lives in run.py at the project root.
 """
 
-from flask import Flask, g, render_template, request, url_for
+from flask import Flask, g, redirect, render_template, request, url_for
 
 from app.config import Config
 from app.core.async_runtime import AsyncFlask
@@ -33,6 +33,7 @@ from app.features.admin_modules.routes import admin_modules_bp
 from app.features.instances.routes import instances_bp
 from app.features.categories.routes import categories_bp
 from app.features.plans.routes import plans_bp
+from app.features.plans.public_routes import public_plans_bp
 from app.features.notes.routes import notes_bp
 from app.features.reports.routes import reports_bp
 from app.features.cases.routes import cases_bp
@@ -150,6 +151,7 @@ def create_app() -> Flask:
     app.register_blueprint(reports_bp)
     app.register_blueprint(timeline_bp)
     app.register_blueprint(plans_bp)
+    app.register_blueprint(public_plans_bp)
     app.register_blueprint(finance_bp)
     app.register_blueprint(billing_bp)
 
@@ -196,6 +198,15 @@ def create_app() -> Flask:
         return render_template(
             "home/index.html"
         )
+
+    @app.route("/get-started")
+    async def get_started():
+        """Send the homepage CTA to the correct authoritative destination."""
+        if g.user_id is None:
+            return redirect(url_for("auth.login", next=url_for("get_started")))
+        if g.is_platform_staff:
+            return redirect(url_for("plans.list_view"))
+        return redirect(url_for("billing.plan_picker_view"))
 
     @app.route("/dashboard")
     @login_required

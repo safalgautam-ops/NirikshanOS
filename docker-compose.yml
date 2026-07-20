@@ -13,6 +13,48 @@ services:
     profiles:
       - build-only
 
+  # Tiered analyzer images — basic / core_forensics / specialized_forensics /
+  # enterprise. Each is registered as an Instance in the admin UI afterwards
+  # (image_tag must match the `image:` below).
+  #
+  # Build manually with:
+  # docker compose --profile build-only build analyzer-light analyzer-medium analyzer-heavy analyzer-full
+  analyzer-light:
+    build:
+      context: ./docker/analyzers/light
+      dockerfile: Dockerfile
+    image: nirikshan/light:1.0
+    entrypoint: ["true"]
+    profiles:
+      - build-only
+
+  analyzer-medium:
+    build:
+      context: ./docker/analyzers/medium
+      dockerfile: Dockerfile
+    image: nirikshan/medium:1.0
+    entrypoint: ["true"]
+    profiles:
+      - build-only
+
+  analyzer-heavy:
+    build:
+      context: ./docker/analyzers/heavy
+      dockerfile: Dockerfile
+    image: nirikshan/heavy:1.0
+    entrypoint: ["true"]
+    profiles:
+      - build-only
+
+  analyzer-full:
+    build:
+      context: ./docker/analyzers/full
+      dockerfile: Dockerfile
+    image: nirikshan/full:1.0
+    entrypoint: ["true"]
+    profiles:
+      - build-only
+
   # Public entry point.
   # Only Nginx is exposed on host port 80.
   nginx:
