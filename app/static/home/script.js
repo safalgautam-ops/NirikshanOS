@@ -1,0 +1,752 @@
+(() => {
+  'use strict';
+
+  const $ = (selector, root = document) => root.querySelector(selector);
+  const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
+  const root = document.documentElement;
+  const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  function setupSmoothNavigation() {
+    $$('a[href^="#"]').forEach((link) => {
+      link.addEventListener('click', (event) => {
+        const id = link.getAttribute('href');
+        if (!id || id === '#') return;
+        const target = document.querySelector(id);
+        if (!target) return;
+        event.preventDefault();
+        target.scrollIntoView({ behavior: reducedMotion ? 'auto' : 'smooth', block: 'start' });
+        history.replaceState(null, '', id);
+      });
+    });
+
+  }
+
+  function setupMobileMenu() {
+    const nav = document.querySelector('nav');
+    const toggle = nav?.querySelector('button[aria-label="Toggle menu"]');
+    if (!nav || !toggle) return;
+
+    const panel = document.createElement('div');
+    panel.className = 'mobile-menu-panel';
+    panel.hidden = true;
+    const links = [
+      ...$$('[data-header-links] a', nav),
+      $('[data-header-cta]', nav),
+    ].filter(Boolean);
+    panel.replaceChildren(...links.map((source) => {
+      const link = document.createElement('a');
+      link.href = source.getAttribute('href');
+      link.textContent = source.textContent.trim();
+      return link;
+    }));
+    nav.appendChild(panel);
+
+    const bars = [...toggle.querySelectorAll('span')];
+    const setOpen = (open) => {
+      panel.hidden = !open;
+      toggle.setAttribute('aria-expanded', String(open));
+      toggle.setAttribute('aria-label', open ? 'Close menu' : 'Toggle menu');
+      if (bars[0]) bars[0].style.transform = open ? 'translateY(3px) rotate(45deg)' : '';
+      if (bars[1]) bars[1].style.transform = open ? 'translateY(-3px) rotate(-45deg)' : '';
+    };
+
+    toggle.addEventListener('click', () => setOpen(panel.hidden));
+    panel.addEventListener('click', (event) => {
+      if (event.target.closest('a')) setOpen(false);
+    });
+    addEventListener('resize', () => { if (innerWidth >= 768) setOpen(false); });
+    document.addEventListener('pointerdown', (event) => {
+      if (!panel.hidden && !nav.contains(event.target)) setOpen(false);
+    });
+  }
+
+  function setupReveals() {
+    const elements = $$('[data-reveal="true"]');
+    if (reducedMotion || !('IntersectionObserver' in window)) {
+      elements.forEach((el) => el.classList.add('is-visible'));
+      return;
+    }
+
+    // Words inside the featured testimonial retain the original staggered cadence.
+    elements.forEach((el, index) => {
+      if (el.tagName === 'SPAN') el.style.transitionDelay = `${Math.min(index * 14, 420)}ms`;
+    });
+
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (!entry.isIntersecting) return;
+        entry.target.classList.add('is-visible');
+        observer.unobserve(entry.target);
+      });
+    }, { rootMargin: '0px 0px -8% 0px', threshold: 0.08 });
+
+    elements.forEach((el) => observer.observe(el));
+  }
+
+  function setupCopyAndChat() {
+    const input = $('#case-note-message');
+    if (!input) return;
+    input.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter' || !input.value.trim()) return;
+      event.preventDefault();
+      const value = input.value.trim();
+      input.value = '';
+      const composer = input.closest('form')?.parentElement;
+      const messageArea = composer?.previousElementSibling;
+      if (!messageArea?.classList.contains('no-visible-scrollbar')) return;
+      messageArea.classList.remove('overflow-hidden');
+      messageArea.classList.add('overflow-y-auto');
+      const row = document.createElement('div');
+      row.className = 'mb-4 flex gap-2 flex-row';
+      row.dataset.chatMessage = 'local';
+      row.innerHTML = `<div class="size-8 shrink-0 overflow-hidden rounded-md bg-neutral-100 ring-1 ring-black/10"><img class="size-full object-cover" src="/static/home/assets/images/avatar-AlexClient.webp" alt="Analyst"></div><div class="min-w-0"><div class="flex items-baseline gap-2"><span class="text-xs font-semibold">Analyst</span><span class="text-[10px] text-neutral-400">Now</span></div><p class="mt-1 rounded-xl rounded-tl-sm bg-neutral-100 px-3 py-2 text-xs text-neutral-700">${value.replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}</p></div>`;
+      messageArea.appendChild(row);
+      messageArea.scrollTop = messageArea.scrollHeight;
+    });
+  }
+
+  function setupHeroCanvas() {
+    const canvas = $('#hero-canvas');
+    if (!canvas) return;
+    const context = canvas.getContext('2d');
+    let width = 0, height = 0, dpr = 1, raf = 0;
+    const pointer = { x: 0.5, y: -0.2, tx: 0.5, ty: -0.2 };
+    let points = [];
+
+    function resize() {
+      const rect = canvas.getBoundingClientRect();
+      dpr = Math.min(devicePixelRatio || 1, 2);
+      width = Math.max(1, rect.width);
+      height = Math.max(1, rect.height);
+      canvas.width = Math.round(width * dpr);
+      canvas.height = Math.round(height * dpr);
+      context.setTransform(dpr, 0, 0, dpr, 0, 0);
+      const gap = width < 700 ? 20 : 24;
+      points = [];
+      for (let y = 8; y < height; y += gap) {
+        for (let x = 8; x < width; x += gap) {
+          points.push({ x, y, phase: Math.random() * Math.PI * 2 });
+        }
+      }
+    }
+
+    function draw(time = 0) {
+      context.clearRect(0, 0, width, height);
+      pointer.x += (pointer.tx - pointer.x) * 0.05;
+      pointer.y += (pointer.ty - pointer.y) * 0.05;
+      const px = pointer.x * width;
+      const py = pointer.y * height;
+      const radius = Math.max(width, height) * 0.36;
+
+      const glow = context.createRadialGradient(px, py, 0, px, py, radius * 1.8);
+      glow.addColorStop(0, 'rgba(38,103,255,.10)');
+      glow.addColorStop(.55, 'rgba(38,103,255,.035)');
+      glow.addColorStop(1, 'rgba(38,103,255,0)');
+      context.fillStyle = glow;
+      context.fillRect(0, 0, width, height);
+
+      for (const point of points) {
+        const distance = Math.hypot(point.x - px, point.y - py);
+        const influence = Math.max(0, 1 - distance / radius);
+        const pulse = .5 + .5 * Math.sin(time * .0008 + point.phase);
+        const alpha = .035 + influence * .28 + pulse * .018;
+        const size = .7 + influence * 1.7;
+        context.beginPath();
+        context.arc(point.x, point.y, size, 0, Math.PI * 2);
+        context.fillStyle = `rgba(38,103,255,${alpha})`;
+        context.fill();
+      }
+      if (!reducedMotion) raf = requestAnimationFrame(draw);
+    }
+
+    const parent = canvas.parentElement;
+    parent?.addEventListener('pointermove', (event) => {
+      const rect = canvas.getBoundingClientRect();
+      pointer.tx = (event.clientX - rect.left) / rect.width;
+      pointer.ty = (event.clientY - rect.top) / rect.height;
+    });
+    parent?.addEventListener('pointerleave', () => { pointer.tx = .5; pointer.ty = -.2; });
+    new ResizeObserver(resize).observe(canvas);
+    resize();
+    draw();
+    addEventListener('pagehide', () => cancelAnimationFrame(raf), { once: true });
+  }
+
+
+  function setupProcessAnimations() {
+    const section = $('#process-motion-section');
+    if (!section) return;
+    const cards = $$('[data-process-card]', section);
+
+    // 1. Figma-like cursor and selection motion.
+    const figmaCard = cards[0];
+    if (figmaCard) {
+      const stage = figmaCard.querySelector('.h-full.w-full.flex.rounded-xl') || figmaCard.querySelector('.relative.z-20');
+      if (stage) {
+        stage.classList.add('process-figma-stage');
+        const cursorIcon = stage.querySelector('svg.size-4.text-neutral-900');
+        const cursor = cursorIcon?.closest('.pointer-events-none.absolute');
+        cursor?.classList.add('process-figma-cursor');
+        if (!stage.querySelector('.process-figma-selection')) {
+          const selection = document.createElement('div');
+          selection.className = 'process-figma-selection';
+          stage.append(selection);
+        }
+      }
+    }
+
+    // 2. Dynamic-island sequence: idle -> connecting -> connected -> idle.
+    const idle = $('#idle-content', section);
+    const loading = $('#loading-content', section);
+    const connected = $('#connected-content', section);
+    const island = idle?.parentElement;
+    let islandTimer = 0;
+    let islandRunning = false;
+
+    if (loading && !loading.querySelector('.process-island-dot')) {
+      const dots = document.createElement('div');
+      dots.innerHTML = '<i class="process-island-dot"></i><i class="process-island-dot"></i><i class="process-island-dot"></i>';
+      loading.replaceChildren(dots);
+    }
+
+    const islandState = (state) => {
+      if (!island || !idle || !loading || !connected) return;
+      const states = { idle, loading, connected };
+      Object.entries(states).forEach(([name, node]) => {
+        const active = name === state;
+        node.style.opacity = active ? '1' : '0';
+        node.style.transform = active ? 'none' : 'scale(.96)';
+      });
+      if (state === 'loading') {
+        island.style.width = '20px';
+        island.style.height = '12px';
+        island.style.borderRadius = '6px';
+      } else if (state === 'connected') {
+        island.style.width = '50px';
+        island.style.height = '12px';
+        island.style.borderRadius = '8px';
+      } else {
+        island.style.width = '36px';
+        island.style.height = '12px';
+        island.style.borderRadius = '6px';
+      }
+    };
+
+    function queueIslandCycle() {
+      if (!islandRunning || reducedMotion) return;
+      islandState('idle');
+      islandTimer = window.setTimeout(() => {
+        islandState('loading');
+        islandTimer = window.setTimeout(() => {
+          islandState('connected');
+          islandTimer = window.setTimeout(queueIslandCycle, 2300);
+        }, 1250);
+      }, 1250);
+    }
+
+    // 3. Type code, morph to a working slider, then repeat.
+    const microCard = cards[2];
+    const code = microCard?.querySelector('pre code');
+    const shell = code?.closest('.rounded-3xl');
+    let microTimer = 0;
+    let microRunning = false;
+    const tokens = [
+      ['<',0],['div',1],['\n  ',0],['role',1],['="slider"',0],['\n  ',0],['className',1],['="relative h-8 w-full rounded-md bg-neutral-800"',0],['\n',0],['>',0],['\n  ',0],['<',0],['motion',1],['.',0],['div',1],['\n    ',0],['className',1],['="absolute inset-y-0 left-0 rounded-l-md bg-neutral-600/90"',0],['\n    ',0],['initial',1],['={false}',0],['\n    ',0],['animate',1],['={{ width: ',0],['`${value * 100}%`',0],[' }}',0],['\n  ',0],['/>',0],['\n  ',0],['<',0],['motion',1],['.',0],['div',1],['\n    ',0],['className',1],['="absolute top-1/2 z-10 h-5 w-3 -translate-x-1/2"',0],['\n    ',0],['animate',1],['={{ left: ',0],['`${value * 100}%`',0],[' }}',0],['\n  ',0],['/>',0],['\n',0],['</',0],['div',1],['>',0]
+    ];
+    const chars = tokens.flatMap(([text, primary]) => [...text].map((char) => ({ char, primary })));
+    const previewImages = [
+      '/static/home/assets/images/1.webp',
+      '/static/home/assets/images/3.webp',
+      '/static/home/assets/images/5.webp',
+      '/static/home/assets/images/avatar-AvaReed.webp',
+      '/static/home/assets/images/avatar-AlexClient.webp'
+    ];
+
+    function renderSlider() {
+      if (!shell) return;
+      shell.classList.add('microinteraction-code-shell');
+      shell.innerHTML = `
+        <div class="micro-slider-ui">
+          <div class="micro-slider-copy">
+            <h4>This is an interactive slider <span class="bg-linear-to-r from-neutral-200 to-transparent">created for you only</span> with motion.</h4>
+            <p>We know that thoughtful motion can be expensive, that’s why we build it into the system.</p>
+            <div class="micro-slider-control" role="slider" tabindex="0" aria-label="Interactive motion slider" aria-valuemin="0" aria-valuemax="100" aria-valuenow="40">
+              <div class="micro-slider-fill"></div>
+              <div class="micro-slider-ticks">${'<span></span>'.repeat(9)}</div>
+              <div class="micro-slider-preview"><img src="/static/home/assets/images/avatar-AvaReed.webp" alt="Analysis preview"></div>
+              <div class="micro-slider-thumb"></div>
+            </div>
+          </div>
+        </div>`;
+      const slider = $('.micro-slider-control', shell);
+      const fill = $('.micro-slider-fill', slider);
+      const thumb = $('.micro-slider-thumb', slider);
+      const preview = $('.micro-slider-preview', slider);
+      const previewImage = $('img', preview);
+      let value = .4;
+      let dragging = false;
+      let lastValue = value;
+
+      const update = (next) => {
+        value = Math.max(0, Math.min(1, next));
+        const pct = `${value * 100}%`;
+        fill.style.width = pct;
+        thumb.style.left = pct;
+        preview.style.left = pct;
+        preview.style.transform = `translateX(-50%) rotate(${Math.max(-8, Math.min(8, (value - lastValue) * 70))}deg)`;
+        previewImage.src = previewImages[Math.min(previewImages.length - 1, Math.floor(value * previewImages.length))];
+        slider.setAttribute('aria-valuenow', String(Math.round(value * 100)));
+        lastValue = value;
+      };
+      const fromEvent = (event) => {
+        const rect = slider.getBoundingClientRect();
+        update((event.clientX - rect.left) / rect.width);
+      };
+      slider.addEventListener('pointerdown', (event) => {
+        dragging = true;
+        slider.classList.add('is-dragging');
+        slider.setPointerCapture?.(event.pointerId);
+        fromEvent(event);
+      });
+      slider.addEventListener('pointermove', (event) => { if (dragging) fromEvent(event); });
+      slider.addEventListener('pointerup', () => { dragging = false; slider.classList.remove('is-dragging'); });
+      slider.addEventListener('pointercancel', () => { dragging = false; slider.classList.remove('is-dragging'); });
+      slider.addEventListener('keydown', (event) => {
+        if (!['ArrowLeft','ArrowRight','Home','End'].includes(event.key)) return;
+        event.preventDefault();
+        if (event.key === 'Home') update(0);
+        else if (event.key === 'End') update(1);
+        else update(value + (event.key === 'ArrowRight' ? .05 : -.05));
+      });
+    }
+
+    function typeMicroCode(index = 0) {
+      if (!microRunning || !code || !shell) return;
+      if (index === 0) {
+        shell.classList.add('microinteraction-code-shell');
+        shell.innerHTML = '<pre class="font-mono text-[11px] leading-relaxed tracking-tight md:text-xs mask-r-from-90% text-[#24292f]"><code class="font-mono"></code></pre>';
+      }
+      const target = $('code', shell);
+      if (!target) return;
+      if (index >= chars.length) {
+        const caret = document.createElement('span');
+        caret.className = 'ml-px inline-block h-[1.1em] w-0.5 animate-pulse align-[-0.125em] bg-[#0969da]';
+        target.appendChild(caret);
+        microTimer = window.setTimeout(() => {
+          renderSlider();
+          microTimer = window.setTimeout(() => typeMicroCode(0), 10000);
+        }, 950);
+        return;
+      }
+      const item = chars[index];
+      const span = document.createElement('span');
+      if (item.primary) span.style.color = '#0550ae';
+      span.textContent = item.char;
+      target.appendChild(span);
+      microTimer = window.setTimeout(() => typeMicroCode(index + 1), 7);
+    }
+
+    const observer = new IntersectionObserver(([entry]) => {
+      islandRunning = entry.isIntersecting;
+      microRunning = entry.isIntersecting;
+      clearTimeout(islandTimer);
+      clearTimeout(microTimer);
+      if (entry.isIntersecting) {
+        queueIslandCycle();
+        typeMicroCode(0);
+      } else {
+        islandState('idle');
+      }
+    }, { threshold: .12 });
+    observer.observe(section);
+  }
+
+  function setupPricing() {
+    const cards = $$('[data-home-pricing-card]');
+    if (!cards.length) return;
+
+    const number = new Intl.NumberFormat('en-NP', { maximumFractionDigits: 2 });
+    const titleCase = (value) => value
+      .split('_')
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(' ');
+
+    const updateCard = (card, plan) => {
+      const resources = plan.resources || {};
+      const monthly = Number(plan.price_monthly || 0);
+      const annual = Number(plan.price_annual || 0);
+      const tiers = (plan.allowed_tiers || []).map(titleCase);
+      const features = [
+        `${resources.ram_gb || 0} GB RAM and ${resources.vcpu || 0} vCPU`,
+        `${resources.storage_gb || 0} GB evidence storage`,
+        tiers.length ? `${tiers.join(', ')} module access` : 'Plan-scoped module access',
+        plan.allowed_instance_count
+          ? `${plan.allowed_instance_count} isolated analysis instance${plan.allowed_instance_count === 1 ? '' : 's'}`
+          : 'Plan-scoped analysis capacity',
+        annual > 0 ? `Annual billing: Rs. ${number.format(annual)}` : 'No-cost annual access',
+      ];
+
+      $('[data-plan-name]', card).textContent = plan.display_name;
+      $('[data-plan-description]', card).textContent = plan.description;
+      $('[data-plan-price-prefix]', card).textContent = monthly > 0 ? 'Monthly' : 'Plan price';
+      $('[data-plan-currency]', card).textContent = monthly > 0 ? 'Rs.' : '';
+      $('[data-plan-price]', card).textContent = monthly > 0 ? number.format(monthly) : 'Free';
+      $('[data-plan-period]', card).textContent = monthly > 0 ? '/month' : '';
+
+      const list = $('[data-plan-features]', card);
+      const icon = $('li svg', list)?.cloneNode(true);
+      list.replaceChildren(...features.map((text) => {
+        const item = document.createElement('li');
+        item.className = 'flex items-center gap-2';
+        if (icon) item.appendChild(icon.cloneNode(true));
+        item.appendChild(document.createTextNode(text));
+        return item;
+      }));
+
+      const cta = $('[data-plan-cta]', card);
+      cta.setAttribute('aria-label', `Get started with the ${plan.display_name} plan`);
+    };
+
+    fetch('/api/plans', { headers: { Accept: 'application/json' } })
+      .then((response) => {
+        if (!response.ok) throw new Error(`Plan API returned ${response.status}`);
+        return response.json();
+      })
+      .then(({ plans = [] }) => {
+        const paidPlans = plans.filter((plan) => Number(plan.price_monthly) > 0);
+        const featuredPlans = (paidPlans.length ? paidPlans : plans).slice(0, cards.length);
+        featuredPlans.forEach((plan, index) => updateCard(cards[index], plan));
+      })
+      .catch(() => {
+        // Project-aligned fallback values are already rendered in the template.
+      });
+  }
+
+  function setupWorkShowcase() {
+    const stage = $('[data-work-showcase]');
+    if (!stage) return;
+    const items = [
+      { title:'Incident Response Workspace', country:'Case management', image:'https://assets.aceternity.com/templates/productized-agency-5.webp', fallback:'/static/home/assets/images/hero-2.webp', description:'Coordinate case scope, members, evidence, notes, findings, and reporting in one auditable workspace.' },
+      { title:'Evidence Integrity', country:'Chain of custody', image:'https://assets.aceternity.com/templates/minimalist-portfolio-template-1.webp', fallback:'/static/home/assets/images/hero-3.webp', description:'Stream resumable uploads to object storage and verify every artifact with SHA-256 and MD5 hashes.' },
+      { title:'Containerized Analysis', country:'Isolated forensic tools', image:'https://assets.aceternity.com/templates/simplistic-saas-template-1.webp', fallback:'/static/home/assets/images/feature-section-with-horizontal-skeletons.webp', description:'Run plan-aware analysis jobs in ephemeral light, medium, heavy, or full worker containers.' },
+      { title:'Raw Analysis Results', country:'Preserved output', image:'https://assets.aceternity.com/templates/simplistic-saas-template-3.webp', fallback:'/static/home/assets/images/features-with-isometric-blocks.webp', description:'Keep unmodified stdout and stderr beside the evidence, job configuration, and resulting findings.' },
+      { title:'Findings & Indicators', country:'Structured investigation data', image:'https://assets.aceternity.com/templates/simplistic-saas-template-2.webp', fallback:'/static/home/assets/images/multi-illustration-bento.webp', description:'Promote verified observations and IOCs into reusable records without losing their source context.' },
+      { title:'Timeline Reconstruction', country:'Chronological analysis', image:'https://assets.aceternity.com/templates/template-preview-7.webp', fallback:'/static/home/assets/images/parallax-hero-images-2.webp', description:'Turn case activity and forensic events into a clear, reviewable incident narrative.' },
+      { title:'Investigation Reports', country:'Defensible reporting', image:'https://assets.aceternity.com/templates/template-preview-1.webp', fallback:'/static/home/assets/images/shader-1.webp', description:'Build markdown reports from saved findings, indicators, evidence references, and timeline events.' },
+      { title:'Organization RBAC', country:'Scoped access control', image:'https://assets.aceternity.com/templates/template-preview-5.webp', fallback:'/static/home/assets/images/keyboard-2.webp', description:'Separate platform roles from organization roles and delegate only the permissions each team needs.' },
+      { title:'Extensible Modules', country:'YAML pipelines and testing', image:'https://assets.aceternity.com/templates/schedule-1-min.webp', fallback:'/static/home/assets/images/hero-landscape.webp', description:'Author, route, and sandbox-test custom forensic modules and multi-step tool pipelines.' }
+    ];
+    const track = $('[data-work-track]', stage);
+    const doubled = [...items, ...items];
+    track.innerHTML = doubled.map((item) => `<div class="work-marquee-item"><img src="${item.image}" data-fallback="${item.fallback}" alt="" loading="lazy"></div>`).join('');
+    $$('img[data-fallback]', track).forEach((img) => img.addEventListener('error', () => { if (img.src.endsWith(img.dataset.fallback)) return; img.src = img.dataset.fallback; }, { once:true }));
+
+    const card = $('[data-work-card]', stage);
+    const inner = $('.work-feature-inner', card);
+    const image = $('[data-work-active-image]', card);
+    const title = $('[data-work-title]', card);
+    const country = $('[data-work-country]', card);
+    const description = $('[data-work-description]', card);
+    let active = 0;
+    let paused = false;
+    let timer = 0;
+
+    function setActive(index) {
+      active = (index + items.length) % items.length;
+      const item = items[active];
+      image.classList.add('is-switching');
+      window.setTimeout(() => {
+        image.src = item.image;
+        image.dataset.fallback = item.fallback;
+        image.alt = item.title;
+        title.textContent = item.title;
+        country.textContent = item.country;
+        description.textContent = item.description;
+        requestAnimationFrame(() => image.classList.remove('is-switching'));
+      }, 220);
+    }
+    image.addEventListener('error', () => { image.src = image.dataset.fallback || '/static/home/assets/images/hero-2.webp'; });
+    const cycle = () => {
+      clearTimeout(timer);
+      timer = window.setTimeout(() => {
+        if (!paused) setActive(active + 1);
+        cycle();
+      }, 3000);
+    };
+    cycle();
+
+    const pause = (value) => { paused = value; };
+    card.addEventListener('mouseenter', () => pause(true));
+    card.addEventListener('mouseleave', () => { pause(false); inner.style.transform = ''; });
+    card.addEventListener('focusin', () => pause(true));
+    card.addEventListener('focusout', () => pause(false));
+    card.addEventListener('pointermove', (event) => {
+      if (reducedMotion) return;
+      const rect = card.getBoundingClientRect();
+      const nx = (event.clientX - rect.left) / rect.width - .5;
+      const ny = (event.clientY - rect.top) / rect.height - .5;
+      inner.style.transform = `rotateX(${-ny * 6}deg) rotateY(${nx * 8}deg)`;
+    });
+  }
+
+  function setupServiceAnimations() {
+    const cards = $$('[data-service-card]');
+    if (!cards.length) return;
+
+    // Web-design preview: restore the pointer traversal seen in the original card.
+    const design = cards[0];
+    if (design && !design.querySelector('.service-preview-cursor')) {
+      const visual = design.querySelector('.h-80') || design;
+      visual.style.position = 'relative';
+      const cursor = document.createElement('div');
+      cursor.className = 'service-preview-cursor';
+      visual.appendChild(cursor);
+    }
+
+    // Deployment notification card.
+    const deploy = cards[1];
+    if (deploy) {
+      const toast = [...deploy.querySelectorAll('div')].find((el) => (el.getAttribute('style') || '').includes('opacity:0.92'));
+      toast?.classList.add('service-deploy-toast');
+    }
+
+    // Copywriting card: prompt becomes answer while hovering.
+    const copy = cards[2];
+    if (copy) {
+      const shell = [...copy.querySelectorAll('div')].find((el) => (el.getAttribute('style') || '').includes('min-height:5rem'));
+      const result = copy.querySelector('[role="presentation"]');
+      const prompt = result?.previousElementSibling;
+      shell?.classList.add('service-copy-shell');
+      prompt?.classList.add('service-copy-prompt');
+      result?.classList.add('service-copy-result');
+    }
+
+    // Consultation card: video-call view expands into the page mockup.
+    const consult = cards[3];
+    if (consult) {
+      const frame = [...consult.querySelectorAll('div')].find((el) => (el.getAttribute('style') || '').includes('width:300px;height:200px'));
+      if (frame) {
+        frame.classList.add('service-consult-frame');
+        const page = [...frame.children].find((el) => (el.getAttribute('style') || '').includes('opacity:0'));
+        const video = [...frame.children].find((el) => (el.getAttribute('style') || '').includes('opacity:1') && el.querySelector('img'));
+        const controls = [...frame.children].find((el) => (el.className || '').toString().includes('from-black/55'));
+        page?.classList.add('service-consult-page');
+        video?.classList.add('service-consult-video');
+        controls?.classList.add('service-consult-controls');
+      }
+    }
+  }
+
+  function setupGlobeCanvas() {
+    const canvas = $('#globe-canvas');
+    if (!canvas) return;
+    const host = canvas.parentElement;
+    const ctx = canvas.getContext('2d', { alpha:true });
+    const texture = new Image();
+    texture.src = '/static/home/assets/images/earth-blue-marble.jpg';
+    const textureCanvas = document.createElement('canvas');
+    const textureCtx = textureCanvas.getContext('2d', { willReadFrequently:true });
+    const sphereCanvas = document.createElement('canvas');
+    const sphereCtx = sphereCanvas.getContext('2d');
+    const tooltip = document.createElement('div');
+    tooltip.className = 'globe-tooltip';
+    host.style.position = 'relative';
+    host.appendChild(tooltip);
+
+    const markerData = [
+      [40.7128,-74.006,'New York',1],[51.5074,-.1278,'London',2],[35.6762,139.6503,'Tokyo',3],[-33.8688,151.2093,'Sydney',4],[48.8566,2.3522,'Paris',5],[28.6139,77.209,'New Delhi',6],[55.7558,37.6173,'Moscow',7],[-22.9068,-43.1729,'Rio de Janeiro',8],[31.2304,121.4737,'Shanghai',9],[25.2048,55.2708,'Dubai',10],[-34.6037,-58.3816,'Buenos Aires',11],[1.3521,103.8198,'Singapore',12],[37.5665,126.978,'Seoul',13],[34.0522,-118.2437,'Los Angeles',2],[-1.2921,36.8219,'Nairobi',4],[52.52,13.405,'Berlin',7]
+    ];
+    const markers = markerData.map(([lat, lon, label, avatar]) => {
+      const image = new Image();
+      image.src = `/static/home/assets/images/${avatar}.webp`;
+      return { lat, lon, label, image, x:0, y:0, radius:0, visible:false };
+    });
+
+    let width = 0, height = 0, dpr = 1, raf = 0;
+    let yaw = 1.8, pitch = .15, targetYaw = yaw, targetPitch = pitch;
+    let dragging = false, lastX = 0, lastY = 0, hoverMarker = null, textureData = null;
+    let lastFrame = 0;
+
+    function prepareTexture() {
+      if (!texture.naturalWidth) return;
+      textureCanvas.width = texture.naturalWidth;
+      textureCanvas.height = texture.naturalHeight;
+      textureCtx.drawImage(texture, 0, 0);
+      textureData = textureCtx.getImageData(0, 0, textureCanvas.width, textureCanvas.height);
+    }
+    texture.addEventListener('load', prepareTexture, { once:true });
+
+    function resize() {
+      const rect = host.getBoundingClientRect();
+      dpr = Math.min(devicePixelRatio || 1, 1.6);
+      width = Math.max(280, rect.width || 640);
+      height = Math.max(280, rect.height || 640);
+      canvas.width = Math.round(width * dpr);
+      canvas.height = Math.round(height * dpr);
+      canvas.style.width = `${width}px`;
+      canvas.style.height = `${height}px`;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+
+    function renderSphere(size) {
+      sphereCanvas.width = size;
+      sphereCanvas.height = size;
+      if (!textureData) return;
+      const out = sphereCtx.createImageData(size, size);
+      const data = out.data;
+      const tex = textureData.data;
+      const tw = textureData.width, th = textureData.height;
+      const cp = Math.cos(pitch), sp = Math.sin(pitch);
+      const cy = Math.cos(yaw), sy = Math.sin(yaw);
+      for (let py = 0; py < size; py++) {
+        const ny = 1 - 2 * (py + .5) / size;
+        for (let px = 0; px < size; px++) {
+          const nx = 2 * (px + .5) / size - 1;
+          const rr = nx * nx + ny * ny;
+          if (rr > 1) continue;
+          const z = Math.sqrt(1 - rr);
+          const y1 = ny * cp + z * sp;
+          const z1 = -ny * sp + z * cp;
+          const x2 = nx * cy - z1 * sy;
+          const z2 = nx * sy + z1 * cy;
+          let lon = Math.atan2(x2, z2) / (Math.PI * 2) + .5;
+          lon = lon - Math.floor(lon);
+          const lat = .5 - Math.asin(Math.max(-1, Math.min(1, y1))) / Math.PI;
+          const tx = Math.min(tw - 1, Math.max(0, Math.floor(lon * tw)));
+          const ty = Math.min(th - 1, Math.max(0, Math.floor(lat * th)));
+          const ti = (ty * tw + tx) * 4;
+          const oi = (py * size + px) * 4;
+          const light = .43 + .62 * Math.max(0, nx * -.46 + ny * .34 + z * .82);
+          const edge = Math.min(1, Math.max(0, (1 - rr) * 14));
+          data[oi] = Math.min(255, tex[ti] * light + 6);
+          data[oi+1] = Math.min(255, tex[ti+1] * light + 10);
+          data[oi+2] = Math.min(255, tex[ti+2] * light + 18);
+          data[oi+3] = 255 * edge;
+        }
+      }
+      sphereCtx.putImageData(out, 0, 0);
+    }
+
+    function project(lat, lon, radius, cx, cy) {
+      const la = lat * Math.PI / 180;
+      const lo = lon * Math.PI / 180;
+      let x = Math.cos(la) * Math.sin(lo);
+      let y = Math.sin(la);
+      let z = Math.cos(la) * Math.cos(lo);
+      const cyaw = Math.cos(-yaw), syaw = Math.sin(-yaw);
+      const x1 = x * cyaw - z * syaw;
+      const z1 = x * syaw + z * cyaw;
+      const cp = Math.cos(-pitch), sp = Math.sin(-pitch);
+      const y2 = y * cp + z1 * sp;
+      const z2 = -y * sp + z1 * cp;
+      return { x:cx + x1 * radius, y:cy - y2 * radius, z:z2 };
+    }
+
+    function draw(time = 0) {
+      if (!lastFrame || time - lastFrame > 30 || reducedMotion) {
+        lastFrame = time;
+        if (!dragging && !reducedMotion) targetYaw += .00255;
+        yaw += (targetYaw - yaw) * .085;
+        pitch += (targetPitch - pitch) * .085;
+        ctx.clearRect(0, 0, width, height);
+        const radius = Math.min(width, height) * .39;
+        const cx = width * .5;
+        const cy = height * .51;
+
+        const shadow = ctx.createRadialGradient(cx, cy + radius * .92, 0, cx, cy + radius * .92, radius * 1.2);
+        shadow.addColorStop(0, 'rgba(15,23,42,.22)');
+        shadow.addColorStop(1, 'rgba(15,23,42,0)');
+        ctx.fillStyle = shadow;
+        ctx.beginPath(); ctx.ellipse(cx, cy + radius * .92, radius * 1.08, radius * .19, 0, 0, Math.PI * 2); ctx.fill();
+
+        const atmosphere = ctx.createRadialGradient(cx - radius*.28, cy - radius*.34, radius*.2, cx, cy, radius*1.22);
+        atmosphere.addColorStop(.62, 'rgba(77,166,255,0)');
+        atmosphere.addColorStop(.85, 'rgba(77,166,255,.22)');
+        atmosphere.addColorStop(1, 'rgba(77,166,255,0)');
+        ctx.fillStyle = atmosphere;
+        ctx.beginPath(); ctx.arc(cx, cy, radius*1.18, 0, Math.PI*2); ctx.fill();
+
+        const renderSize = Math.max(240, Math.min(420, Math.round(radius * 2)));
+        renderSphere(renderSize);
+        ctx.drawImage(sphereCanvas, cx-radius, cy-radius, radius*2, radius*2);
+        ctx.strokeStyle = 'rgba(77,166,255,.32)';
+        ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.arc(cx, cy, radius, 0, Math.PI*2); ctx.stroke();
+
+        const visible = [];
+        markers.forEach((marker) => {
+          const point = project(marker.lat, marker.lon, radius, cx, cy);
+          marker.visible = point.z > .06;
+          if (!marker.visible) return;
+          marker.x = point.x; marker.y = point.y;
+          marker.radius = 9 + point.z * 5;
+          visible.push({ marker, depth:point.z });
+        });
+        visible.sort((a,b) => a.depth - b.depth).forEach(({ marker, depth }) => {
+          const r = marker.radius;
+          ctx.save();
+          ctx.globalAlpha = .58 + depth * .42;
+          ctx.shadowColor = 'rgba(15,23,42,.35)';
+          ctx.shadowBlur = 8;
+          ctx.beginPath(); ctx.arc(marker.x, marker.y, r+2, 0, Math.PI*2);
+          ctx.fillStyle = '#fff'; ctx.fill();
+          ctx.shadowBlur = 0;
+          ctx.beginPath(); ctx.arc(marker.x, marker.y, r, 0, Math.PI*2); ctx.clip();
+          if (marker.image.complete && marker.image.naturalWidth) ctx.drawImage(marker.image, marker.x-r, marker.y-r, r*2, r*2);
+          else { ctx.fillStyle = '#2667ff'; ctx.fillRect(marker.x-r, marker.y-r, r*2, r*2); }
+          ctx.restore();
+        });
+      }
+      if (!reducedMotion) raf = requestAnimationFrame(draw);
+    }
+
+    function markerAt(x, y) {
+      return markers.filter((m) => m.visible).find((m) => Math.hypot(x-m.x, y-m.y) <= m.radius + 5) || null;
+    }
+    canvas.addEventListener('pointerdown', (event) => {
+      dragging = true; lastX = event.clientX; lastY = event.clientY;
+      canvas.classList.add('is-dragging');
+      canvas.setPointerCapture?.(event.pointerId);
+    });
+    canvas.addEventListener('pointermove', (event) => {
+      const rect = canvas.getBoundingClientRect();
+      const x = event.clientX - rect.left, y = event.clientY - rect.top;
+      if (dragging) {
+        targetYaw -= (event.clientX - lastX) * .006;
+        targetPitch = Math.max(-.75, Math.min(.75, targetPitch + (event.clientY - lastY) * .004));
+        lastX = event.clientX; lastY = event.clientY;
+      } else {
+        hoverMarker = markerAt(x, y);
+        if (hoverMarker) {
+          tooltip.textContent = hoverMarker.label;
+          tooltip.style.left = `${hoverMarker.x}px`;
+          tooltip.style.top = `${hoverMarker.y}px`;
+          tooltip.classList.add('is-visible');
+        } else tooltip.classList.remove('is-visible');
+      }
+    });
+    const stopDrag = () => { dragging = false; canvas.classList.remove('is-dragging'); };
+    canvas.addEventListener('pointerup', stopDrag);
+    canvas.addEventListener('pointercancel', stopDrag);
+    canvas.addEventListener('pointerleave', () => { stopDrag(); tooltip.classList.remove('is-visible'); });
+
+    new ResizeObserver(resize).observe(host);
+    resize();
+    if (texture.complete) prepareTexture();
+    draw();
+    addEventListener('pagehide', () => cancelAnimationFrame(raf), { once:true });
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    setupSmoothNavigation();
+    setupMobileMenu();
+    setupReveals();
+    setupCopyAndChat();
+    setupHeroCanvas();
+    setupProcessAnimations();
+    setupPricing();
+    setupWorkShowcase();
+    setupServiceAnimations();
+    setupGlobeCanvas();
+  });
+})();
