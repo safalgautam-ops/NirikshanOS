@@ -1,10 +1,12 @@
-FROM debian:12-slim
+FROM nirikshan/base:1.0
 
 # Specialized Forensics tier — memory, network, Windows artifacts, mobile,
 # and advanced timelines. tshark/tcpflow are plain apt packages; Volatility3,
 # plaso/log2timeline and MVT are pip-only, which is exactly why loader.py's
 # install: block was extended to support `pip:` alongside `apt:` - none of
-# these can be apt-get installed.
+# these can be apt-get installed. python3/python3-yaml and the shared
+# run_analysis.py/registry.py/loader.py/utils.py engine come from the base
+# image.
 #
 # Not included here (need custom binary/repo work beyond apt+pip, see the
 # module registration notes): Zeek (needs its own apt repo + signing key,
@@ -19,8 +21,6 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
-        python3 \
-        python3-yaml \
         python3-pip \
         python3-dev \
         build-essential \
@@ -33,8 +33,4 @@ RUN apt-get update \
         plaso \
         mvt
 
-WORKDIR /analyzer
-COPY . /analyzer/
-
-VOLUME ["/case", "/work", "/output"]
-ENTRYPOINT ["python3", "/analyzer/run_analysis.py"]
+COPY modules/ /analyzer/modules/
