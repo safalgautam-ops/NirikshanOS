@@ -44,10 +44,9 @@
     <span id="ide-tier-badge" class="inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium">{{ module.tier }}</span>
     {% if module.is_enabled %}{{ badge(text="enabled", variant="success") }}{% else %}{{ badge(text="disabled", variant="warning") }}{% endif %}
     <span class="flex-1 min-w-2"></span>
-    <span id="ide-flash" class="text-xs text-muted-foreground shrink-0 px-1" hidden></span>
     <span id="ide-dirty" class="text-xs text-amber-500 shrink-0 px-1" hidden>Unsaved</span>
     {% call button(variant="outline", size="sm", attrs={"data-ide-test":""}) %}<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>Test{% endcall %}
-    {% call button(size="sm", attrs={"data-ide-save":""}) %}<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/></svg><span data-ide-save-label>Save</span>{% endcall %}
+    {% call button(size="sm", attrs={"data-ide-save":""}) %}<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/></svg><span id="ide-save-label">Save</span>{% endcall %}
     {% if module.is_enabled %}{% call button(variant="destructive-outline", size="sm", attrs={"data-ide-toggle":""}) %}Disable{% endcall %}{% else %}{% call button(variant="outline", size="sm", attrs={"data-ide-toggle":""}) %}Enable{% endcall %}{% endif %}
   </div>
 

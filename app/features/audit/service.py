@@ -23,6 +23,8 @@ MEMBER_ADDED = "member.added"
 MEMBER_REMOVED = "member.removed"
 TIMELINE_ITEM_ADDED = "timeline_item.added"
 TIMELINE_ITEM_UPDATED = "timeline_item.updated"
+REPORT_SAVED = "report.saved"
+NOTE_SAVED = "note.saved"
 
 # converts internal action names to human-readable labels for display in the audit log(ui)
 ACTION_LABELS = {
@@ -37,6 +39,8 @@ ACTION_LABELS = {
     MEMBER_REMOVED: "Member removed",
     TIMELINE_ITEM_ADDED: "Timeline item added",
     TIMELINE_ITEM_UPDATED: "Timeline item updated",
+    REPORT_SAVED: "Report saved",
+    NOTE_SAVED: "Note saved",
 }
 
 # Matches the status values the activity_row macro in cases/detail.html

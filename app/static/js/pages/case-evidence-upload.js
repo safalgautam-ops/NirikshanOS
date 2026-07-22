@@ -411,7 +411,6 @@ function initEvidenceUpload({ caseId, csrfToken }) {
         ${evidenceRow("Uploaded By", item.uploaded_by_name || "—")}
         ${evidenceRow("Uploaded At", evidenceFormatDate(item.uploaded_at))}
         ${evidenceRow("Analysis Status", "Not Analyzed")}
-        ${evidenceRow("Tags", "—")}
         <div class="flex items-center justify-between gap-4 px-5 py-2.5 text-sm">
           <span class="text-muted-foreground">Actions</span>
           <div class="flex justify-end gap-1" data-cell="actions"></div>

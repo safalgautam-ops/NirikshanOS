@@ -180,14 +180,37 @@ window.closeAppDialog = function (dialog) {
     popup.style.margin = "0";
     popup.style.minWidth = `${trigger.offsetWidth}px`;
 
+    // A <dialog> opened with showModal() (see openAppDialog) is promoted to
+    // the browser's top layer, which makes the dialog itself - not the
+    // viewport - the containing block for any position:fixed descendant.
+    // Every coordinate below has to be re-based against that dialog's own
+    // box whenever the trigger lives inside one, or the popup lands
+    // wherever the dialog happens to be instead of next to its trigger.
+    const modalAncestor = trigger.closest("dialog[open]");
+
     const reposition = () => {
       const rect = trigger.getBoundingClientRect();
-      const viewportHeight = document.documentElement.clientHeight;
+      const originRect = modalAncestor
+        ? modalAncestor.getBoundingClientRect()
+        : { left: 0, top: 0, bottom: document.documentElement.clientHeight };
+      const viewportHeight = originRect.bottom - originRect.top;
+      const top = rect.top - originRect.top;
+      const bottom = rect.bottom - originRect.top;
+      const left = rect.left - originRect.left;
       const popupHeight = popup.getBoundingClientRect().height;
-      const openUp = viewportHeight - rect.bottom < popupHeight + 8 && rect.top > viewportHeight - rect.bottom;
-      popup.style.left = `${rect.left}px`;
-      popup.style.top = openUp ? "auto" : `${rect.bottom + 4}px`;
-      popup.style.bottom = openUp ? `${viewportHeight - rect.top + 4}px` : "auto";
+      const openUp = viewportHeight - bottom < popupHeight + 8 && top > viewportHeight - bottom;
+      popup.style.left = `${left}px`;
+      popup.style.top = openUp ? "auto" : `${bottom + 4}px`;
+      popup.style.bottom = openUp ? `${viewportHeight - top + 4}px` : "auto";
+      // A long option list can be taller than the space actually available
+      // in whichever direction it opens (especially inside a <dialog>,
+      // which clips fixed descendants to its own scrollable box - see the
+      // containing-block note above). Cap the popup to that real space and
+      // let it scroll internally, or the tail end renders outside the
+      // dialog's clipped box and becomes unclickable.
+      const available = (openUp ? top : viewportHeight - bottom) - 8;
+      popup.style.maxHeight = `${Math.max(available, 120)}px`;
+      popup.style.overflowY = "auto";
     };
 
     const hidden = popup.hidden;
@@ -361,7 +384,11 @@ window.closeAppDialog = function (dialog) {
     const item = target.closest(slot("select-item"));
     if (item && !item.hasAttribute("data-disabled")) {
       const select = item.closest(slot("select"));
+      // Captured before the marker loop below - item.textContent would
+      // otherwise pick up the "✓" this same click stamps into its own
+      // marker span, leaking the checkmark glyph into the trigger label.
       const value = item.dataset.value || item.textContent.trim();
+      const label = item.textContent.trim();
       all(select || document, slot("select-item")).forEach((option) => {
         const selected = option === item;
         option.toggleAttribute("data-selected", selected);
@@ -371,7 +398,7 @@ window.closeAppDialog = function (dialog) {
       });
       const display = select?.querySelector(slot("select-value"));
       if (display) {
-        display.textContent = item.textContent.trim();
+        display.textContent = label;
         display.removeAttribute("data-placeholder");
       }
       const input = select?.querySelector("input[type='hidden']");
@@ -427,12 +454,23 @@ window.closeAppDialog = function (dialog) {
   let viewport = null;
 
   function getViewport() {
-    if (viewport && document.body.contains(viewport)) return viewport;
-    viewport = document.createElement("div");
-    viewport.setAttribute("data-slot", "toast-viewport");
-    viewport.className =
-      "fixed inset-0 z-60 flex flex-col items-end justify-end gap-3 p-4 sm:p-8 pointer-events-none";
-    document.body.appendChild(viewport);
+    // A <dialog> opened with showModal() is promoted to the browser's top
+    // layer, which renders above every ordinary element regardless of
+    // z-index - including a toast viewport sitting in <body>. Parenting the
+    // viewport under whichever dialog is currently open puts it in that same
+    // top layer so toasts stay visible while a modal is up; parenting back
+    // under <body> once nothing is open keeps them anchored to the real
+    // viewport corner the rest of the time. Re-checked on every call since
+    // dialogs open/close far more often than toasts fire.
+    const target = document.querySelector("dialog[open]") || document.body;
+    if (viewport && viewport.parentElement === target) return viewport;
+    if (!viewport) {
+      viewport = document.createElement("div");
+      viewport.setAttribute("data-slot", "toast-viewport");
+      viewport.className =
+        "fixed inset-0 z-60 flex flex-col items-end justify-end gap-3 p-4 sm:p-8 pointer-events-none";
+    }
+    target.appendChild(viewport);
     return viewport;
   }
 

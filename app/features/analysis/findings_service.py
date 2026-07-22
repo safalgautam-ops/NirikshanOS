@@ -60,6 +60,10 @@ async def list_findings(case_id: str) -> list[dict]:
     return await findings_repository.list_findings(case_id)
 
 
+async def mark_finding_included(case_id: str, finding_id: str) -> None:
+    await findings_repository.mark_finding_included(case_id, finding_id)
+
+
 async def create_indicator(
     *,
     case_id: str,
@@ -97,3 +101,7 @@ async def create_indicator(
 
 async def list_indicators(case_id: str) -> list[dict]:
     return await findings_repository.list_indicators(case_id)
+
+
+async def mark_indicator_included(case_id: str, indicator_id: str) -> None:
+    await findings_repository.mark_indicator_included(case_id, indicator_id)

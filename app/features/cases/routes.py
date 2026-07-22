@@ -229,6 +229,21 @@ async def detail_view(case_id: str):
     )
 
 
+@cases_bp.route("/<case_id>/activity")
+@login_required
+async def activity_fragment_view(case_id: str):
+    """HTML fragment for the Activity tab, re-fetched via HTMX every time the
+    tab is clicked (see its hx-get/hx-target in detail.html). The tab itself
+    is a client-side show/hide panel on an already-loaded page, so a note or
+    report saved via fetch() after the page loaded would otherwise never
+    show up there without a full browser reload."""
+    await _require_visible_case(case_id)
+    return render_template(
+        "cases/_activity_list.html",
+        activity_log=await audit_service.get_case_activity_log(case_id),
+    )
+
+
 @cases_bp.route("/<case_id>/edit", methods=["POST"])
 @require_org_permission(CASE_EDIT)
 async def update_view(case_id: str):

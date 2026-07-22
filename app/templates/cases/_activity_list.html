@@ -1,0 +1,2 @@
+{% from "cases/_activity_row.html" import activity_row %}
+{% if not activity_log %}<p class="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">No activity recorded yet.</p>{% else %}<div>{% for item in activity_log %}{{ activity_row(item, is_last=loop.last) }}{% endfor %}</div>{% endif %}

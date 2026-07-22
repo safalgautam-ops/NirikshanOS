@@ -13,6 +13,7 @@ from app.core.db.orm import db
 from app.core.security.org_permissions import get_user_org_membership, is_org_owner
 from app.core.security.sessions import login_required
 from app.core.utils.ids import new_id
+from app.features.audit import service as audit_service
 from app.features.cases.service import get_case_for_user
 
 reports_bp = Blueprint("reports", __name__)
@@ -95,5 +96,14 @@ async def save_report_view(case_id: str):
         "content": content,
         "created_by": g.user_id,
     })
+
+    await audit_service.record_case_activity(
+        case_id=case_id,
+        actor_id=g.user_id,
+        action=audit_service.REPORT_SAVED,
+        target_label=title,
+        ip_address=request.remote_addr,
+        metadata={"version": next_version},
+    )
 
     return jsonify({"report_id": report_id, "version": next_version}), 200
