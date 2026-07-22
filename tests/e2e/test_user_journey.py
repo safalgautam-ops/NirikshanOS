@@ -31,13 +31,15 @@ def test_login_then_create_a_case_end_to_end(page, e2e_user):
     page.fill("#case-title", case_title)
     # The classification field is this app's custom listbox component (a
     # hidden <input> driven by a JS-only trigger+popup, not a native
-    # <select>) - its popup renders inside the native <dialog>'s own
-    # top-layer stacking in a way that defeats Playwright's pointer-
-    # interception check even with force=True. Setting the hidden input
-    # directly still submits through the real form/route below; the only
-    # thing bypassed is the cosmetic dropdown click, which is a design-
-    # system concern outside this report's tested slice.
-    dialog.locator('input[name="classification"]').evaluate("el => el.value = 'device_forensics'")
+    # <select>). A real click through the trigger+popup, not a scripted
+    # value assignment: a native <dialog> opened with showModal() promotes
+    # itself to the browser's top layer, and position:fixed elements inside
+    # it (like this popup) used to be positioned relative to the dialog's
+    # own box instead of the viewport - a real bug that made the popup land
+    # partly outside the dialog's clipped bounds and unclickable. Fixed in
+    # app.js's positionSelect(); this click is the regression guard for it.
+    page.click("[data-target='#select-popup-case-classification']")
+    dialog.locator("#select-popup-case-classification [data-slot='select-item']").first.click()
 
     page.click('button[type="submit"]:has-text("Next: Upload evidence")')
 

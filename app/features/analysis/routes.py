@@ -388,10 +388,21 @@ async def list_findings_view(case_id: str):
             "source_evidence": f["source_evidence"],
             "source_module": f["source_module"],
             "author_id": f["author_id"],
+            "included_in_report": bool(f["included_in_report"]),
             "created_at": _serialize_dt(f.get("created_at")),
         }
         for f in findings
     ]})
+
+
+@analysis_bp.route("/cases/<case_id>/findings/<finding_id>/include", methods=["POST"])
+@login_required
+async def include_finding_view(case_id: str, finding_id: str):
+    """Mark a finding as already inserted into the report draft, so it drops
+    out of the pending "Saved Items" list and stays out across a refresh."""
+    await _require_visible_case(case_id)
+    await findings_service.mark_finding_included(case_id, finding_id)
+    return jsonify({"ok": True})
 
 
 # ── Indicators ────────────────────────────────────────────────────────────────
@@ -440,7 +451,19 @@ async def list_indicators_view(case_id: str):
             "source_evidence": i["source_evidence"],
             "source_module": i["source_module"],
             "author_id": i["author_id"],
+            "included_in_report": bool(i["included_in_report"]),
             "created_at": _serialize_dt(i.get("created_at")),
         }
         for i in indicators
     ]})
+
+
+@analysis_bp.route("/cases/<case_id>/indicators/<indicator_id>/include", methods=["POST"])
+@login_required
+async def include_indicator_view(case_id: str, indicator_id: str):
+    """Mark an indicator as already inserted into the report draft, so it
+    drops out of the pending "Saved Items" list and stays out across a
+    refresh (see include_finding_view for the same fix on findings)."""
+    await _require_visible_case(case_id)
+    await findings_service.mark_indicator_included(case_id, indicator_id)
+    return jsonify({"ok": True})

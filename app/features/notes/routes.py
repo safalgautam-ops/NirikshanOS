@@ -6,6 +6,7 @@ from flask import Blueprint, abort, g, jsonify, request
 
 from app.core.security.org_permissions import get_user_org_membership, is_org_owner
 from app.core.security.sessions import login_required
+from app.features.audit import service as audit_service
 from app.features.cases.service import get_case_for_user
 from app.features.notes import repository
 
@@ -38,4 +39,13 @@ async def save_note_view(case_id: str):
     if not content:
         return jsonify({"error": "content is required"}), 400
     await repository.upsert_case_note(case_id, content, g.user_id)
+
+    await audit_service.record_case_activity(
+        case_id=case_id,
+        actor_id=g.user_id,
+        action=audit_service.NOTE_SAVED,
+        target_label=(content.splitlines()[0] if content else "")[:80],
+        ip_address=request.remote_addr,
+    )
+
     return jsonify({"ok": True}), 200

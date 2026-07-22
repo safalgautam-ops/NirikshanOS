@@ -549,7 +549,7 @@ Forensics & Incident Response{% endblock %} {% block head %}
                   ></div>
                 </div>
                 <div
-                  class="h-full w-full flex rounded-xl min-h-96 bg-neutral-100 shadow-[0_24px_40px_-20px_rgba(38,38,43,0.30),0_10px_24px_0_rgba(38,38,43,0.06),0_1px_1px_0_rgba(38,38,43,0.16),0_0_0_1px_rgba(38,38,43,0.05),0_8px_14px_-10px_rgba(38,38,43,0.40)] overflow-hidden relative z-20"
+                  class="h-full w-full flex rounded-xl min-h-80 bg-neutral-100 shadow-[0_24px_40px_-20px_rgba(38,38,43,0.30),0_10px_24px_0_rgba(38,38,43,0.06),0_1px_1px_0_rgba(38,38,43,0.16),0_0_0_1px_rgba(38,38,43,0.05),0_8px_14px_-10px_rgba(38,38,43,0.40)] overflow-hidden relative z-20"
                 >
                   <div class="hidden sm:block w-20 bg-white h-full">
                     <div class="flex items-center justify-between p-2">
@@ -1072,11 +1072,7 @@ Forensics & Incident Response{% endblock %} {% block head %}
                     class="absolute inset-0 h-full w-full bg-[repeating-linear-gradient(-315deg,var(--pattern-fg)_0,var(--pattern-fg)_1px,transparent_0,transparent_50%)] bg-size-[5px_5px] bg-fixed"
                   ></div>
                 </div>
-                <div
-                  class="h-full w-full flex min-h-96 items-center justify-center rounded-xl bg-white shadow-[0_24px_40px_-20px_rgba(38,38,43,0.30),0_10px_24px_0_rgba(38,38,43,0.06),0_1px_1px_0_rgba(38,38,43,0.16),0_0_0_1px_rgba(38,38,43,0.05),0_8px_14px_-10px_rgba(38,38,43,0.40)] overflow-hidden relative z-20"
-                >
-                  {{ safari.safari(imageSrc="/static/home/assets/images/dfir-hero-2.png", url="https://www.nirikshanOS.com", mode="default", instance_id="dashboard-safari") }}
-                </div>
+                  {{ safari.safari(image_src="/static/home/assets/images/dfir-hero-2.png", url="https://www.nirikshanOS.com", mode="default", image_alt="dashboard-safari") }}
               </div>
               <div class="px-4 md:px-8 py-6 md:py-8">
                 <div class="flex gap-2 items-start">
@@ -1109,13 +1105,7 @@ Forensics & Incident Response{% endblock %} {% block head %}
                 <div
                   class="relative z-20 flex w-full items-center justify-center min-h-96"
                 >
-                  <div
-                    class="w-full max-w-[min(100%,400px)] overflow-hidden rounded-3xl p-4 text-left shadow-[0_24px_40px_-20px_rgba(38,38,43,0.30),0_10px_24px_0_rgba(38,38,43,0.06),0_1px_1px_0_rgba(38,38,43,0.16),0_0_0_1px_rgba(38,38,43,0.05),0_8px_14px_-10px_rgba(38,38,43,0.40)] bg-white"
-                  >
-                    <pre
-                      class="font-mono text-[11px] leading-relaxed tracking-tight md:text-xs mask-r-from-90% text-[#24292f]"
-                    ><code class="font-mono"><span class="ml-px inline-block h-[1.1em] w-0.5 animate-pulse align-[-0.125em] bg-[#0969da]"></span></code></pre>
-                  </div>
+                  {{ safari.safari(image_src="/static/home/assets/images/dfir-hero-2.png", url="https://www.nirikshanOS.com", mode="default", image_alt="dashboard-safari") }}
                 </div>
               </div>
               <div class="px-4 md:px-8 py-6 md:py-8">
@@ -1149,7 +1139,7 @@ Forensics & Incident Response{% endblock %} {% block head %}
                   ></div>
                 </div>
                 <div
-                  class="flex h-140 max-h-140 w-full max-w-full shrink-0 grow-0 basis-96 items-stretch justify-center overflow-hidden rounded-xl bg-white shadow-[0_24px_40px_-20px_rgba(38,38,43,0.30),0_10px_24px_0_rgba(38,38,43,0.06),0_1px_1px_0_rgba(38,38,43,0.16),0_0_0_1px_rgba(38,38,43,0.05),0_8px_14px_-10px_rgba(38,38,43,0.40)] relative z-20"
+                  class="flex h-84 max-h-84 w-full max-w-full shrink-0 grow-0 basis-96 items-stretch justify-center overflow-hidden rounded-xl bg-white shadow-[0_24px_40px_-20px_rgba(38,38,43,0.30),0_10px_24px_0_rgba(38,38,43,0.06),0_1px_1px_0_rgba(38,38,43,0.16),0_0_0_1px_rgba(38,38,43,0.05),0_8px_14px_-10px_rgba(38,38,43,0.40)] relative z-20"
                 >
                   <div
                     class="flex h-full min-h-0 w-full flex-col bg-[#fafafa] text-[13px] leading-relaxed antialiased"
@@ -1482,110 +1472,6 @@ Forensics & Incident Response{% endblock %} {% block head %}
             <rect fill="url(#h-dots-_S_4_)" height="100%" width="100%"></rect>
           </svg>
         </section>
-      </div>
-      <div data-notch-section="Work" id="work">
-        <section
-          class="py-4 md:py-32 [--pattern-fg:var(--color-gray-950)]/5"
-          id="work-motion-section"
-        >
-          <h2
-            class="max-w-[40ch] font-display text-lg sm:text-xl font-semibold tracking-tight text-balance text-neutral-700 md:max-w-[35ch] md:text-2xl px-4 md:px-8 mx-auto text-center"
-          >
-            Built around the needs of
-            <span class="bg-primary text-white">modern forensic teams</span>.
-          </h2>
-          <div
-            class="work-motion-stage relative flex min-h-72 sm:min-h-88 items-center justify-center py-8 md:min-h-96"
-            data-work-showcase=""
-          >
-            <div
-              aria-hidden="true"
-              class="absolute inset-0 z-0 mask-y-from-90% mask-x-from-90% work-dot-field"
-            ></div>
-            <div
-              aria-hidden="true"
-              class="work-marquee-shell relative z-10 w-full opacity-100 saturate-[0.85] mask-x-from-98%"
-            >
-              <div class="work-horizontal-line"></div>
-              <div class="work-marquee py-2">
-                <div class="work-marquee-track" data-work-track=""></div>
-              </div>
-              <div class="work-horizontal-line"></div>
-            </div>
-            <div
-              class="pointer-events-none absolute inset-0 z-20 flex items-center justify-center px-4"
-            >
-              <article
-                class="work-feature-card pointer-events-auto perspective-[1000px] w-[min(35rem,calc(100vw-3rem))]"
-                data-work-card=""
-                tabindex="0"
-              >
-                <div
-                  class="work-feature-inner relative shrink-0 transform-gpu rounded-xl bg-white p-2 shadow-[0_24px_40px_-20px_rgba(38,38,43,0.30),0_10px_24px_0_rgba(38,38,43,0.06),0_1px_1px_0_rgba(38,38,43,0.16),0_0_0_1px_rgba(38,38,43,0.05),0_8px_14px_-10px_rgba(38,38,43,0.40)] will-change-transform overflow-hidden"
-                >
-                  <div
-                    class="work-feature-image relative aspect-video w-full overflow-hidden rounded-lg bg-neutral-100"
-                  >
-                    <img
-                      alt="Incident response workspace"
-                      class="absolute inset-0 h-full w-full object-cover object-top-left"
-                      data-work-active-image=""
-                      src="https://assets.aceternity.com/templates/productized-agency-5.webp"
-                    />
-                  </div>
-                  <div
-                    aria-live="polite"
-                    class="work-feature-meta px-6 pt-4 pb-6"
-                  >
-                    <p
-                      class="font-display text-sm font-semibold tracking-tight text-neutral-900"
-                      data-work-title=""
-                    >
-                      Incident Response Workspace
-                    </p>
-                    <p
-                      class="mt-1 text-[11px] font-medium uppercase tracking-[0.14em] text-neutral-400"
-                      data-work-country=""
-                    >
-                      Organization-scoped investigation
-                    </p>
-                    <p
-                      class="mt-3 text-balance max-w-sm text-xs leading-relaxed text-neutral-600"
-                      data-work-description=""
-                    >
-                      Coordinate case scope, evidence, assigned investigators,
-                      notes, findings, and reporting without losing the chain of
-                      context.
-                    </p>
-                  </div>
-                </div>
-              </article>
-            </div>
-          </div>
-        </section>
-        <svg
-          aria-hidden="true"
-          class="pointer-events-none block w-full mask-x-from-98%"
-          preserveaspectratio="none"
-          style="height: 4px"
-          xmlns="http://www.w3.org/2000/svg"
-        >
-          <defs>
-            <pattern
-              height="4"
-              id="h-dots-_R_14av5b_"
-              patternunits="userSpaceOnUse"
-              width="8"
-            >
-              <circle class="fill-neutral-400" cx="4" cy="2" r="1"></circle>
-            </pattern>
-          </defs>
-          <rect
-            fill="url(#h-dots-_R_14av5b_)"
-            height="100%"
-            width="100%"
-          ></rect>
-        </svg>
       </div>
       <div data-notch-section="Spotlight" id="spotlight">
         <section
@@ -3774,95 +3660,6 @@ Forensics & Incident Response{% endblock %} {% block head %}
                     Keep platform roles and organization roles separate, with
                     explicit permissions and complete audit logging.
                   </p>
-                </div>
-              </div>
-              <div
-                aria-label="Interactive service preview 5"
-                class="bg-gray-100 rounded-2xl col-span-1 md:col-span-2 relative overflow-hidden min-h-100"
-                data-service-card="5"
-                tabindex="0"
-              >
-                <div
-                  class="absolute -right-72 -bottom-96 z-10 size-160 md:-bottom-70 md:size-180"
-                >
-                  <div class="relative h-full w-full">
-                    <div
-                      style="
-                        position: relative;
-                        width: 100%;
-                        height: 100%;
-                        overflow: hidden;
-                        pointer-events: auto;
-                        background: transparent;
-                      "
-                    >
-                      <div style="width: 100%; height: 100%">
-                        <canvas
-                          aria-label="Animated global delivery illustration"
-                          id="globe-canvas"
-                          style="display: block"
-                        ></canvas>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                <div class="px-8 pb-8 flex flex-col mt-6">
-                  <h3 class="text-lg font-medium text-foreground font-display">
-                    Extensible Analysis Modules
-                  </h3>
-                  <p class="text-base text-balance max-w-md text-foreground/80">
-                    Author YAML-backed analysis modules, multi-step pipelines,
-                    options, routing rules, and sandboxed test runs.
-                  </p>
-                  <div class="flex flex-col items-start gap-2 mt-8">
-                    <p
-                      class="max-w-40 text-left md:text-left font-medium text-sm font-display text-foreground/80"
-                    >
-                      Designed for investigation teams worldwide
-                    </p>
-                    <div class="flex items-center ml-2">
-                      <div
-                        class="flex-col gap-3 group size-10 -ml-2 rounded-full border border-neutral-200 flex items-center justify-center bg-linear-to-b from-neutral-400 to-neutral-600 ring-offset-neutral-500"
-                      >
-                        <div>
-                          <span
-                            class="flex size-4 items-center justify-center text-[10px] font-bold text-white"
-                            >F</span
-                          >
-                        </div>
-                      </div>
-                      <div
-                        class="flex-col gap-3 group size-10 -ml-2 rounded-full border border-neutral-200 flex items-center justify-center bg-linear-to-b from-green-400 to-green-600 ring-offset-green-500"
-                      >
-                        <div>
-                          <span
-                            class="flex size-4 items-center justify-center text-[10px] font-bold text-white"
-                            >H</span
-                          >
-                        </div>
-                      </div>
-                      <div
-                        class="flex-col gap-3 group size-10 -ml-2 rounded-full border border-neutral-200 flex items-center justify-center bg-linear-to-b from-violet-400 to-violet-600 ring-offset-violet-500"
-                      >
-                        <div>
-                          <span
-                            class="flex size-4 items-center justify-center text-[10px] font-bold text-white"
-                            >L</span
-                          >
-                        </div>
-                      </div>
-                      <div
-                        class="flex-col gap-3 group size-10 -ml-2 rounded-full border border-neutral-200 flex items-center justify-center bg-linear-to-b from-indigo-400 to-indigo-600 ring-offset-indigo-500"
-                      >
-                        <div>
-                          <span
-                            class="flex size-4 items-center justify-center text-[10px] font-bold text-white"
-                            >O</span
-                          >
-                        </div>
-                      </div>
-                    </div>
-                  </div>
                 </div>
               </div>
             </div>

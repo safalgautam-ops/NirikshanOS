@@ -58,6 +58,15 @@ async def list_findings(case_id: str) -> list[dict]:
     )
 
 
+async def mark_finding_included(case_id: str, finding_id: str) -> int:
+    return await (
+        db.table("case_findings")
+        .where("id", finding_id)
+        .where("case_id", case_id)
+        .update({"included_in_report": 1})
+    )
+
+
 # ── Indicators ────────────────────────────────────────────────────────────────
 
 async def create_indicator(
@@ -114,4 +123,13 @@ async def list_indicators(case_id: str) -> list[dict]:
         .where("case_id", case_id)
         .order_by("created_at", "asc")
         .all(allow_full_table=True)
+    )
+
+
+async def mark_indicator_included(case_id: str, indicator_id: str) -> int:
+    return await (
+        db.table("case_indicators")
+        .where("id", indicator_id)
+        .where("case_id", case_id)
+        .update({"included_in_report": 1})
     )
