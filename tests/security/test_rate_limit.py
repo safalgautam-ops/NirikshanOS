@@ -1,11 +1,5 @@
-"""Security test: Redis-backed login rate limiting
-(app/core/security/rate_limit.py - report §5.1), attacked directly by
-actually exhausting the limit rather than only checking the code path
-exists. auth/routes.py calls check_rate_limit(f"rate:login:{ip}",
-max_attempts=10, window_seconds=900) at the very top of the login POST
-handler; the test-suite-wide Redis flush (conftest._flush_test_redis)
-guarantees this test starts from a clean counter.
-"""
+"""Security test: Redis-backed login rate limiting (app/core/security/rate_limit.py - report §5.1), attacked directly by actually exhausting the limit rather than only checking the code path exists."""
+
 from tests.helpers import get_csrf
 
 

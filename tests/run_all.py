@@ -1,23 +1,5 @@
-#!/usr/bin/env python3
-"""Runs the entire automated test suite in one command and prints a single,
-consolidated result: total passed/failed, a breakdown by the 5 testing
-types (unit / functional / integration / security / E2E), and the full
-detail of anything that failed.
+"""Runs the entire automated test suite in one command and prints a single, consolidated result: total passed/failed, a breakdown by the 5 testing types (unit / functional / integration / security / E2E), and the full detail of anything that failed."""
 
-Usage (from the repo root):
-    python3 tests/run_all.py
-
-What it actually does, step by step:
-  1. Re-provisions the disposable nirikshan_test database from scratch
-     (tests/provision_test_db.sh) - every run starts from an identical,
-     clean schema, so results are reproducible.
-  2. Runs the unit/functional/integration/security tiers inside the `web`
-     container (they need the real app package, asyncmy, and network
-     access to mysql/redis - all already set up there).
-  3. Runs the E2E tier from the host (Playwright + a real browser hitting
-     the live http://localhost stack, already set up on this machine).
-  4. Parses both tiers' JUnit XML reports and prints one final summary.
-"""
 from __future__ import annotations
 
 import subprocess
@@ -29,8 +11,6 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 REPORTS_DIR = REPO_ROOT / "tests" / ".reports"
 
-# Maps each test tier to (junit report path, category label). Order here is
-# the order results are shown in.
 CATEGORY_LABELS = {
     "unit": "Unit Testing",
     "functional": "Functional / Route Testing",
@@ -44,7 +24,7 @@ CATEGORY_LABELS = {
 class TestResult:
     name: str
     category: str
-    outcome: str  # "passed" | "failed" | "error" | "skipped"
+    outcome: str
     message: str = ""
 
 
@@ -59,8 +39,6 @@ class Summary:
         for testcase in tree.getroot().iter("testcase"):
             classname = testcase.get("classname", "")
             name = testcase.get("name", "")
-            # classname looks like "tests.unit.test_passwords" - the
-            # second segment is the category directory.
             parts = classname.split(".")
             category = parts[1] if len(parts) > 1 else "unknown"
 
@@ -68,10 +46,16 @@ class Summary:
             error = testcase.find("error")
             skipped = testcase.find("skipped")
             if failure is not None:
-                outcome, message = "failed", (failure.get("message") or failure.text or "").strip().splitlines()[0:1]
+                outcome, message = (
+                    "failed",
+                    (failure.get("message") or failure.text or "").strip().splitlines()[0:1],
+                )
                 message = message[0] if message else ""
             elif error is not None:
-                outcome, message = "error", (error.get("message") or error.text or "").strip().splitlines()[0:1]
+                outcome, message = (
+                    "error",
+                    (error.get("message") or error.text or "").strip().splitlines()[0:1],
+                )
                 message = message[0] if message else ""
             elif skipped is not None:
                 outcome, message = "skipped", (skipped.get("message") or "").strip()
@@ -79,7 +63,9 @@ class Summary:
                 outcome, message = "passed", ""
 
             full_name = f"{classname.replace('tests.', '', 1)}::{name}"
-            self.results.append(TestResult(name=full_name, category=category, outcome=outcome, message=message))
+            self.results.append(
+                TestResult(name=full_name, category=category, outcome=outcome, message=message)
+            )
 
 
 def run(cmd: list[str], **kwargs) -> int:
@@ -103,21 +89,41 @@ def main() -> int:
     print("STEP 2/3 - unit + functional + integration + security (inside web container)")
     print("=" * 78)
     backend_xml = REPORTS_DIR / "backend.xml"
-    run([
-        "docker", "compose", "exec", "-T", "web", "python3", "-m", "pytest",
-        "tests/unit", "tests/functional", "tests/integration", "tests/security",
-        "-v", f"--junitxml=tests/.reports/backend.xml",
-    ])
+    run(
+        [
+            "docker",
+            "compose",
+            "exec",
+            "-T",
+            "web",
+            "python3",
+            "-m",
+            "pytest",
+            "tests/unit",
+            "tests/functional",
+            "tests/integration",
+            "tests/security",
+            "-v",
+            "--junitxml=tests/.reports/backend.xml",
+        ]
+    )
 
     print()
     print("=" * 78)
     print("STEP 3/3 - end-to-end (real browser, from this host)")
     print("=" * 78)
     e2e_xml = REPORTS_DIR / "e2e.xml"
-    run([
-        sys.executable, "-m", "pytest", "tests/e2e",
-        "--confcutdir=tests/e2e", "-v", f"--junitxml={e2e_xml}",
-    ])
+    run(
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            "tests/e2e",
+            "--confcutdir=tests/e2e",
+            "-v",
+            f"--junitxml={e2e_xml}",
+        ]
+    )
 
     summary = Summary()
     summary.add_from_junit(backend_xml)

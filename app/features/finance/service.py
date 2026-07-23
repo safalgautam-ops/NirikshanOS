@@ -1,8 +1,4 @@
-"""Finance business logic — pricing, payment initiation, and the two-layer
-verification that must both pass before a plan is ever activated. All HMAC/
-HTTP work is delegated to app/core/esewa.py; this file only decides what
-the numbers should be and what to do once eSewa confirms a payment.
-"""
+"""Finance business logic — pricing, payment initiation, and the two-layer verification that must both pass before a plan is ever activated."""
 
 from __future__ import annotations
 
@@ -32,16 +28,11 @@ def _apply_discount(base_amount: Decimal, discount_type: str, discount_value) ->
         discount = base_amount * value / Decimal("100")
     else:
         discount = value
-    # Never let a discount exceed the price itself (no negative totals).
     return min(discount, base_amount)
 
 
-async def compute_total(
-    *, plan: dict, billing_period: str, coupon_code: str | None, org_id: str
-) -> dict:
-    """The one place price math happens. Picks at most ONE discount — if
-    both a coupon and a standing org discount are eligible, the larger
-    benefit to the org wins (deliberate: no stacking, avoids abuse)."""
+async def compute_total(*, plan: dict, billing_period: str, coupon_code: str | None, org_id: str) -> dict:
+    """The one place price math happens."""
     if billing_period == "monthly":
         base_amount = _quantize(plan["price_monthly"])
     elif billing_period == "annual":
@@ -66,7 +57,6 @@ async def compute_total(
         candidates.append((discount, None, org_discount))
 
     if candidates:
-        # Largest discount wins.
         discount_amount, coupon, org_discount = max(candidates, key=lambda c: c[0])
     else:
         discount_amount, coupon, org_discount = Decimal("0.00"), None, None
@@ -91,10 +81,7 @@ async def initiate_payment(
     success_url: str,
     failure_url: str,
 ) -> dict:
-    """Creates the `initiated` transaction row and returns the signed
-    eSewa form fields the route renders as an auto-submitting form. The
-    transaction exists in the DB from this point forward, whether or not
-    the org ever completes the payment."""
+    """Creates the `initiated` transaction row and returns the signed eSewa form fields the route renders as an auto-submitting form."""
     plan = await plans_repository.get_plan(plan_id)
     if plan is None:
         raise PaymentError(f"Plan '{plan_id}' not found.")
@@ -103,9 +90,6 @@ async def initiate_payment(
         plan=plan, billing_period=billing_period, coupon_code=coupon_code, org_id=org_id
     )
     if pricing["total_amount"] <= 0:
-        # The plan picker routes zero-cost plans to subscribe_free_view
-        # instead of here — reaching this means that branch was skipped
-        # (e.g. a stale page). Nothing sensitive to explain to the user.
         raise PaymentError("This plan doesn't require payment. Please refresh the page and try again.")
 
     transaction_uuid = str(uuid.uuid4())
@@ -143,17 +127,9 @@ def _compute_ends_at(billing_period: str) -> datetime:
 
 
 async def handle_success_callback(raw_payload: str) -> tuple[bool, str]:
-    """The two-layer verification from the plan: (1) regenerate the HMAC
-    signature over the callback's own signed_field_names, (2) independently
-    call eSewa's transaction-status endpoint. Both must pass before
-    plans.service.assign_plan() is ever called. Idempotent — replaying an
-    already-completed callback (e.g. a user refreshing the success page)
-    does not double-activate anything."""
+    """The two-layer verification from the plan: (1) regenerate the HMAC signature over the callback's own signed_field_names, (2) independently call eSewa's transaction-status endpoint."""
     payload = esewa.verify_callback(raw_payload)
     if payload is None:
-        # Signature didn't match — nothing in this payload can be trusted,
-        # including transaction_uuid. Still try to flag the row for audit,
-        # but do not use anything else from the tampered payload.
         try:
             unverified = json.loads(base64.b64decode(raw_payload))
             unverified_uuid = unverified.get("transaction_uuid")
@@ -174,8 +150,6 @@ async def handle_success_callback(raw_payload: str) -> tuple[bool, str]:
     if txn["status"] != "initiated":
         return False, f"Transaction is already {txn['status']}."
 
-    # Compare eSewa's reported amount against what WE computed and stored at
-    # initiation — never trust the payload's number in isolation.
     try:
         reported_amount = _quantize(payload.get("total_amount", "0"))
     except Exception:
@@ -192,7 +166,6 @@ async def handle_success_callback(raw_payload: str) -> tuple[bool, str]:
         await repository.mark_transaction_failed(txn["id"], reason=f"eSewa status: {payload.get('status')}")
         return False, "Payment was not completed."
 
-    # Layer 2: independent server-to-server confirmation.
     live_status = await esewa.check_transaction_status(
         transaction_uuid=transaction_uuid, total_amount=txn["total_amount"]
     )

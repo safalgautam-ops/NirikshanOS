@@ -1,5 +1,4 @@
-"""Admin routes for the Finance area — transactions ledger, coupons, org discounts.
-Mirrors the admin_instances/admin_categories blueprint shape added earlier."""
+"""Admin routes for the Finance area — transactions ledger, coupons, org discounts."""
 
 from __future__ import annotations
 
@@ -33,8 +32,6 @@ def _validate_discount_fields(body: dict) -> tuple[dict | None, str | None]:
     return {"discount_type": discount_type, "discount_value": discount_value}, None
 
 
-# ── Transactions (view-only ledger) ───────────────────────────────────────────
-
 @finance_bp.route("/transactions")
 @require_permission(FINANCE_VIEW)
 async def transactions_view():
@@ -53,16 +50,12 @@ async def transactions_view():
     )
 
 
-# ── Coupons ────────────────────────────────────────────────────────────────────
-
 @finance_bp.route("/coupons")
 @require_permission(FINANCE_VIEW)
 async def coupons_view():
     coupons = await repository.list_coupons()
     visible_keys = await get_visible_nav_keys(g.user_id)
-    return render_template(
-        "admin/finance/coupons.html", coupons=coupons, visible_keys=visible_keys
-    )
+    return render_template("admin/finance/coupons.html", coupons=coupons, visible_keys=visible_keys)
 
 
 @finance_bp.route("/coupons", methods=["POST"])
@@ -119,8 +112,6 @@ async def delete_coupon_view(coupon_id: str):
     await repository.delete_coupon(coupon_id)
     return jsonify({"ok": True})
 
-
-# ── Org discounts ──────────────────────────────────────────────────────────────
 
 @finance_bp.route("/discounts")
 @require_permission(FINANCE_VIEW)

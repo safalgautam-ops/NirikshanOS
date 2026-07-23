@@ -19,9 +19,7 @@ class UserError(Exception):
 
 async def get_users_page(*, search: str, role_id: str, status: str, page: int):
     """One page of users, each annotated with `.top_role` (dict or None)."""
-    result = await repository.list_users(
-        search=search, role_id=role_id, status=status, page=page
-    )
+    result = await repository.list_users(search=search, role_id=role_id, status=status, page=page)
     user_ids = [u["id"] for u in result.items]
     top_roles = await repository.get_top_roles_for_users(user_ids)
     role_ids_by_user = await repository.get_role_ids_for_users(user_ids)
@@ -37,9 +35,7 @@ async def toggle_user_active(user_id: str, is_active: bool, *, requested_by: str
     await repository.set_user_active(user_id, is_active)
 
 
-async def update_user_roles(
-    user_id: str, role_ids: list[str], assigned_by: str
-) -> None:
+async def update_user_roles(user_id: str, role_ids: list[str], assigned_by: str) -> None:
     if user_id == assigned_by:
         raise UserError("You can't change your own role assignments.")
     await repository.replace_user_roles(user_id, role_ids, assigned_by)

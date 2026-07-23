@@ -1,9 +1,4 @@
-"""DB access for evidence - the per-file rows tracked through an S3
-multipart upload's lifecycle (init, in-progress, completed/failed/
-cancelled). MinIO itself is the source of truth for which parts have
-actually landed (see app/core/object_storage.list_parts) - this table only
-tracks what the DB needs to know: status, the s3 key/upload id, and the
-final hash/size once complete."""
+"""DB access for evidence - the per-file rows tracked through an S3 multipart upload's lifecycle (init, in-progress, completed/failed/ cancelled)."""
 
 from __future__ import annotations
 
@@ -46,9 +41,7 @@ async def get_evidence(evidence_id: str):
 
 
 async def list_case_evidence(case_id: str) -> list:
-    """Joins in the uploader's name for display (Evidences/Analyze tabs'
-    "Uploaded By" field) - evidence itself only stores uploaded_by as a
-    user id."""
+    """Joins in the uploader's name for display (Evidences/Analyze tabs' "Uploaded By" field) - evidence itself only stores uploaded_by as a user id."""
     return await (
         db.table("evidence")
         .join("user", "evidence.uploaded_by", "user.id")
@@ -68,11 +61,7 @@ async def set_received_bytes(evidence_id: str, received_bytes: int) -> None:
 
 
 async def mark_completed(evidence_id: str, *, size_bytes: int, mime_type: str) -> None:
-    """Flips status to completed and clears upload_id - the multipart
-    session is gone once CompleteMultipartUpload succeeds. sha256/md5 land
-    later via set_hash, once the background hashing task finishes (the app
-    never sees the bytes during a presigned-PUT upload, so it can't hash
-    inline the way the old local-disk reassembly did)."""
+    """Flips status to completed and clears upload_id - the multipart session is gone once CompleteMultipartUpload succeeds."""
     await (
         db.table("evidence")
         .where("id", evidence_id)

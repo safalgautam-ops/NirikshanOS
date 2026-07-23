@@ -1,9 +1,5 @@
-"""Unit tests: the pending-2FA token (app/core/security/sessions.py).
+"""Unit tests: the pending-2FA token (app/core/security/sessions.py)."""
 
-Pure logic - a signed, self-contained token, deliberately not a database
-row (§5.1: "it only needs to prove 'this password was just verified' for a
-few minutes, not to be revocable the way a full login session must be").
-"""
 import time
 from unittest.mock import patch
 
@@ -20,7 +16,6 @@ def test_valid_unexpired_token_is_accepted():
 def test_tampered_signature_is_rejected():
     token = create_pending_2fa_token("user-123", SECRET)
     user_id, ts, sig = token.split(".", 2)
-    # Flip one character of the signature - payload untouched.
     tampered_sig = ("0" if sig[0] != "0" else "1") + sig[1:]
     tampered = f"{user_id}.{ts}.{tampered_sig}"
     assert verify_pending_2fa_token(tampered, SECRET) is None
@@ -32,8 +27,7 @@ def test_wrong_secret_key_is_rejected():
 
 
 def test_expired_token_is_rejected():
-    """TTL is 300s (_PENDING_2FA_TTL). Freeze time 301s in the future at
-    verification and confirm the token is no longer accepted."""
+    """TTL is 300s (_PENDING_2FA_TTL)."""
     token = create_pending_2fa_token("user-123", SECRET)
     real_time = time.time
     with patch("app.core.security.sessions.time.time", return_value=real_time() + 301):

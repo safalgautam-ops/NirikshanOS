@@ -11,16 +11,12 @@ from app.features.organizations.choices import ORG_TYPES
 from app.features.organizations.permissions import ORG_APPROVE, ORG_CREATE, ORG_DELETE, ORG_EDIT, ORG_VIEW
 from app.features.organizations.service import OrganizationError
 
-organizations_bp = Blueprint(
-    "organizations", __name__, url_prefix="/admin/organizations"
-)
+organizations_bp = Blueprint("organizations", __name__, url_prefix="/admin/organizations")
 
 
 @organizations_bp.route("/")
 @require_permission(ORG_VIEW)
 async def list_view():
-    # request.args is the data in the URL's query string (the ?q=...&status=... part)
-    # it contains the search term, status filter, and pagination parameters
     search = request.args.get("q", "").strip()
     status = request.args.get("status", "")
     verification = request.args.get("verification", "")
@@ -90,7 +86,6 @@ async def create_view():
     return redirect(url_for("organizations.list_view", org=org_id))
 
 
-# Keep backward compat POST / -> also create (used by old template)
 @organizations_bp.route("/", methods=["POST"])
 @require_permission(ORG_CREATE)
 async def create_view_legacy():
@@ -113,7 +108,6 @@ async def update_view(org_id: str):
     return redirect(url_for("organizations.list_view", org=org_id))
 
 
-# Keep old route for backward compat
 @organizations_bp.route("/<org_id>", methods=["POST"])
 @require_permission(ORG_EDIT)
 async def update_view_legacy(org_id: str):
@@ -160,9 +154,7 @@ async def approve_view(org_id: str):
 async def reject_view(org_id: str):
     form = request.form
     try:
-        await service.reject_organization(
-            org_id, reviewed_by=g.user_id, reason=form.get("reason", "")
-        )
+        await service.reject_organization(org_id, reviewed_by=g.user_id, reason=form.get("reason", ""))
     except OrganizationError as exc:
         return redirect(url_for("organizations.list_view", org=org_id, error=str(exc)))
     return redirect(url_for("organizations.list_view", org=org_id))

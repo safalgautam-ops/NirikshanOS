@@ -1,17 +1,4 @@
-"""Organization-scoped permission registry - the org-RBAC equivalent of
-app/core/security/permission_registry.py.
-
-Same idea, different scope: a feature declares the org-level permissions it
-needs (see app/features/onboarding/permissions.py) by calling
-register_org_permissions() once at import time. sync_to_db(), run at app
-startup, upserts every registered permission into the
-`organization_permissions` table.
-
-Unlike the system registry, this does NOT auto-grant anything here - there
-is no single "Org Admin" row to grant to (every organization has its own,
-and orgs start with no roles at all - the owner creates and grants whatever
-roles they want from the Roles page).
-"""
+"""Organization-scoped permission registry - the org-RBAC equivalent of app/core/security/permission_registry.py."""
 
 from __future__ import annotations
 

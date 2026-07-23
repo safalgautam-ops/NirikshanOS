@@ -1,7 +1,5 @@
-"""Functional/route tests: /auth/login and /auth/register in isolation via
-Flask's test client - each test checks one route's own request -> response
-contract (report §5.1/§5.2).
-"""
+"""Functional/route tests: /auth/login and /auth/register in isolation via Flask's test client - each test checks one route's own request -> response contract (report §5.1/§5.2)."""
+
 from tests.helpers import get_csrf
 
 
@@ -28,15 +26,13 @@ def test_login_wrong_password_shows_error_no_cookie_set(client, make_user):
         data={"email": user["email"], "password": "definitely-wrong", "csrf_token": csrf},
     )
 
-    assert resp.status_code == 200  # re-renders the login form with an error, no redirect
+    assert resp.status_code == 200
     assert "Invalid email or password" in resp.get_data(as_text=True)
     assert "session_token" not in resp.headers.get("Set-Cookie", "")
 
 
 def test_login_nonexistent_email_gives_same_error_as_wrong_password(client):
-    """Report §5.1: password is checked first specifically so a wrong
-    password and a non-existent account produce the identical error -
-    prevents account enumeration."""
+    """Report §5.1: password is checked first specifically so a wrong password and a non-existent account produce the identical error - prevents account enumeration."""
     csrf = get_csrf(client, "/auth/login")
     resp = client.post(
         "/auth/login",

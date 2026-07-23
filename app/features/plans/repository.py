@@ -1,4 +1,5 @@
 """DB access for plans and org_subscriptions."""
+
 from __future__ import annotations
 
 import json
@@ -34,8 +35,6 @@ def _parse_sub(sub: dict) -> dict:
     return sub
 
 
-# ── Plans ─────────────────────────────────────────────────────────────────────
-
 async def list_plans() -> list[dict]:
     rows = await (
         db.table("plans")
@@ -59,9 +58,7 @@ async def get_plan(plan_id: str) -> dict | None:
 
 
 async def get_free_plan() -> dict | None:
-    """The active plan with zero cost — auto-assigned to a new org on
-    creation. Looked up by cost rather than a hardcoded id so it still works
-    if an admin renames/recreates the free-tier plan."""
+    """The active plan with zero cost — auto-assigned to a new org on creation."""
     row = await (
         db.table("plans")
         .where("is_active", 1)
@@ -88,17 +85,19 @@ async def create_plan(
     is_active: bool,
     sort_order: int,
 ) -> None:
-    await db.table("plans").create({
-        "id":            plan_id,
-        "display_name":  display_name,
-        "description":   description,
-        "price_monthly": price_monthly,
-        "price_annual":  price_annual,
-        "resources":     json.dumps(resources),
-        "allowed_tiers": json.dumps(allowed_tiers),
-        "is_active":     int(is_active),
-        "sort_order":    sort_order,
-    })
+    await db.table("plans").create(
+        {
+            "id": plan_id,
+            "display_name": display_name,
+            "description": description,
+            "price_monthly": price_monthly,
+            "price_annual": price_annual,
+            "resources": json.dumps(resources),
+            "allowed_tiers": json.dumps(allowed_tiers),
+            "is_active": int(is_active),
+            "sort_order": sort_order,
+        }
+    )
 
 
 async def update_plan(
@@ -113,16 +112,18 @@ async def update_plan(
     is_active: bool,
     sort_order: int,
 ) -> None:
-    await db.table("plans").where("id", plan_id).update({
-        "display_name":  display_name,
-        "description":   description,
-        "price_monthly": price_monthly,
-        "price_annual":  price_annual,
-        "resources":     json.dumps(resources),
-        "allowed_tiers": json.dumps(allowed_tiers),
-        "is_active":     int(is_active),
-        "sort_order":    sort_order,
-    })
+    await db.table("plans").where("id", plan_id).update(
+        {
+            "display_name": display_name,
+            "description": description,
+            "price_monthly": price_monthly,
+            "price_annual": price_annual,
+            "resources": json.dumps(resources),
+            "allowed_tiers": json.dumps(allowed_tiers),
+            "is_active": int(is_active),
+            "sort_order": sort_order,
+        }
+    )
 
 
 async def get_instance_ids_for_plan(plan_id: str) -> list[str]:
@@ -131,15 +132,13 @@ async def get_instance_ids_for_plan(plan_id: str) -> list[str]:
 
 
 async def set_plan_instances(plan_id: str, instance_ids: list[str]) -> None:
-    """Replace-all: same pattern update_plan already uses for allowed_tiers,
-    just as real rows in a join table instead of a JSON column."""
+    """Replace-all: same pattern update_plan already uses for allowed_tiers, just as real rows in a join table instead of a JSON column."""
     await db.table("plan_instances").where("plan_id", plan_id).delete()
     for instance_id in instance_ids:
         await db.table("plan_instances").create({"plan_id": plan_id, "instance_id": instance_id})
 
 
 async def delete_plan(plan_id: str) -> None:
-    # Existing active subscribers become grandfathered — they keep their snapshot.
     await (
         db.table("org_subscriptions")
         .where("plan_id", plan_id)
@@ -148,8 +147,6 @@ async def delete_plan(plan_id: str) -> None:
     )
     await db.table("plans").where("id", plan_id).delete()
 
-
-# ── Subscriptions ─────────────────────────────────────────────────────────────
 
 async def list_subscriptions() -> list[dict]:
     rows = await (
@@ -175,10 +172,7 @@ async def list_subscriptions() -> list[dict]:
 
 
 async def list_subscriptions_for_org(org_id: str, *, since=None, limit: int = 10) -> list[dict]:
-    """This org's subscription history (current + recent past), newest
-    first - the dashboard's subscription-history widget. `since` narrows to
-    rows created at/after a cutoff without excluding the still-active one,
-    since that's the row a viewer most needs to see regardless of age."""
+    """This org's subscription history (current + recent past), newest first - the dashboard's subscription-history widget."""
     query = db.table("org_subscriptions").where("org_id", org_id)
     if since is not None:
         query = query.or_where([("created_at", ">=", since), ("status", "in", ["active", "grandfathered"])])
@@ -209,17 +203,19 @@ async def create_subscription(
     created_by: str,
 ) -> str:
     sub_id = new_id()
-    await db.table("org_subscriptions").create({
-        "id":             sub_id,
-        "org_id":         org_id,
-        "plan_id":        plan_id,
-        "plan_snapshot":  json.dumps(plan_snapshot, default=str),
-        "status":         "active",
-        "billing_period": billing_period,
-        "ends_at":        ends_at,
-        "notes":          notes,
-        "created_by":     created_by,
-    })
+    await db.table("org_subscriptions").create(
+        {
+            "id": sub_id,
+            "org_id": org_id,
+            "plan_id": plan_id,
+            "plan_snapshot": json.dumps(plan_snapshot, default=str),
+            "status": "active",
+            "billing_period": billing_period,
+            "ends_at": ends_at,
+            "notes": notes,
+            "created_by": created_by,
+        }
+    )
     return sub_id
 
 
@@ -228,11 +224,7 @@ async def cancel_subscription(sub_id: str) -> None:
 
 
 async def update_subscription_snapshot(sub_id: str, plan_snapshot: dict) -> None:
-    """Overwrite a subscription's frozen plan_snapshot in place — used to
-    repair subscriptions whose snapshot predates a tier/instance vocabulary
-    migration (grandfathering is meant to protect against routine admin plan
-    edits, not leave a subscription permanently referencing tier names that
-    no longer exist anywhere else in the system)."""
+    """Overwrite a subscription's frozen plan_snapshot in place — used to repair subscriptions whose snapshot predates a tier/instance vocabulary migration (grandfathering is meant to protect against routine admin plan edits, not leave a subscription permanently referencing tier names that no longer exist anywhere else in the system)."""
     await db.table("org_subscriptions").where("id", sub_id).update(
         {"plan_snapshot": json.dumps(plan_snapshot, default=str)}
     )

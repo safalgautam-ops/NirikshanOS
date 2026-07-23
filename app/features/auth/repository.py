@@ -1,8 +1,4 @@
-"""DB access for all auth-related tables.
-
-Thin functions that wrap the ORM query builder. Business rules live in
-service.py; this file only knows about columns and tables.
-"""
+"""DB access for all auth-related tables."""
 
 from __future__ import annotations
 
@@ -11,16 +7,13 @@ from app.core.utils.ids import new_id
 
 
 async def get_user_by_email(email: str):
-    return (
-        await db.table("user").where("email", email).first()
-    )  # Returns a Row (dict-like object with attribute access)
+    return await db.table("user").where("email", email).first()
 
 
 async def get_user_by_id(user_id: str):
     return await db.table("user").where("id", user_id).first()
 
 
-# called once after a successful OTP activation
 async def set_email_verified(user_id: str) -> None:
     await (
         db.table("user")
@@ -55,13 +48,7 @@ async def create_user_with_password(
     email_verified: bool = False,
     must_change_password: bool = False,
 ) -> str:
-    """Create user row + credential account atomically.
-
-    Defaults match self-registration (inactive, needs an activation OTP).
-    Admin-created accounts (e.g. staff) pass is_active=True/email_verified=True
-    since an admin is already vouching for them, plus must_change_password=True
-    when the password was auto-generated rather than chosen by the user.
-    """
+    """Create user row + credential account atomically."""
     user_id = new_id()
     async with db.transaction():
         await db.table("user").create(
@@ -86,7 +73,6 @@ async def create_user_with_password(
     return user_id
 
 
-# access tokens and refresh tokens by provided by Google and Github
 async def create_user_with_oauth(
     *,
     name: str,
@@ -123,12 +109,7 @@ async def create_user_with_oauth(
 
 
 async def get_credential_account_by_user_id(user_id: str):
-    return await (
-        db.table("account")
-        .where("userId", user_id)
-        .where("providerId", "credential")
-        .first()
-    )
+    return await db.table("account").where("userId", user_id).where("providerId", "credential").first()
 
 
 async def get_credential_password_hash(user_id: str) -> str | None:
@@ -150,12 +131,7 @@ async def clear_must_change_password(user_id: str) -> None:
 
 
 async def get_account_by_provider(provider_id: str, account_id: str):
-    return await (
-        db.table("account")
-        .where("providerId", provider_id)
-        .where("accountId", account_id)
-        .first()
-    )
+    return await db.table("account").where("providerId", provider_id).where("accountId", account_id).first()
 
 
 async def get_accounts_by_user(user_id: str) -> list:
@@ -183,12 +159,7 @@ async def create_oauth_account(
 
 
 async def delete_account_by_provider(user_id: str, provider_id: str) -> None:
-    await (
-        db.table("account")
-        .where("userId", user_id)
-        .where("providerId", provider_id)
-        .delete()
-    )
+    await db.table("account").where("userId", user_id).where("providerId", provider_id).delete()
 
 
 async def get_two_factor(user_id: str):
@@ -196,7 +167,6 @@ async def get_two_factor(user_id: str):
 
 
 async def create_two_factor(*, user_id: str, secret: str, backup_codes: str) -> None:
-    # Delete any existing record first (re-setup scenario)
     await db.table("twoFactor").where("userId", user_id).delete()
     await db.table("twoFactor").create(
         {
@@ -209,13 +179,7 @@ async def create_two_factor(*, user_id: str, secret: str, backup_codes: str) -> 
 
 
 async def update_two_factor_backup_codes(user_id: str, backup_codes: str) -> None:
-    await (
-        db.table("twoFactor")
-        .where("userId", user_id)
-        .patch(
-            {"backupCodes": backup_codes}
-        )  # patch is the ORM's way of doing a partial update (change only specific column you name)
-    )
+    await db.table("twoFactor").where("userId", user_id).patch({"backupCodes": backup_codes})
 
 
 async def delete_two_factor(user_id: str) -> None:

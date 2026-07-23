@@ -8,10 +8,6 @@ from app.core.db.orm import db
 from app.core.utils.ids import new_id
 
 
-# ---------------------------------------------------------------------------
-# Coupons
-# ---------------------------------------------------------------------------
-
 async def list_coupons() -> list[dict]:
     return await db.table("coupons").order_by("created_at", "desc").all(allow_full_table=True)
 
@@ -25,9 +21,7 @@ async def get_coupon_by_code(code: str) -> dict | None:
 
 
 async def get_valid_coupon(code: str) -> dict | None:
-    """A coupon usable right now: active, within its validity window, and
-    (if it has a redemption cap) not yet exhausted. All three checks done
-    here so callers never have to re-derive "is this coupon usable"."""
+    """A coupon usable right now: active, within its validity window, and (if it has a redemption cap) not yet exhausted."""
     coupon = await get_coupon_by_code(code)
     if not coupon or not coupon["is_active"]:
         return None
@@ -53,17 +47,19 @@ async def create_coupon(
     created_by: str,
 ) -> str:
     coupon_id = new_id()
-    await db.table("coupons").create({
-        "id": coupon_id,
-        "code": code,
-        "discount_type": discount_type,
-        "discount_value": discount_value,
-        "max_redemptions": max_redemptions,
-        "valid_from": valid_from,
-        "valid_until": valid_until,
-        "is_active": int(is_active),
-        "created_by": created_by,
-    })
+    await db.table("coupons").create(
+        {
+            "id": coupon_id,
+            "code": code,
+            "discount_type": discount_type,
+            "discount_value": discount_value,
+            "max_redemptions": max_redemptions,
+            "valid_from": valid_from,
+            "valid_until": valid_until,
+            "is_active": int(is_active),
+            "created_by": created_by,
+        }
+    )
     return coupon_id
 
 
@@ -77,14 +73,16 @@ async def update_coupon(
     valid_until: str | None,
     is_active: bool,
 ) -> None:
-    await db.table("coupons").where("id", coupon_id).update({
-        "discount_type": discount_type,
-        "discount_value": discount_value,
-        "max_redemptions": max_redemptions,
-        "valid_from": valid_from,
-        "valid_until": valid_until,
-        "is_active": int(is_active),
-    })
+    await db.table("coupons").where("id", coupon_id).update(
+        {
+            "discount_type": discount_type,
+            "discount_value": discount_value,
+            "max_redemptions": max_redemptions,
+            "valid_from": valid_from,
+            "valid_until": valid_until,
+            "is_active": int(is_active),
+        }
+    )
 
 
 async def delete_coupon(coupon_id: str) -> None:
@@ -92,37 +90,27 @@ async def delete_coupon(coupon_id: str) -> None:
 
 
 async def record_coupon_redemption(*, coupon_id: str, org_id: str, transaction_id: str) -> None:
-    await db.table("coupon_redemptions").create({
-        "id": new_id(),
-        "coupon_id": coupon_id,
-        "org_id": org_id,
-        "transaction_id": transaction_id,
-    })
-    # .update() always binds values as plain parameters (see orm.py) — no
-    # raw "col + 1" expression support — so this increments in Python. Coupon
-    # redemption isn't a hot path and per-org re-redemption is already
-    # blocked by has_org_redeemed_coupon, so the narrow race window on a
-    # shared multi-use coupon's counter is an acceptable tradeoff here.
+    await db.table("coupon_redemptions").create(
+        {
+            "id": new_id(),
+            "coupon_id": coupon_id,
+            "org_id": org_id,
+            "transaction_id": transaction_id,
+        }
+    )
     coupon = await get_coupon(coupon_id)
     if coupon:
-        await db.table("coupons").where("id", coupon_id).update({
-            "times_redeemed": coupon["times_redeemed"] + 1,
-        })
+        await db.table("coupons").where("id", coupon_id).update(
+            {
+                "times_redeemed": coupon["times_redeemed"] + 1,
+            }
+        )
 
 
 async def has_org_redeemed_coupon(coupon_id: str, org_id: str) -> bool:
-    row = await (
-        db.table("coupon_redemptions")
-        .where("coupon_id", coupon_id)
-        .where("org_id", org_id)
-        .first()
-    )
+    row = await db.table("coupon_redemptions").where("coupon_id", coupon_id).where("org_id", org_id).first()
     return row is not None
 
-
-# ---------------------------------------------------------------------------
-# Org discounts
-# ---------------------------------------------------------------------------
 
 async def get_org_discount(discount_id: str) -> dict | None:
     return await db.table("org_discounts").where("id", discount_id).first()
@@ -141,10 +129,7 @@ async def list_org_discounts() -> list[dict]:
 async def get_active_org_discount(org_id: str) -> dict | None:
     now = datetime.now(timezone.utc)
     rows = await (
-        db.table("org_discounts")
-        .where("org_id", org_id)
-        .where("is_active", 1)
-        .all(allow_full_table=True)
+        db.table("org_discounts").where("org_id", org_id).where("is_active", 1).all(allow_full_table=True)
     )
     for row in rows:
         if row["valid_until"] and row["valid_until"].replace(tzinfo=timezone.utc) < now:
@@ -164,16 +149,18 @@ async def create_org_discount(
     created_by: str,
 ) -> str:
     discount_id = new_id()
-    await db.table("org_discounts").create({
-        "id": discount_id,
-        "org_id": org_id,
-        "discount_type": discount_type,
-        "discount_value": discount_value,
-        "reason": reason,
-        "valid_until": valid_until,
-        "is_active": int(is_active),
-        "created_by": created_by,
-    })
+    await db.table("org_discounts").create(
+        {
+            "id": discount_id,
+            "org_id": org_id,
+            "discount_type": discount_type,
+            "discount_value": discount_value,
+            "reason": reason,
+            "valid_until": valid_until,
+            "is_active": int(is_active),
+            "created_by": created_by,
+        }
+    )
     return discount_id
 
 
@@ -186,22 +173,20 @@ async def update_org_discount(
     valid_until: str | None,
     is_active: bool,
 ) -> None:
-    await db.table("org_discounts").where("id", discount_id).update({
-        "discount_type": discount_type,
-        "discount_value": discount_value,
-        "reason": reason,
-        "valid_until": valid_until,
-        "is_active": int(is_active),
-    })
+    await db.table("org_discounts").where("id", discount_id).update(
+        {
+            "discount_type": discount_type,
+            "discount_value": discount_value,
+            "reason": reason,
+            "valid_until": valid_until,
+            "is_active": int(is_active),
+        }
+    )
 
 
 async def delete_org_discount(discount_id: str) -> None:
     await db.table("org_discounts").where("id", discount_id).delete()
 
-
-# ---------------------------------------------------------------------------
-# Payment transactions
-# ---------------------------------------------------------------------------
 
 async def list_transactions(*, org_id: str | None = None, status: str | None = None) -> list[dict]:
     query = (
@@ -239,33 +224,39 @@ async def create_transaction(
     created_by: str,
 ) -> str:
     transaction_id = new_id()
-    await db.table("payment_transactions").create({
-        "id": transaction_id,
-        "org_id": org_id,
-        "plan_id": plan_id,
-        "billing_period": billing_period,
-        "base_amount": base_amount,
-        "discount_amount": discount_amount,
-        "total_amount": total_amount,
-        "transaction_uuid": transaction_uuid,
-        "coupon_id": coupon_id,
-        "org_discount_id": org_discount_id,
-        "status": "initiated",
-        "created_by": created_by,
-    })
+    await db.table("payment_transactions").create(
+        {
+            "id": transaction_id,
+            "org_id": org_id,
+            "plan_id": plan_id,
+            "billing_period": billing_period,
+            "base_amount": base_amount,
+            "discount_amount": discount_amount,
+            "total_amount": total_amount,
+            "transaction_uuid": transaction_uuid,
+            "coupon_id": coupon_id,
+            "org_discount_id": org_discount_id,
+            "status": "initiated",
+            "created_by": created_by,
+        }
+    )
     return transaction_id
 
 
 async def mark_transaction_completed(transaction_id: str, *, esewa_transaction_code: str) -> None:
-    await db.table("payment_transactions").where("id", transaction_id).update({
-        "status": "completed",
-        "esewa_transaction_code": esewa_transaction_code,
-        "verified_at": datetime.now(timezone.utc),
-    })
+    await db.table("payment_transactions").where("id", transaction_id).update(
+        {
+            "status": "completed",
+            "esewa_transaction_code": esewa_transaction_code,
+            "verified_at": datetime.now(timezone.utc),
+        }
+    )
 
 
 async def mark_transaction_failed(transaction_id: str, *, reason: str) -> None:
-    await db.table("payment_transactions").where("id", transaction_id).update({
-        "status": "failed",
-        "failure_reason": reason,
-    })
+    await db.table("payment_transactions").where("id", transaction_id).update(
+        {
+            "status": "failed",
+            "failure_reason": reason,
+        }
+    )

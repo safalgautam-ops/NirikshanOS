@@ -22,25 +22,25 @@ async def get_category_by_name(name: str) -> dict | None:
     return await db.table("categories").where("name", name).first()
 
 
-async def create_category(
-    *, category_id: str, name: str, description: str | None, sort_order: int
-) -> None:
-    await db.table("categories").create({
-        "id": category_id,
-        "name": name,
-        "description": description,
-        "sort_order": sort_order,
-    })
+async def create_category(*, category_id: str, name: str, description: str | None, sort_order: int) -> None:
+    await db.table("categories").create(
+        {
+            "id": category_id,
+            "name": name,
+            "description": description,
+            "sort_order": sort_order,
+        }
+    )
 
 
-async def update_category(
-    category_id: str, *, name: str, description: str | None, sort_order: int
-) -> None:
-    await db.table("categories").where("id", category_id).update({
-        "name": name,
-        "description": description,
-        "sort_order": sort_order,
-    })
+async def update_category(category_id: str, *, name: str, description: str | None, sort_order: int) -> None:
+    await db.table("categories").where("id", category_id).update(
+        {
+            "name": name,
+            "description": description,
+            "sort_order": sort_order,
+        }
+    )
 
 
 async def delete_category(category_id: str) -> None:

@@ -1,4 +1,5 @@
 """Admin routes for plans and org subscriptions."""
+
 from __future__ import annotations
 
 from flask import Blueprint, g, jsonify, redirect, render_template, request, url_for
@@ -18,12 +19,8 @@ async def list_view():
     plans = await repository.list_plans()
     instances = await instances_repository.list_active_instances()
     instances_for_js = [
-        {"id": i["id"], "display_name": i["display_name"], "image_tag": i["image_tag"]}
-        for i in instances
+        {"id": i["id"], "display_name": i["display_name"], "image_tag": i["image_tag"]} for i in instances
     ]
-    # Subscriptions render directly on this page (read-only audit view) -
-    # orgs take/cancel their own plan from their Billing page via eSewa,
-    # there is no separate admin subscriptions route anymore.
     subscriptions = await repository.list_subscriptions()
     visible_keys = await get_visible_nav_keys(g.user_id)
     selected_id = request.args.get("p")
@@ -51,10 +48,10 @@ async def create_view():
     if not plan_id:
         return redirect(url_for("plans.list_view") + "?p=new")
     if await repository.get_plan(plan_id):
-        return redirect(url_for("plans.list_view") + f"?p=new&error=exists")
+        return redirect(url_for("plans.list_view") + "?p=new&error=exists")
     resources = {
-        "ram_gb":     int(form.get("ram_gb") or 2),
-        "vcpu":       int(form.get("vcpu") or 2),
+        "ram_gb": int(form.get("ram_gb") or 2),
+        "vcpu": int(form.get("vcpu") or 2),
         "storage_gb": int(form.get("storage_gb") or 20),
     }
     await repository.create_plan(
@@ -82,8 +79,8 @@ async def update_view(plan_id: str):
     vcpu = body.get("vcpu")
     storage_gb = body.get("storage_gb")
     resources = {
-        "ram_gb":     int(ram_gb) if ram_gb is not None else 2,
-        "vcpu":       int(vcpu) if vcpu is not None else 2,
+        "ram_gb": int(ram_gb) if ram_gb is not None else 2,
+        "vcpu": int(vcpu) if vcpu is not None else 2,
         "storage_gb": int(storage_gb) if storage_gb is not None else 20,
     }
     await repository.update_plan(

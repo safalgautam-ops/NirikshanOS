@@ -84,7 +84,12 @@ async def create_view():
     if error:
         return jsonify({"error": error}), 400
     if await repository.get_instance_by_image_tag(fields["image_tag"]):
-        return jsonify({"error": f"Image tag '{fields['image_tag']}' is already registered as another instance"}), 409
+        return (
+            jsonify(
+                {"error": f"Image tag '{fields['image_tag']}' is already registered as another instance"}
+            ),
+            409,
+        )
 
     await repository.create_instance(instance_id=instance_id, created_by=g.user_id, **fields)
     return jsonify({"ok": True, "id": instance_id})
@@ -102,7 +107,12 @@ async def update_view(instance_id: str):
         return jsonify({"error": error}), 400
     conflict = await repository.get_instance_by_image_tag(fields["image_tag"])
     if conflict and conflict["id"] != instance_id:
-        return jsonify({"error": f"Image tag '{fields['image_tag']}' is already registered as another instance"}), 409
+        return (
+            jsonify(
+                {"error": f"Image tag '{fields['image_tag']}' is already registered as another instance"}
+            ),
+            409,
+        )
 
     await repository.update_instance(
         instance_id,
@@ -115,10 +125,7 @@ async def update_view(instance_id: str):
 @instances_bp.route("/<instance_id>/usage", methods=["GET"])
 @require_permission(INSTANCE_EDIT)
 async def usage_view(instance_id: str):
-    """Counts shown in the delete confirmation dialog before an admin
-    commits - modules/plan grants change silently on delete (SET NULL /
-    CASCADE), so the UI surfaces the blast radius up front instead of
-    letting that happen invisibly."""
+    """Counts shown in the delete confirmation dialog before an admin commits - modules/plan grants change silently on delete (SET NULL / CASCADE), so the UI surfaces the blast radius up front instead of letting that happen invisibly."""
     if not await repository.get_instance(instance_id):
         return jsonify({"error": "not found"}), 404
     return jsonify(await repository.get_usage_counts(instance_id))
@@ -127,9 +134,7 @@ async def usage_view(instance_id: str):
 @instances_bp.route("/<instance_id>/clear_test_runs", methods=["POST"])
 @require_permission(INSTANCE_EDIT)
 async def clear_test_runs_view(instance_id: str):
-    """Clears the one usage type that actually blocks deletion (see
-    delete_view's ForeignKeyError handling) - surfaced as its own action
-    since there was previously no way at all to remove test run history."""
+    """Clears the one usage type that actually blocks deletion (see delete_view's ForeignKeyError handling) - surfaced as its own action since there was previously no way at all to remove test run history."""
     if not await repository.get_instance(instance_id):
         return jsonify({"error": "not found"}), 404
     cleared = await repository.clear_test_runs_for_instance(instance_id)
@@ -144,20 +149,22 @@ async def delete_view(instance_id: str):
     try:
         await repository.delete_instance(instance_id)
     except ForeignKeyError:
-        return jsonify({
-            "error": "This instance is still referenced by modules or test runs. "
-                     "Reassign or delete those first, or deactivate this instance instead.",
-        }), 409
+        return (
+            jsonify(
+                {
+                    "error": "This instance is still referenced by modules or test runs. "
+                    "Reassign or delete those first, or deactivate this instance instead.",
+                }
+            ),
+            409,
+        )
     return jsonify({"ok": True})
 
 
 @instances_bp.route("/<instance_id>/recheck", methods=["POST"])
 @require_permission(INSTANCE_EDIT)
 async def recheck_view(instance_id: str):
-    """Ask the worker (the only container with Docker access) to run
-    `docker image inspect` on this instance's image_tag and update
-    image_status. Fire-and-forget — the frontend polls list_view/get for
-    the updated status a moment later."""
+    """Ask the worker (the only container with Docker access) to run `docker image inspect` on this instance's image_tag and update image_status."""
     if not await repository.get_instance(instance_id):
         return jsonify({"error": "not found"}), 404
     redis = get_redis()

@@ -1,8 +1,4 @@
-"""Auth routes.
-
-Thin Flask views — all business logic lives in service.py.
-Each route's only job: read the request, call the service, pick a response.
-"""
+"""Auth routes."""
 
 from __future__ import annotations
 
@@ -65,9 +61,6 @@ from app.features.auth.service import (
 auth_bp = Blueprint("auth", __name__, url_prefix="/auth")
 
 
-# ── helpers ───────────────────────────────────────────────────────────────────
-
-
 def _ip() -> str | None:
     return request.remote_addr
 
@@ -77,9 +70,7 @@ def _ua() -> str | None:
 
 
 def _safe_next(value: str | None) -> str | None:
-    """Only accept internal paths (e.g. '/onboarding/join?code=ABC') as a
-    post-login redirect target - rejects '//evil.com' and absolute URLs so
-    this can't be used as an open redirect."""
+    """Only accept internal paths (e.g. '/onboarding/join?code=ABC') as a post-login redirect target - rejects '//evil.com' and absolute URLs so this can't be used as an open redirect."""
     if value and value.startswith("/") and not value.startswith("//"):
         return value
     return None
@@ -90,9 +81,6 @@ async def _full_login(user_id: str, next_url: str | None = None):
     resp = make_response(redirect(_safe_next(next_url) or url_for("dashboard")))
     set_session_cookie(resp, token)
     return resp
-
-
-# ── login / logout ────────────────────────────────────────────────────────────
 
 
 @auth_bp.route("/login", methods=["GET", "POST"])
@@ -115,13 +103,9 @@ async def login():
             next_qs = f"&next={next_url}" if next_url else ""
             return redirect(url_for("auth.activate") + f"?email={exc.email}{next_qs}")
         except TwoFactorRequiredError as exc:
-            pending = create_pending_2fa_token(
-                exc.user_id, current_app.config["SECRET_KEY"]
-            )
+            pending = create_pending_2fa_token(exc.user_id, current_app.config["SECRET_KEY"])
             resp = make_response(redirect(url_for("auth.verify_2fa_view")))
-            resp.set_cookie(
-                PENDING_2FA_COOKIE, pending, max_age=300, httponly=True, samesite="Lax"
-            )
+            resp.set_cookie(PENDING_2FA_COOKIE, pending, max_age=300, httponly=True, samesite="Lax")
             return resp
         except AuthError as exc:
             error = str(exc)
@@ -144,9 +128,6 @@ async def logout():
     resp = make_response(redirect(url_for("auth.login")))
     clear_session_cookie(resp)
     return resp
-
-
-# ── registration + activation ─────────────────────────────────────────────────
 
 
 @auth_bp.route("/register", methods=["GET", "POST"])
@@ -199,9 +180,7 @@ async def activate():
         else:
             next_qs = f"&next={next_url}" if next_url else ""
             return redirect(url_for("auth.login") + f"?activated=1{next_qs}")
-    return render_template(
-        "auth/activate.html", email=email, error=error, resent=resent, next_url=next_url
-    )
+    return render_template("auth/activate.html", email=email, error=error, resent=resent, next_url=next_url)
 
 
 @auth_bp.route("/resend-activation", methods=["POST"])
@@ -210,9 +189,6 @@ async def resend_activation_view():
     email = form.get("email", "").strip().lower()
     await resend_activation(email)
     return redirect(url_for("auth.activate") + f"?email={email}&resent=1")
-
-
-# ── password reset ────────────────────────────────────────────────────────────
 
 
 @auth_bp.route("/forgot-password", methods=["GET", "POST"])
@@ -227,10 +203,7 @@ async def forgot_password_view():
 
 @auth_bp.route("/reset-password", methods=["GET", "POST"])
 async def reset_password_view():
-    # read the email from the URL query string because the reset link user clicked
-    # probably looked like /reset-password?email=alice@x.com
     email = request.args.get("email", "")
-    # start with no error. if validation fails later, we'll set this to a message.
     error = None
     if request.method == "POST":
         form = request.form
@@ -248,20 +221,14 @@ async def reset_password_view():
             except AuthError as exc:
                 error = str(exc)
             else:
-                # the else runs only if no exception was raised
-                # redirect the user to the login page with a reset=1 query parameter
-                # reset=1 indicates that the password was successfully reset to let the login template know about it
                 return redirect(url_for("auth.login") + "?reset=1")
-    # if there was an error, render the reset password template with the error message
     return render_template("auth/reset_password.html", email=email, error=error)
 
 
 @auth_bp.route("/change-password", methods=["GET", "POST"])
 @login_required
 async def change_password_view():
-    """Forced first-login password change for accounts created with an
-    auto-generated temp password (see app/__init__.py's require_password_change
-    gate). Already authenticated, so no code/old-password is needed."""
+    """Forced first-login password change for accounts created with an auto-generated temp password (see app/__init__.py's require_password_change gate)."""
     error = None
     if request.method == "POST":
         form = request.form
@@ -275,9 +242,6 @@ async def change_password_view():
             await change_own_password(g.user_id, new_pw)
             return redirect(url_for("dashboard"))
     return render_template("auth/change_password.html", error=error)
-
-
-# ── Google OAuth ──────────────────────────────────────────────────────────────
 
 
 @auth_bp.route("/google")
@@ -314,9 +278,6 @@ async def google_callback():
     return await _full_login(user_id)
 
 
-# ── GitHub OAuth ──────────────────────────────────────────────────────────────
-
-
 @auth_bp.route("/github")
 async def github_login():
     state = await create_oauth_state("github", "login")
@@ -351,9 +312,6 @@ async def github_callback():
     return await _full_login(user_id)
 
 
-# ── 2FA verify (mid-login) ────────────────────────────────────────────────────
-
-
 @auth_bp.route("/2fa/verify", methods=["GET", "POST"])
 async def verify_2fa_view():
     token = request.cookies.get(PENDING_2FA_COOKIE, "")
@@ -379,9 +337,6 @@ async def verify_2fa_view():
     return render_template("auth/2fa/verify.html", error=error)
 
 
-# ── 2FA setup (settings) ─────────────────────────────────────────────────────
-
-
 @auth_bp.route("/2fa/setup", methods=["GET", "POST"])
 @login_required
 async def setup_2fa():
@@ -402,15 +357,11 @@ async def setup_2fa():
             from app.features.auth.totp import qr_base64
 
             qr = qr_base64(secret, user["email"])
-            return render_template(
-                "auth/2fa/setup.html", secret=secret, qr=qr, error=error
-            )
+            return render_template("auth/2fa/setup.html", secret=secret, qr=qr, error=error)
         return render_template("auth/2fa/backup_codes.html", codes=plain_codes)
 
     secret, qr = await begin_totp_setup(g.user_id)
-    return render_template(
-        "auth/2fa/setup.html", secret=secret, qr=qr, error=None
-    )
+    return render_template("auth/2fa/setup.html", secret=secret, qr=qr, error=None)
 
 
 @auth_bp.route("/2fa/disable", methods=["POST"])
@@ -419,8 +370,13 @@ async def disable_2fa():
     form = request.form
     code = form.get("code", "").strip()
     if not code:
-        return redirect(url_for("auth.settings_connections", tab="security",
-                                error="Enter your authenticator code to disable 2FA."))
+        return redirect(
+            url_for(
+                "auth.settings_connections",
+                tab="security",
+                error="Enter your authenticator code to disable 2FA.",
+            )
+        )
     try:
         await verify_2fa(g.user_id, code)
     except AuthError as exc:
@@ -429,18 +385,10 @@ async def disable_2fa():
     return redirect(url_for("auth.settings_connections", tab="security"))
 
 
-# ── Account settings (profile / security / connections) ─────────────────────
-
-
 @auth_bp.route("/settings")
 @login_required
 async def settings_connections():
-    """One settings page for every user (regular members and system admins
-    alike) - Profile / Security / Connections tabs. Endpoint name kept as
-    settings_connections (its original, connections-only scope) since every
-    redirect elsewhere in this file already references that name via
-    url_for() - renaming it would mean touching every one of those call
-    sites for no behavioral benefit."""
+    """One settings page for every user (regular members and system admins alike) - Profile / Security / Connections tabs."""
     user = await repository.get_user_by_id(g.user_id)
     accounts = await repository.get_accounts_by_user(g.user_id)
     two_factor = await repository.get_two_factor(g.user_id)
@@ -481,7 +429,9 @@ async def change_password_settings_view():
     new_pw = form.get("new_password", "")
     confirm = form.get("confirm_password", "")
     if new_pw != confirm:
-        return redirect(url_for("auth.settings_connections", tab="security", error="New passwords do not match."))
+        return redirect(
+            url_for("auth.settings_connections", tab="security", error="New passwords do not match.")
+        )
     try:
         await change_password(g.user_id, current_password=current_pw, new_password=new_pw)
     except AuthError as exc:

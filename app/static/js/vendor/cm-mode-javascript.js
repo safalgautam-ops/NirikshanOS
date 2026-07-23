@@ -1,12 +1,10 @@
-// CodeMirror, copyright (c) by Marijn Haverbeke and others
-// Distributed under an MIT license: https://codemirror.net/5/LICENSE
 
 (function(mod) {
-  if (typeof exports == "object" && typeof module == "object") // CommonJS
+  if (typeof exports == "object" && typeof module == "object")
     mod(require("../../lib/codemirror"));
-  else if (typeof define == "function" && define.amd) // AMD
+  else if (typeof define == "function" && define.amd)
     define(["../../lib/codemirror"], mod);
-  else // Plain browser env
+  else
     mod(CodeMirror);
 })(function(CodeMirror) {
 "use strict";
@@ -19,8 +17,6 @@ CodeMirror.defineMode("javascript", function(config, parserConfig) {
   var trackScope = parserConfig.trackScope !== false
   var isTS = parserConfig.typescript;
   var wordRE = parserConfig.wordCharacters || /[\w$\xa1-\uffff]/;
-
-  // Tokenizer
 
   var keywords = function(){
     function kw(type) {return {type: type, style: "keyword"};}
@@ -56,8 +52,6 @@ CodeMirror.defineMode("javascript", function(config, parserConfig) {
     }
   }
 
-  // Used as scratch variables to communicate multiple values without
-  // consing up tons of objects.
   var type, content;
   function ret(tp, style, cont) {
     type = tp; content = cont;
@@ -175,19 +169,12 @@ CodeMirror.defineMode("javascript", function(config, parserConfig) {
   }
 
   var brackets = "([{}])";
-  // This is a crude lookahead trick to try and notice that we're
-  // parsing the argument patterns for a fat-arrow function before we
-  // actually hit the arrow token. It only works if the arrow is on
-  // the same line as the arguments and there's no strange noise
-  // (comments) in between. Fallback is to only notice when we hit the
-  // arrow, and not declare the arguments as locals for the arrow
-  // body.
   function findFatArrow(stream, state) {
     if (state.fatArrowAt) state.fatArrowAt = null;
     var arrow = stream.string.indexOf("=>", stream.start);
     if (arrow < 0) return;
 
-    if (isTS) { // Try to skip TypeScript return type declarations after the arguments
+    if (isTS) {
       var m = /:\s*(?:\w+(?:<[^>]*>|\[\])?|\{[^}]*\})\s*$/.exec(stream.string.slice(stream.start, arrow))
       if (m) arrow = m.index
     }
@@ -217,8 +204,6 @@ CodeMirror.defineMode("javascript", function(config, parserConfig) {
     if (sawSomething && !depth) state.fatArrowAt = pos;
   }
 
-  // Parser
-
   var atomicTypes = {"atom": true, "number": true, "variable": true, "string": true,
                      "regexp": true, "this": true, "import": true, "jsonld-keyword": true};
 
@@ -243,8 +228,6 @@ CodeMirror.defineMode("javascript", function(config, parserConfig) {
 
   function parseJS(state, style, type, content, stream) {
     var cc = state.cc;
-    // Communicate our context to the combinators.
-    // (Less wasteful than consing up a hundred closures on every call.)
     cx.state = state; cx.stream = stream; cx.marked = null, cx.cc = cc; cx.style = style;
 
     if (!state.lexical.hasOwnProperty("align"))
@@ -261,8 +244,6 @@ CodeMirror.defineMode("javascript", function(config, parserConfig) {
       }
     }
   }
-
-  // Combinator utils
 
   var cx = {state: null, column: null, marked: null, cc: null};
   function pass() {
@@ -282,7 +263,6 @@ CodeMirror.defineMode("javascript", function(config, parserConfig) {
     if (!trackScope) return
     if (state.context) {
       if (state.lexical.info == "var" && state.context && state.context.block) {
-        // FIXME function decls are also not block scoped
         var newContext = registerVarScoped(varname, state.context)
         if (newContext != null) {
           state.context = newContext
@@ -293,7 +273,6 @@ CodeMirror.defineMode("javascript", function(config, parserConfig) {
         return
       }
     }
-    // Fall through means this is global
     if (parserConfig.globalVars && !inList(varname, state.globalVars))
       state.globalVars = new Var(varname, state.globalVars)
   }
@@ -315,8 +294,6 @@ CodeMirror.defineMode("javascript", function(config, parserConfig) {
   function isModifier(name) {
     return name == "public" || name == "private" || name == "protected" || name == "abstract" || name == "readonly"
   }
-
-  // Combinators
 
   function Context(prev, vars, block) { this.prev = prev; this.vars = vars; this.block = block }
   function Var(name, next) { this.name = name; this.next = next }
@@ -527,7 +504,7 @@ CodeMirror.defineMode("javascript", function(config, parserConfig) {
     } else if (type == "variable" || cx.style == "keyword") {
       cx.marked = "property";
       if (value == "get" || value == "set") return cont(getterSetter);
-      var m // Work around fat-arrow-detection complication for detecting typescript typed arrow params
+      var m
       if (isTS && cx.state.fatArrowAt == cx.stream.start && (m = cx.stream.match(/^\s*:\s*/, false)))
         cx.state.fatArrowAt = cx.stream.pos + m[0].length
       return cont(afterprop);
@@ -760,7 +737,6 @@ CodeMirror.defineMode("javascript", function(config, parserConfig) {
     return pass(pattern, maybetype, maybeAssign);
   }
   function classExpression(type, value) {
-    // Class expressions may have an optional name.
     if (type == "variable") return className(type, value);
     return classNameAfter(type, value);
   }
@@ -861,8 +837,6 @@ CodeMirror.defineMode("javascript", function(config, parserConfig) {
       (state.lastType == "quasi" && /\{\s*$/.test(stream.string.slice(0, stream.pos - (backUp || 0))))
   }
 
-  // Interface
-
   return {
     startState: function(basecolumn) {
       var state = {
@@ -897,7 +871,6 @@ CodeMirror.defineMode("javascript", function(config, parserConfig) {
       if (state.tokenize == tokenComment || state.tokenize == tokenQuasi) return CodeMirror.Pass;
       if (state.tokenize != tokenBase) return 0;
       var firstChar = textAfter && textAfter.charAt(0), lexical = state.lexical, top
-      // Kludge to prevent 'maybelse' from blocking lexical scope pops
       if (!/^\s*else\b/.test(textAfter)) for (var i = state.cc.length - 1; i >= 0; --i) {
         var c = state.cc[i];
         if (c == poplex) lexical = lexical.prev;

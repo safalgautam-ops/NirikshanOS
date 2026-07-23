@@ -14,7 +14,6 @@ class OrganizationError(Exception):
     """A user-visible organization failure — safe to display directly."""
 
 
-# derive a unique slug column from the org name
 def slugify(name: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
 
@@ -52,9 +51,7 @@ async def get_organizations_page(*, search: str, status: str, verification: str 
     return result
 
 
-async def create_organization(
-    *, name: str, description: str, status: str, created_by: str
-) -> str:
+async def create_organization(*, name: str, description: str, status: str, created_by: str) -> str:
     name = name.strip()
     if not name:
         raise OrganizationError("Organization name is required.")
@@ -73,21 +70,14 @@ async def create_organization(
     return org_id
 
 
-async def update_organization(
-    org_id: str, *, name: str, description: str, status: str
-) -> None:
+async def update_organization(org_id: str, *, name: str, description: str, status: str) -> None:
     name = name.strip()
     if not name:
         raise OrganizationError("Organization name is required.")
-    await repository.update_organization(
-        org_id, name=name, description=description.strip(), status=status
-    )
+    await repository.update_organization(org_id, name=name, description=description.strip(), status=status)
 
 
 async def delete_organization(org_id: str) -> None:
-    # logo/document files aren't DB rows, so they don't cascade with the
-    # rest - clean them up here same as the org's own owner-delete path
-    # (app/features/onboarding/service.py).
     logo_path, document_paths = await repository.delete_organization(org_id)
     if logo_path:
         await storage.delete_file(logo_path)
@@ -96,10 +86,7 @@ async def delete_organization(org_id: str) -> None:
 
 
 async def add_documents(org_id: str, files: list[FileStorage]) -> None:
-    """Platform-admin document management - unlike the org's own self-service
-    upload (onboarding/service.py), this is never blocked by verification
-    status: an admin can add or remove documents at any point, before or
-    after approval."""
+    """Platform-admin document management - unlike the org's own self-service upload (onboarding/service.py), this is never blocked by verification status: an admin can add or remove documents at any point, before or after approval."""
     real_files = [file for file in files if file and file.filename]
     if not real_files:
         raise OrganizationError("Choose at least one file to upload.")

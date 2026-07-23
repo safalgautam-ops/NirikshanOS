@@ -1,13 +1,3 @@
-/**
- * Resumable S3 multipart evidence upload — drives the dropzone + file table
- * in cases/detail.html's "Upload evidence" dialog.
- *
- * Auto-wires itself on DOMContentLoaded using data attributes on the
- * [data-evidence-root] element:
- *   data-case-id="{{ case.id }}"
- *   data-csrf-token="{{ csrf_token() }}"
- *   data-just-created  (presence triggers auto-open of the upload dialog)
- */
 
 const EVIDENCE_MAX_FILES = 5;
 const MAX_CONCURRENT_PARTS = 4;
@@ -120,10 +110,6 @@ class EvidenceUpload {
     if (this.status !== "uploading") return;
     this._pauseRequested = true;
     for (const xhr of this._activeXhrs.values()) xhr.abort();
-    // Flip status immediately rather than waiting on xhr.onabort - onabort
-    // only fires if a part happened to be in flight at the moment of the
-    // click, so relying on it alone left the UI stuck showing "Uploading"
-    // (and no Resume button) whenever pause landed between chunks.
     this.status = "paused";
     this.onStatusChange(this);
     const form = new FormData();
@@ -131,9 +117,6 @@ class EvidenceUpload {
     fetch(`/cases/${this.caseId}/evidence/${this.evidenceId}/pause`, { method: "POST", body: form });
   }
 
-  // Shared by resume() (after a deliberate pause) and retry() (after a
-  // failure) - re-checks MinIO's actual received parts via /status and
-  // continues uploading only what's still missing.
   async _resyncAndContinue() {
     try {
       const res = await fetch(`/cases/${this.caseId}/evidence/${this.evidenceId}/status`);
@@ -164,12 +147,6 @@ class EvidenceUpload {
     await this._resyncAndContinue();
   }
 
-  // Retry after a network/transient failure. Distinct from resume(): the
-  // server was never told this upload was "paused" (a dropped connection
-  // doesn't call the /pause endpoint), so calling /resume here would be
-  // rejected server-side ("Only a paused upload can be resumed."). Once
-  // evidenceId exists, the same MinIO-backed /status check resume() uses
-  // is enough on its own to pick back up from wherever it actually stopped.
   async retry() {
     if (this.status !== "failed" || !this.evidenceId) return;
     this._pauseRequested = false;
@@ -233,9 +210,6 @@ class EvidenceUpload {
     xhr.onabort = () => {
       this._activeXhrs.delete(partNumber);
       this._inFlightCount -= 1;
-      // Status is already flipped to "paused" by pause() itself; this only
-      // needs to put the interrupted part back in the queue and correct
-      // the progress total once every in-flight part has unwound.
       if (this._pauseRequested) {
         this._partBytesDone.set(partNumber, 0);
         this._pendingParts.push(partNumber);
@@ -461,7 +435,6 @@ function initEvidenceUpload({ caseId, csrfToken }) {
   refreshPersistedEvidence();
 }
 
-// Auto-wire on DOMContentLoaded using data attributes instead of an inline script.
 document.addEventListener("DOMContentLoaded", () => {
   const root = document.querySelector("[data-evidence-root]");
   if (!root) return;
@@ -472,7 +445,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
   initEvidenceUpload({ caseId, csrfToken });
 
-  // Auto-open the upload dialog when the case was just created.
   if ("justCreated" in root.dataset) {
     const dialog = document.getElementById("upload-evidence-dialog");
     if (dialog) {

@@ -7,7 +7,7 @@ import hashlib
 try:
     from asyncmy.errors import IntegrityError as _IntegrityError
 except ImportError:
-    _IntegrityError = Exception  # type: ignore[misc,assignment]
+    _IntegrityError = Exception
 
 from app.core.db.orm import db
 from app.core.utils.ids import new_id
@@ -16,8 +16,6 @@ from app.core.utils.ids import new_id
 def _indicator_hash(case_id: str, ioc_type: str, value: str) -> str:
     return hashlib.sha256(f"{case_id}|{ioc_type}|{value}".encode()).hexdigest()
 
-
-# ── Findings ─────────────────────────────────────────────────────────────────
 
 async def create_finding(
     *,
@@ -33,19 +31,21 @@ async def create_finding(
     source_module: str | None,
 ) -> str:
     finding_id = new_id()
-    await db.table("case_findings").create({
-        "id": finding_id,
-        "case_id": case_id,
-        "evidence_id": evidence_id,
-        "module_id": module_id,
-        "author_id": author_id,
-        "title": title,
-        "description": description,
-        "severity": severity,
-        "confidence": confidence,
-        "source_evidence": source_evidence,
-        "source_module": source_module,
-    })
+    await db.table("case_findings").create(
+        {
+            "id": finding_id,
+            "case_id": case_id,
+            "evidence_id": evidence_id,
+            "module_id": module_id,
+            "author_id": author_id,
+            "title": title,
+            "description": description,
+            "severity": severity,
+            "confidence": confidence,
+            "source_evidence": source_evidence,
+            "source_module": source_module,
+        }
+    )
     return finding_id
 
 
@@ -67,8 +67,6 @@ async def mark_finding_included(case_id: str, finding_id: str) -> int:
     )
 
 
-# ── Indicators ────────────────────────────────────────────────────────────────
-
 async def create_indicator(
     *,
     case_id: str,
@@ -82,36 +80,29 @@ async def create_indicator(
     source_evidence: str | None,
     source_module: str | None,
 ) -> str | None:
-    """Returns the new indicator ID, or None if the (case, type, value) already exists.
-
-    Handles concurrent duplicate inserts safely: the DB UNIQUE constraint is the
-    authoritative dedup guard; the pre-check is a fast-path only. An IntegrityError
-    from a race is treated the same as finding an existing row.
-    """
+    """Returns the new indicator ID, or None if the (case, type, value) already exists."""
     value_hash = _indicator_hash(case_id, ioc_type, value)
-    existing = await (
-        db.table("case_indicators")
-        .where("value_hash", value_hash)
-        .first()
-    )
+    existing = await db.table("case_indicators").where("value_hash", value_hash).first()
     if existing:
         return None
     indicator_id = new_id()
     try:
-        await db.table("case_indicators").create({
-            "id": indicator_id,
-            "case_id": case_id,
-            "evidence_id": evidence_id,
-            "module_id": module_id,
-            "author_id": author_id,
-            "ioc_type": ioc_type,
-            "value": value,
-            "value_hash": value_hash,
-            "severity": severity,
-            "confidence": confidence,
-            "source_evidence": source_evidence,
-            "source_module": source_module,
-        })
+        await db.table("case_indicators").create(
+            {
+                "id": indicator_id,
+                "case_id": case_id,
+                "evidence_id": evidence_id,
+                "module_id": module_id,
+                "author_id": author_id,
+                "ioc_type": ioc_type,
+                "value": value,
+                "value_hash": value_hash,
+                "severity": severity,
+                "confidence": confidence,
+                "source_evidence": source_evidence,
+                "source_module": source_module,
+            }
+        )
     except _IntegrityError:
         return None
     return indicator_id

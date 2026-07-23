@@ -1,16 +1,4 @@
-"""DB access for dashboard widgets - platform-wide (admin) aggregates.
-
-Every query here pulls only the columns a widget needs and aggregates in
-Python (Counter/manual grouping) rather than SQL GROUP BY/SUM: the query
-builder's select() quotes every entry as a plain identifier (see
-orm.py's _quote_column), so it can't safely carry aggregate expressions
-like COUNT(*)/SUM(...), and this platform's data volumes are small enough
-that pulling raw rows and summing in Python is not a real cost.
-
-Org-scoped widgets (members, cases, subscriptions) reuse each owning
-feature's own repository instead of duplicating queries here - see
-dashboard/service.py.
-"""
+"""DB access for dashboard widgets - platform-wide (admin) aggregates."""
 
 from __future__ import annotations
 
@@ -32,8 +20,7 @@ async def count_active_subscriptions() -> int:
 
 
 async def list_completed_transaction_amounts() -> list[dict]:
-    """created_at + total_amount for every completed payment - enough to
-    compute both the all-time revenue total and a monthly trend."""
+    """created_at + total_amount for every completed payment - enough to compute both the all-time revenue total and a monthly trend."""
     return await (
         db.table("payment_transactions")
         .where("status", "completed")
@@ -44,10 +31,7 @@ async def list_completed_transaction_amounts() -> list[dict]:
 
 async def list_session_created_dates(since) -> list[dict]:
     return await (
-        db.table("session")
-        .where("createdAt", since, ">=")
-        .select("createdAt")
-        .all(allow_full_table=True)
+        db.table("session").where("createdAt", since, ">=").select("createdAt").all(allow_full_table=True)
     )
 
 

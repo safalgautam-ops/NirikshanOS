@@ -1,4 +1,5 @@
 """Plans business logic — subscription assignment and Redis-cached access checks."""
+
 from __future__ import annotations
 
 import json
@@ -6,14 +7,9 @@ import json
 from app.extensions import get_redis
 from app.features.plans import repository
 
-# Canonical tier order — matches the `tier` column in analysis_module_defs.
-# Plans declare which of these tiers their subscribers may access. Maps
-# 1:1 onto the light/medium/heavy/full container classes (see
-# app/features/instances) - a module's tier is what decides which class of
-# container it needs to run in, independent of its display Category.
 KNOWN_TIERS: list[str] = ["basic", "core_forensics", "specialized_forensics", "enterprise"]
 
-_SUB_CACHE_TTL = 300  # 5 minutes — acceptable lag for admin plan changes
+_SUB_CACHE_TTL = 300
 
 
 async def get_active_subscription(org_id: str) -> dict | None:
@@ -35,19 +31,15 @@ async def invalidate_subscription_cache(org_id: str) -> None:
 
 
 async def _build_plan_snapshot(plan: dict) -> dict:
-    """Snapshot the full plan as of right now — immutable once written into a
-    subscription. If the plan is later edited or deleted, this org's access
-    stays as-was until ends_at (grandfathering). allowed_instance_ids follows
-    the same grandfathering rule as allowed_tiers: resolved once, from the
-    live plan_instances join table."""
+    """Snapshot the full plan as of right now — immutable once written into a subscription."""
     return {
-        "id":                  plan["id"],
-        "display_name":        plan["display_name"],
-        "resources":           plan["resources"],
-        "allowed_tiers":       plan["allowed_tiers"],
+        "id": plan["id"],
+        "display_name": plan["display_name"],
+        "resources": plan["resources"],
+        "allowed_tiers": plan["allowed_tiers"],
         "allowed_instance_ids": await repository.get_instance_ids_for_plan(plan["id"]),
-        "price_monthly":       str(plan["price_monthly"]),
-        "price_annual":        str(plan["price_annual"]),
+        "price_monthly": str(plan["price_monthly"]),
+        "price_annual": str(plan["price_annual"]),
     }
 
 
@@ -64,7 +56,6 @@ async def assign_plan(
     if plan is None:
         raise ValueError(f"Plan '{plan_id}' not found.")
 
-    # Cancel any existing active subscription before creating the new one.
     existing = await repository.get_active_subscription_db(org_id)
     if existing:
         await repository.cancel_subscription(existing["id"])
@@ -85,13 +76,7 @@ async def assign_plan(
 
 
 async def refresh_subscription_snapshot(sub_id: str, *, org_id: str, plan_id: str) -> None:
-    """Rebuild one subscription's plan_snapshot from the plan's current,
-    live definition. For repairing a subscription whose snapshot predates a
-    tier/instance vocabulary migration — plan_snapshot is normally immutable
-    by design (grandfathering against routine admin edits), but a renamed
-    vocabulary makes the old snapshot reference tiers that don't exist
-    anywhere else in the system anymore, which isn't a case grandfathering
-    is meant to protect."""
+    """Rebuild one subscription's plan_snapshot from the plan's current, live definition."""
     plan = await repository.get_plan(plan_id)
     if plan is None:
         raise ValueError(f"Plan '{plan_id}' not found.")
@@ -116,26 +101,14 @@ def get_allowed_tiers(sub: dict | None) -> list[str]:
 
 
 def get_highest_allowed_tier(sub: dict | None) -> str:
-    """The single highest tier a subscription grants, ranked by KNOWN_TIERS
-    order — not by position in the allowed_tiers array. That array is built
-    by admins toggling checkboxes in whatever order they click them (see
-    admin/plans-list.js toggleTier(), a plain push/splice), so its last
-    element is not reliably the highest tier. Any tier name not recognized
-    in KNOWN_TIERS (e.g. a pre-migration snapshot using a retired tier
-    vocabulary) is ignored rather than allowed to rank as "highest"."""
+    """The single highest tier a subscription grants, ranked by KNOWN_TIERS order — not by position in the allowed_tiers array."""
     tiers = get_allowed_tiers(sub)
     ranked = [t for t in KNOWN_TIERS if t in tiers]
     return ranked[-1] if ranked else "basic"
 
 
 def get_allowed_instance_ids(sub: dict | None) -> list[str]:
-    """Return the granted instance_id list from a subscription snapshot.
-
-    No subscription at all means no instance is granted — unlike tiers
-    (which default to "basic"), there's no sensible instance to fall back
-    to; an org with no active plan simply cannot run anything until one is
-    assigned.
-    """
+    """Return the granted instance_id list from a subscription snapshot."""
     if sub is None:
         return []
     snapshot = sub.get("plan_snapshot") or {}

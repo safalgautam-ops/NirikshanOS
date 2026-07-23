@@ -1,14 +1,4 @@
-"""Analysis worker — real execution via docker_runner.
-
-For each job_id popped from Redis:
-  1. Load job + tasks from DB.
-  2. Mark job + tasks as 'running'.
-  3. Download evidence from MinIO to local workspace.
-  4. Build RunConfig from DB job data.
-  5. Call docker_runner.run_container() — starts the analyzer container.
-  6. Read /output/result.json produced by run_analysis.py inside the container.
-  7. Update per-task and job status from result.json.
-"""
+"""Analysis worker — real execution via docker_runner."""
 
 import asyncio
 import json
@@ -30,30 +20,18 @@ from workers.analyzers.docker_runner import RunConfig, run_container
 
 QUEUES = ["light_queue", "medium_queue", "heavy_queue", "full_queue"]
 
-# Not one of the 4 analysis job queues — a separate lane for "is this image
-# actually built on the host?" checks, pushed to by the admin Instances page's
-# Recheck button (see app/features/instances/routes.py). Only the worker
-# container has Docker access, so this is the only place that can answer.
 INSTANCE_CHECK_QUEUE_KEY = "nirikshan:instance_check_queue"
 
-# Ad-hoc IDE "Test" runs (see app/features/admin_modules/routes.py's
-# test_run_view) — no case/evidence involved, so these don't belong in the
-# 4 analysis job queues either.
 TEST_QUEUE_KEY = "nirikshan:test_queue"
 
 
-def _build_module_entry(module_id: str, module_name: str, options: dict, db_mod: dict, files: list[dict]) -> dict:
-    """Convert a DB-managed module (admin_modules) into the execution_spec
-    shape run_analysis.py dispatches via registry.dispatch_spec() →
-    loader.run_yaml_module(). Shared by real case/evidence jobs and ad-hoc
-    IDE test runs so both paths execute a module identically."""
+def _build_module_entry(
+    module_id: str, module_name: str, options: dict, db_mod: dict, files: list[dict]
+) -> dict:
+    """Convert a DB-managed module (admin_modules) into the execution_spec shape run_analysis.py dispatches via registry.dispatch_spec() → loader.run_yaml_module()."""
     entry: dict = {"id": module_id, "name": module_name, "options": options}
     pipeline_spec = db_mod.get("pipeline_spec")
     if pipeline_spec:
-        # A module authored via the IDE's Pipeline tab — a multi-step chain
-        # entirely replaces the single entry-point file for this run.
-        # pipeline_spec is already {"steps": [...]} shaped exactly like
-        # loader.py's steps: contract expects.
         try:
             spec = json.loads(pipeline_spec) if isinstance(pipeline_spec, str) else pipeline_spec
             spec["id"] = module_id
@@ -63,8 +41,8 @@ def _build_module_entry(module_id: str, module_name: str, options: dict, db_mod:
     elif files:
         entry_file = next((f for f in files if f["is_entry_point"]), files[0])
         filename = entry_file["filename"]
-        content  = entry_file["content"] or ""
-        ext      = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+        content = entry_file["content"] or ""
+        ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
 
         if ext in ("yaml", "yml"):
             try:
@@ -74,13 +52,8 @@ def _build_module_entry(module_id: str, module_name: str, options: dict, db_mod:
             except Exception as exc:
                 print(f"[worker] failed to parse YAML entry point for {module_id}: {exc}")
         else:
-            # Python (or any other text file): run as embedded script.
-            # The container's exec namespace provides: options, output_dir,
-            # stdout_path, stderr_path, run_cmd, read_file, Path.
-            # The script may set `result`; if not, a default success/fail is
-            # built from whether stdout_path was written.
             entry["execution_spec"] = {
-                "id":     module_id,
+                "id": module_id,
                 "script": content,
             }
     return entry
@@ -100,7 +73,6 @@ async def _process_job(job_id: str) -> None:
         await repository.update_task_status(task["id"], "running")
     running_task_ids = [t["id"] for t in tasks]
 
-    # Fetch evidence row to get the MinIO s3_key.
     evidence = await get_evidence(job["evidence_id"])
     if not evidence or not evidence.get("s3_key"):
         error_msg = "Evidence not found or not uploaded to storage"
@@ -112,7 +84,6 @@ async def _process_job(job_id: str) -> None:
                 pass
         return
 
-    # Download evidence from MinIO to local path for docker bind mount.
     local_evidence = Path(Config.JOBS_DIR) / job_id / "input" / "evidence"
     print(f"[worker] downloading evidence s3_key={evidence['s3_key']}")
     await download_object(
@@ -121,7 +92,6 @@ async def _process_job(job_id: str) -> None:
         local_path=str(local_evidence),
     )
 
-    # Load each module's DB row + files once.
     _module_defs: dict[str, dict] = {}
     _module_files: dict[str, list[dict]] = {}
     for t in tasks:
@@ -130,7 +100,6 @@ async def _process_job(job_id: str) -> None:
             _module_defs[t["module_id"]] = db_mod
             _module_files[t["module_id"]] = await module_defs_repo.list_files(t["module_id"])
 
-    # Build modules list for job_config.json — one execution_spec per task.
     modules_list = []
     for t in tasks:
         options: dict = {}
@@ -144,8 +113,7 @@ async def _process_job(job_id: str) -> None:
         modules_list.append(_build_module_entry(t["module_id"], t["module_name"], options, db_mod, files))
 
     timeout = max(
-        (_module_defs[m["id"]]["timeout_seconds"] if m["id"] in _module_defs else 120
-         for m in modules_list),
+        (_module_defs[m["id"]]["timeout_seconds"] if m["id"] in _module_defs else 120 for m in modules_list),
         default=120,
     )
 
@@ -161,16 +129,12 @@ async def _process_job(job_id: str) -> None:
     result = await run_container(config)
     print(f"[worker] container done exit_code={result.exit_code} time={result.execution_time:.1f}s")
 
-    # Read result.json the entrypoint wrote to /output.
-    # A missing result.json after exit_code=0 means the image does not implement
-    # the NirikshanOS contract (e.g. python:3.11-slim has no entrypoint that
-    # writes it). Treat that as a hard failure so the UI doesn't show false success.
     module_statuses: dict = {}
     result_json = Path(result.output_dir) / "result.json"
     result_json_missing = not result_json.exists()
     if result_json_missing:
         if result.exit_code == 0:
-            print(f"[worker] result.json not written by container — treating as failure")
+            print("[worker] result.json not written by container — treating as failure")
             result = result.__class__(
                 exit_code=-1,
                 stdout_path=result.stdout_path,
@@ -184,7 +148,6 @@ async def _process_job(job_id: str) -> None:
         try:
             parsed_json = json.loads(result_json.read_text())
             module_statuses = parsed_json.get("modules", {})
-            # "partial" means some modules failed; surface that at the job level.
             if parsed_json.get("status") == "partial" and not result.error_message:
                 result = result.__class__(
                     exit_code=result.exit_code,
@@ -198,28 +161,19 @@ async def _process_job(job_id: str) -> None:
         except Exception as e:
             print(f"[worker] could not parse result.json: {e}")
 
-    # Update per-task status and parse + save results.
     for task in tasks:
         entry = module_statuses.get(task["module_id"], {})
         status = entry.get("status", "")
         if status == "success":
             await repository.update_task_status(task["id"], "completed")
         elif status in ("failed", "skipped"):
-            await repository.update_task_status(
-                task["id"], "failed", error_message=entry.get("error")
-            )
+            await repository.update_task_status(task["id"], "failed", error_message=entry.get("error"))
         else:
-            # No entry in result.json for this module (missing result.json, or
-            # module not listed). Use container exit code as the best signal.
             if result.exit_code == 0 and not result_json_missing:
                 await repository.update_task_status(task["id"], "completed")
             else:
-                await repository.update_task_status(
-                    task["id"], "failed", error_message=result.error_message
-                )
+                await repository.update_task_status(task["id"], "failed", error_message=result.error_message)
 
-        # Save raw output paths so the UI can display stdout/stderr directly.
-        # No parsing — the Result Canvas reads the files as-is.
         safe_module = task["module_id"].replace(".", "_").replace("/", "_")
         stdout_path = str(Path(result.output_dir) / f"{safe_module}.txt")
         stderr_path = str(Path(result.output_dir) / f"{safe_module}.stderr.txt")
@@ -240,8 +194,6 @@ async def _process_job(job_id: str) -> None:
         except Exception as e:
             print(f"[worker] could not save result for task={task['id']}: {e}")
 
-    # Update job status. "partial" surfaces to the UI as failed-with-reason so
-    # analysts are not misled by a green "completed" on a job that had module failures.
     if result.error_message:
         await repository.update_job_status(job_id, "failed", error_message=result.error_message)
     else:
@@ -251,10 +203,7 @@ async def _process_job(job_id: str) -> None:
 
 
 async def _process_test_run(run_id: str) -> None:
-    """Ad-hoc IDE 'Test' run — no case, no evidence row, just a sample file
-    uploaded straight from the Test dialog. Reuses the exact same
-    _build_module_entry / docker_runner.run_container path a real job takes,
-    so a passing test is a real signal, not a simulation."""
+    """Ad-hoc IDE 'Test' run — no case, no evidence row, just a sample file uploaded straight from the Test dialog."""
     run = await module_defs_repo.get_test_run(run_id)
     if run is None:
         print(f"[worker] test run {run_id} not found in DB — skipping")
@@ -265,12 +214,16 @@ async def _process_test_run(run_id: str) -> None:
 
     db_mod = await module_defs_repo.get_module(module_id)
     if not db_mod:
-        await module_defs_repo.update_test_run_status(run_id, "failed", error_message="Module no longer exists")
+        await module_defs_repo.update_test_run_status(
+            run_id, "failed", error_message="Module no longer exists"
+        )
         return
 
     instance = await instances_repo.get_instance(run["instance_id"])
     if not instance:
-        await module_defs_repo.update_test_run_status(run_id, "failed", error_message="Instance no longer exists")
+        await module_defs_repo.update_test_run_status(
+            run_id, "failed", error_message="Instance no longer exists"
+        )
         return
 
     files = await module_defs_repo.list_files(module_id)
@@ -296,7 +249,9 @@ async def _process_test_run(run_id: str) -> None:
 
     print(f"[worker] test run={run_id} running container image={config.runtime_image}")
     result = await run_container(config)
-    print(f"[worker] test run={run_id} container done exit_code={result.exit_code} time={result.execution_time:.1f}s")
+    print(
+        f"[worker] test run={run_id} container done exit_code={result.exit_code} time={result.execution_time:.1f}s"
+    )
 
     result_json_path = Path(result.output_dir) / "result.json"
     module_entry: dict = {}
@@ -316,17 +271,18 @@ async def _process_test_run(run_id: str) -> None:
         return text if len(text) <= cap else text[:cap] + "\n...[truncated]"
 
     output = {
-        "status":      module_entry.get("status") or ("success" if result.exit_code == 0 else "failed"),
-        "stdout":      _read_capped(module_entry.get("stdout_file")),
-        "stderr":      _read_capped(module_entry.get("stderr_file")),
-        "steps":       module_entry.get("steps"),
-        "exit_code":   result.exit_code,
+        "status": module_entry.get("status") or ("success" if result.exit_code == 0 else "failed"),
+        "stdout": _read_capped(module_entry.get("stdout_file")),
+        "stderr": _read_capped(module_entry.get("stderr_file")),
+        "steps": module_entry.get("steps"),
+        "exit_code": result.exit_code,
         "execution_time": round(result.execution_time, 2),
     }
 
     if result.error_message or output["status"] == "failed":
         await module_defs_repo.update_test_run_status(
-            run_id, "failed",
+            run_id,
+            "failed",
             error_message=result.error_message or module_entry.get("error") or "Module reported failure",
             result_json=json.dumps(output),
         )
@@ -337,8 +293,7 @@ async def _process_test_run(run_id: str) -> None:
 
 
 async def _mark_running_tasks_failed(job_id: str, error: str) -> None:
-    """Best-effort: find any tasks still in 'running' for job_id and mark them failed.
-    Called when an unexpected exception escapes _process_job so tasks don't stay stuck."""
+    """Best-effort: find any tasks still in 'running' for job_id and mark them failed."""
     try:
         tasks = await repository.list_tasks_for_job(job_id)
         for task in tasks:
@@ -352,16 +307,15 @@ async def _mark_running_tasks_failed(job_id: str, error: str) -> None:
 
 
 async def _check_instance_image(instance_id: str) -> None:
-    """`docker image inspect <tag>` — the only reliable way to know if an
-    admin-registered instance's image actually exists on the host. Only the
-    worker container has the Docker socket, so this check can't live in the
-    web process; the admin Instances page's Recheck button pushes here via
-    INSTANCE_CHECK_QUEUE_KEY instead of calling Docker directly."""
+    """`docker image inspect <tag>` — the only reliable way to know if an admin-registered instance's image actually exists on the host."""
     instance = await instances_repo.get_instance(instance_id)
     if instance is None:
         return
     proc = await asyncio.create_subprocess_exec(
-        "docker", "image", "inspect", instance["image_tag"],
+        "docker",
+        "image",
+        "inspect",
+        instance["image_tag"],
         stdout=asyncio.subprocess.DEVNULL,
         stderr=asyncio.subprocess.DEVNULL,
     )
@@ -372,9 +326,7 @@ async def _check_instance_image(instance_id: str) -> None:
 
 
 async def _check_all_instances() -> None:
-    """One pass over every registered instance at worker startup, so the
-    admin Instances page shows real status without needing a manual Recheck
-    click for the common case of "worker just started, images already built"."""
+    """One pass over every registered instance at worker startup, so the admin Instances page shows real status without needing a manual Recheck click for the common case of "worker just started, images already built"."""
     instances = await instances_repo.list_instances()
     for instance in instances:
         try:

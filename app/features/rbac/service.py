@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from itertools import groupby  # for grouping permissions
+from itertools import groupby
 
-from app.core.security.permissions import NAV_KEYS  # single source of truth
+from app.core.security.permissions import NAV_KEYS
 from app.features.rbac import repository
 
 
@@ -13,38 +13,25 @@ class RBACError(Exception):
 
 
 async def get_roles_page(*, search: str, page: int):
-    result = await repository.list_roles(
-        search=search, page=page
-    )  # get roles from the repository
-    counts = await repository.get_member_counts(
-        [r["id"] for r in result.items]
-    )  # get member counts for the roles
+    result = await repository.list_roles(search=search, page=page)
+    counts = await repository.get_member_counts([r["id"] for r in result.items])
     for role in result.items:
-        role["member_count"] = counts.get(
-            role["id"], 0
-        )  # use the counts to set the member count, otherwise 0
+        role["member_count"] = counts.get(role["id"], 0)
     return result
 
 
-# creating roles
 async def create_role(name: str) -> str:
     name = name.strip() or "New role"
     return await repository.create_role(name=name)
 
 
-# editing roles
-async def update_role_display(
-    role_id: str, *, name: str, description: str, color: str
-) -> None:
+async def update_role_display(role_id: str, *, name: str, description: str, color: str) -> None:
     name = name.strip()
     if not name:
         raise RBACError("Role name is required.")
-    await repository.update_role_display(
-        role_id, name=name, description=description.strip(), color=color
-    )
+    await repository.update_role_display(role_id, name=name, description=description.strip(), color=color)
 
 
-# security concern: blocking assignment to system roles
 async def toggle_assignable(role_id: str) -> None:
     role = await repository.get_role(role_id)
     if not role:
@@ -54,7 +41,6 @@ async def toggle_assignable(role_id: str) -> None:
     await repository.set_assignable(role_id, not role["is_assignable"])
 
 
-# security concern: deleting system roles
 async def delete_role(role_id: str) -> None:
     role = await repository.get_role(role_id)
     if not role:
@@ -80,21 +66,11 @@ If not sorted, groupby may not group items correctly because it only looks at th
 """
 
 
-# grouping permissions by category for the UI
 async def get_permissions_grouped() -> list[tuple[str, list]]:
     """[(category, [permission, ...]), ...] — ready for the Permissions tab."""
-    # takes a flat list of permissions and groups them by category, ready for the permission tab to render
     permissions = await repository.get_all_permissions()
     return [
         (category or "Other", list(group))
-        # groups consecutive items with the same key (category)
-        # permissions come back from the repository already sorted by category
-        # Users    – view
-        # Users    – edit
-        # Billing  – view
-        # Billing  – refund
-        # ("Users",   [view, edit])
-        # ("Billing", [view, refund])
         for category, group in groupby(permissions, key=lambda p: p["category"])
     ]
 

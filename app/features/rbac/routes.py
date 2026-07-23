@@ -155,6 +155,4 @@ async def delete_view(role_id: str):
 async def search_members(role_id: str):
     search = request.args.get("q", "").strip()
     users = await repository.search_assignable_users(role_id, search)
-    return render_template(
-        "admin/rbac/_member_options.html", users=users, role_id=role_id
-    )
+    return render_template("admin/rbac/_member_options.html", users=users, role_id=role_id)

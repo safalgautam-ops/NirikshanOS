@@ -11,14 +11,8 @@ async def get_case_note(case_id: str) -> dict | None:
 
 
 async def upsert_case_note(case_id: str, content: str, editor_user_id: str) -> None:
-    # last_edited_by_member / edited_by_member FK references case_members.id (the membership
-    # row), not user.id. Look it up; fall back to None if the user isn't a direct member
-    # (e.g. org owner accessing via is_owner path).
     membership = await (
-        db.table("case_members")
-        .where("case_id", case_id)
-        .where("user_id", editor_user_id)
-        .first()
+        db.table("case_members").where("case_id", case_id).where("user_id", editor_user_id).first()
     )
     member_id = membership["id"] if membership else None
 

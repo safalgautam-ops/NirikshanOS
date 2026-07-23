@@ -1,7 +1,4 @@
-"""Case business logic: field validation, member management, and the
-row-level visibility rule (org owner, or the case's creator, or anyone
-added as a case member - see app/features/cases/repository.py for the
-queries this is built on)."""
+"""Case business logic: field validation, member management, and the row-level visibility rule (org owner, or the case's creator, or anyone added as a case member - see app/features/cases/repository.py for the queries this is built on)."""
 
 from __future__ import annotations
 
@@ -37,19 +34,14 @@ def _validate_fields(
 
 
 async def can_access_case(case, user_id: str, *, owner_org_id: str | None) -> bool:
-    """owner_org_id is the specific organization the caller owns (or None) -
-    never a bare "is this user an owner of *something*" bool. Ownership only
-    grants access to cases inside that same organization; a person who owns
-    a different org is just an ordinary outsider to this one."""
+    """owner_org_id is the specific organization the caller owns (or None) - never a bare "is this user an owner of *something*" bool."""
     if owner_org_id == case["organization_id"] or case["created_by"] == user_id:
         return True
     return await repository.is_case_member(case["id"], user_id)
 
 
 async def get_case_for_user(case_id: str, user_id: str, *, owner_org_id: str | None):
-    """The case row if this user may view it, else None. Callers should turn
-    None into a 404 (not 403) so a non-member can't confirm a case id exists
-    just by guessing it."""
+    """The case row if this user may view it, else None."""
     case = await repository.get_case(case_id)
     if not case:
         return None
@@ -58,7 +50,9 @@ async def get_case_for_user(case_id: str, user_id: str, *, owner_org_id: str | N
     return case
 
 
-async def list_cases_for_user(organization_id: str, user_id: str, *, is_owner: bool, limit: int | None = None):
+async def list_cases_for_user(
+    organization_id: str, user_id: str, *, is_owner: bool, limit: int | None = None
+):
     if is_owner:
         return await repository.list_org_cases(organization_id, limit=limit)
     return await repository.list_member_cases(organization_id, user_id, limit=limit)
@@ -76,8 +70,11 @@ async def create_case(
     member_ids: list[str],
 ) -> str:
     title = _validate_fields(
-        title=title, classification=classification, severity=severity,
-        forensic_status=forensic_status, status="open",
+        title=title,
+        classification=classification,
+        severity=severity,
+        forensic_status=forensic_status,
+        status="open",
     )
     case_id = await repository.create_case(
         organization_id=organization_id,
@@ -106,8 +103,11 @@ async def update_case(
     status: str,
 ) -> None:
     title = _validate_fields(
-        title=title, classification=classification, severity=severity,
-        forensic_status=forensic_status, status=status,
+        title=title,
+        classification=classification,
+        severity=severity,
+        forensic_status=forensic_status,
+        status=status,
     )
     await repository.update_case(
         case_id,
@@ -139,11 +139,7 @@ async def add_member(case_id: str, user_id: str, *, added_by: str) -> None:
 
 
 async def remove_member(case_id: str, user_id: str, *, requested_by: str, is_owner: bool) -> None:
-    """Removing a member is something a manager does to them, not a
-    self-service "quit" action - a regular member holding CASE_EDIT (needed
-    to manage *other* members) shouldn't be able to turn that same control
-    on themselves. The org owner is exempt, same "owner is above every
-    other rule" guarantee used everywhere else (see is_org_owner)."""
+    """Removing a member is something a manager does to them, not a self-service "quit" action - a regular member holding CASE_EDIT (needed to manage *other* members) shouldn't be able to turn that same control on themselves."""
     if user_id == requested_by and not is_owner:
         raise CaseError("You can't remove yourself from a case - ask the case owner or a manager.")
     await repository.remove_member(case_id, user_id)
