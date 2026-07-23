@@ -1,13 +1,4 @@
-"""Evidence business logic: S3 multipart upload lifecycle (init, part-URL
-issuance, resume-state via ListParts, finalize) plus pause/resume/cancel -
-the pieces behind the file table's progress/pause/play/delete actions.
-
-MinIO is the source of truth for "which parts have arrived" - there's no
-parallel DB ledger to keep in sync (see app/core/object_storage.list_parts).
-Pausing/resuming never touches MinIO at all: the multipart session simply
-sits open until finalized or aborted, so these two are pure DB/UI state for
-the audit trail, not upload-protocol operations.
-"""
+"""Evidence business logic: S3 multipart upload lifecycle (init, part-URL issuance, resume-state via ListParts, finalize) plus pause/resume/cancel - the pieces behind the file table's progress/pause/play/delete actions."""
 
 from __future__ import annotations
 
@@ -22,9 +13,6 @@ from app.core.utils.ids import new_id
 from app.features.audit import service as audit_service
 from app.features.evidence import repository
 
-# S3/MinIO requires every part except the last to be at least 5MB - this
-# default is well above that and keeps a multi-GB evidence file from
-# needing thousands of parts.
 DEFAULT_PART_SIZE = 32 * 1024 * 1024
 
 _BUCKET = Config.MINIO_BUCKET_PRIVATE
@@ -57,9 +45,7 @@ async def init_upload(*, case_id: str, filename: str, size_bytes: int, uploaded_
     total_parts = math.ceil(size_bytes / DEFAULT_PART_SIZE)
     extension = _extension(filename)
     s3_key = f"evidence/{case_id}/{new_id()}{f'.{extension}' if extension else ''}"
-    upload_id = await object_storage.create_multipart_upload(
-        _BUCKET, s3_key, _guess_mime_type(extension)
-    )
+    upload_id = await object_storage.create_multipart_upload(_BUCKET, s3_key, _guess_mime_type(extension))
     evidence_id = await repository.create_evidence(
         case_id=case_id,
         filename=filename,
@@ -74,10 +60,7 @@ async def init_upload(*, case_id: str, filename: str, size_bytes: int, uploaded_
 
 
 async def get_part_upload_url(evidence_id: str, part_number: int) -> str:
-    """A presigned PUT for one part - the browser sends that part's bytes
-    straight to MinIO with this, the app never sees them. Several of these
-    can be requested and used concurrently, which is what makes parallel
-    part upload possible."""
+    """A presigned PUT for one part - the browser sends that part's bytes straight to MinIO with this, the app never sees them."""
     evidence = await repository.get_evidence(evidence_id)
     if not evidence:
         raise EvidenceError("Evidence not found.")
@@ -91,10 +74,7 @@ async def get_part_upload_url(evidence_id: str, part_number: int) -> str:
 
 
 async def get_upload_state(evidence_id: str) -> dict:
-    """Resume's ground truth: asks MinIO itself which parts exist (rather
-    than trusting any client-side record) and updates received_bytes to
-    match, so a client that reloads mid-upload can diff against this and
-    only request what's actually still missing."""
+    """Resume's ground truth: asks MinIO itself which parts exist (rather than trusting any client-side record) and updates received_bytes to match, so a client that reloads mid-upload can diff against this and only request what's actually still missing."""
     evidence = await repository.get_evidence(evidence_id)
     if not evidence:
         raise EvidenceError("Evidence not found.")
@@ -142,23 +122,21 @@ async def finalize_upload(evidence_id: str) -> dict:
     mime_type = _guess_mime_type(_extension(evidence["filename"]))
     await repository.mark_completed(evidence_id, size_bytes=size_bytes, mime_type=mime_type)
     asyncio.create_task(
-        _hash_evidence(evidence_id, evidence["s3_key"], evidence["case_id"], evidence["uploaded_by"], evidence["filename"])
+        _hash_evidence(
+            evidence_id,
+            evidence["s3_key"],
+            evidence["case_id"],
+            evidence["uploaded_by"],
+            evidence["filename"],
+        )
     )
     return {"status": "completed", "size_bytes": size_bytes, "filename": evidence["filename"]}
 
 
-async def _hash_evidence(evidence_id: str, s3_key: str, case_id: str, uploaded_by: str, filename: str) -> None:
-    """Background sha256/md5 fill-in. The app never sees evidence's raw
-    bytes during upload (presigned-PUT goes straight browser-to-MinIO), so
-    the only way to hash it is to stream it back after the fact via
-    GetObject. This is a stopgap — hashing belongs in a dedicated worker
-    job eventually, not an in-process asyncio task.
-
-    This is the one audit-log write that happens from service.py rather
-    than routes.py: it runs in a detached background task with no HTTP
-    request behind it by the time it finishes, so there's no routes.py
-    call site to log from - the uploader is attributed as the actor since
-    hashing is just a continuation of their upload."""
+async def _hash_evidence(
+    evidence_id: str, s3_key: str, case_id: str, uploaded_by: str, filename: str
+) -> None:
+    """Background sha256/md5 fill-in."""
     sha256 = hashlib.sha256()
     md5 = hashlib.md5()
     async for chunk in object_storage.stream_object(_BUCKET, s3_key):
@@ -174,8 +152,7 @@ async def _hash_evidence(evidence_id: str, s3_key: str, case_id: str, uploaded_b
 
 
 async def pause_upload(evidence_id: str) -> None:
-    """UI/audit state only - MinIO doesn't need to be told anything, since
-    pausing is just the client stopping part requests on its own."""
+    """UI/audit state only - MinIO doesn't need to be told anything, since pausing is just the client stopping part requests on its own."""
     evidence = await repository.get_evidence(evidence_id)
     if not evidence:
         raise EvidenceError("Evidence not found.")

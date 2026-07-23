@@ -1,9 +1,4 @@
-"""Timeline routes: the sidebar-level Timeline Center (`/timeline`, case
-cards only) and the per-case manual investigation timeline
-(`/cases/<case_id>/timeline`). Same row-level case-access rule as every
-other case-scoped page (owner/creator/case member - see
-cases/service.py.can_access_case) and no separate org permission, per the
-reasoning in timeline/service.py's module docstring."""
+"""Timeline routes: the sidebar-level Timeline Center (`/timeline`, case cards only) and the per-case manual investigation timeline (`/cases/<case_id>/timeline`)."""
 
 from __future__ import annotations
 
@@ -20,7 +15,14 @@ from app.features.cases.choices import CLASSIFICATIONS, FORENSIC_STATUSES, SEVER
 from app.features.cases.service import get_case_for_user, get_case_members, list_cases_for_user
 from app.features.evidence.service import list_case_evidence
 from app.features.timeline.choices import NOTE_VISIBILITIES, TASK_PRIORITIES, TASK_STATUSES
-from app.features.timeline.service import TimelineError, case_timeline_summaries, create_item, get_item, list_items, update_item
+from app.features.timeline.service import (
+    TimelineError,
+    case_timeline_summaries,
+    create_item,
+    get_item,
+    list_items,
+    update_item,
+)
 
 timeline_bp = Blueprint("timeline", __name__)
 
@@ -80,9 +82,6 @@ async def case_view(case_id: str):
     ]
     evidence = await list_case_evidence(case_id)
     visible_keys = await get_visible_nav_keys(g.user_id)
-    # JSON-safe subset for the Edit dialog's raw-JavaScript state - datetime/date
-    # columns get pre-formatted to the exact string each <input> expects,
-    # same reasoning as cases/routes.py's analyze_evidence subset.
     items_json_by_id = {
         i["id"]: {
             "id": i["id"],
@@ -112,9 +111,6 @@ async def case_view(case_id: str):
         note_visibilities=NOTE_VISIBILITIES,
         severity_label=dict(SEVERITIES).get(case["severity"], case["severity"]),
         status_label=dict(FORENSIC_STATUSES).get(case["forensic_status"], case["forensic_status"]),
-        # The case has no dedicated "assignee" column - the creator is the
-        # closest real, unambiguous stand-in for "lead analyst" shown in the
-        # header (see cases/repository.py: cases.created_by).
         assigned_to_label=creator["name"] if creator else "—",
         now=datetime.now().strftime("%Y-%m-%dT%H:%M"),
         visible_keys=visible_keys,
@@ -195,12 +191,7 @@ async def update_item_view(case_id: str, item_id: str):
 @timeline_bp.route("/cases/<case_id>/timeline/items/json", methods=["POST"])
 @login_required
 async def create_item_json_view(case_id: str):
-    """JSON variant of create_item_view for the canvas Add to Timeline button.
-
-    Accepts the same fields as the form route but as a JSON body, and returns
-    the new item ID rather than redirecting. The canvas has no page to redirect
-    to, so this is the only shape that works from a background fetch call.
-    """
+    """JSON variant of create_item_view for the canvas Add to Timeline button."""
     await _require_visible_case(case_id)
     body = request.get_json(silent=True) or {}
     try:
@@ -221,8 +212,6 @@ async def create_item_json_view(case_id: str):
         )
     except TimelineError as exc:
         return jsonify({"error": str(exc)}), 400
-    # Audit logging is best-effort: a failure here must not 500 after the item
-    # is already committed, which would cause the client to retry and create a duplicate.
     try:
         await audit_service.record_case_activity(
             case_id=case_id,

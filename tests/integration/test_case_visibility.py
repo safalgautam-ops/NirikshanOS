@@ -1,8 +1,5 @@
-"""Integration tests: row-level case visibility
-(app/features/cases/repository.py::list_member_cases - referenced directly
-in report §3.2, §4.2, Appendix E1). Exercises the real function against a
-real test database with two distinct org members.
-"""
+"""Integration tests: row-level case visibility (app/features/cases/repository.py::list_member_cases - referenced directly in report §3.2, §4.2, Appendix E1)."""
+
 from app.features.cases.repository import add_member, create_case, list_member_cases
 from app.features.organizations.repository import add_member as add_org_member
 
@@ -60,8 +57,7 @@ def test_member_explicitly_added_to_a_case_can_see_it(run_async, make_user, make
 
 
 def test_two_members_of_the_same_org_see_different_case_lists(run_async, make_user, make_org):
-    """The exact claim in report §4.2: two members of the same organisation
-    see different case lists by default."""
+    """The exact claim in report §4.2: two members of the same organisation see different case lists by default."""
     creator = make_user()
     member_a = make_user()
     member_b = make_user()
@@ -71,7 +67,6 @@ def test_two_members_of_the_same_org_see_different_case_lists(run_async, make_us
 
     case_shared = _make_case(run_async, org["id"], creator["id"])
     run_async(add_member(case_shared, member_a["id"], added_by=creator["id"]))
-    # member_b is never added to this case.
 
     a_sees = {c["id"] for c in run_async(list_member_cases(org["id"], member_a["id"]))}
     b_sees = {c["id"] for c in run_async(list_member_cases(org["id"], member_b["id"]))}

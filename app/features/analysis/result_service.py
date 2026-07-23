@@ -1,9 +1,4 @@
-"""Assembles the full Result Canvas payload for one evidence file.
-
-Reads analysis_results rows (written by the worker after parsing) and
-joins them onto jobs/tasks so the frontend gets a single response with
-everything needed to render the Result Canvas dialog.
-"""
+"""Assembles the full Result Canvas payload for one evidence file."""
 
 from __future__ import annotations
 
@@ -29,37 +24,7 @@ async def get_results_for_evidence(
     evidence: dict,
     jobs: list[dict],
 ) -> dict:
-    """Return the full Result Canvas shape for one evidence file.
-
-    Shape:
-    {
-      "case_id": "...",
-      "evidence_id": "...",
-      "evidence": {"filename": ..., "type": ..., "sha256": ...},
-      "jobs": [
-        {
-          "job_id": "...",
-          "job_type": "...",
-          "status": "...",
-          "tasks": [
-            {
-              "task_id": "...",
-              "module_id": "...",
-              "module_name": "...",
-              "status": "...",
-              "result": {           # null if no result saved yet
-                "summary": {...},
-                "iocs": [...],
-                "findings": [...],
-                "artifacts": [...],
-                "raw_output": {"stdout_path": ..., "stderr_path": ...}
-              }
-            }
-          ]
-        }
-      ]
-    }
-    """
+    """Return the full Result Canvas shape for one evidence file."""
     raw_results = await repository.get_results_for_evidence(evidence_id)
     results_by_task: dict[str, dict] = {r["task_id"]: r for r in raw_results}
 
@@ -70,12 +35,12 @@ async def get_results_for_evidence(
             saved = results_by_task.get(task["id"])
             task_result = None
             if saved:
-                summary    = _decode(saved.get("summary_json")) or {}
+                summary = _decode(saved.get("summary_json")) or {}
                 normalized = _decode(saved.get("normalized_json")) or {}
                 task_result = {
-                    "summary":   summary,
-                    "iocs":      normalized.get("iocs", []),
-                    "findings":  normalized.get("findings", []),
+                    "summary": summary,
+                    "iocs": normalized.get("iocs", []),
+                    "findings": normalized.get("findings", []),
                     "artifacts": normalized.get("artifacts", []),
                     "raw_output": {
                         "stdout_path": saved.get("stdout_path"),
@@ -84,29 +49,29 @@ async def get_results_for_evidence(
                 }
             tasks_out.append(
                 {
-                    "task_id":     task["id"],
-                    "module_id":   task["module_id"],
+                    "task_id": task["id"],
+                    "module_id": task["module_id"],
                     "module_name": task["module_name"],
-                    "status":      task["status"],
-                    "result":      task_result,
+                    "status": task["status"],
+                    "result": task_result,
                 }
             )
         jobs_out.append(
             {
-                "job_id":   job["id"],
+                "job_id": job["id"],
                 "job_type": job["job_type"],
-                "status":   job["status"],
-                "tasks":    tasks_out,
+                "status": job["status"],
+                "tasks": tasks_out,
             }
         )
 
     return {
-        "case_id":     evidence["case_id"],
+        "case_id": evidence["case_id"],
         "evidence_id": evidence_id,
         "evidence": {
             "filename": evidence.get("filename"),
-            "type":     evidence.get("file_type", "unknown"),
-            "sha256":   evidence.get("sha256"),
+            "type": evidence.get("file_type", "unknown"),
+            "sha256": evidence.get("sha256"),
         },
         "jobs": jobs_out,
     }

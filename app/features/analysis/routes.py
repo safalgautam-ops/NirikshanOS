@@ -1,19 +1,4 @@
-"""Analysis routes: module registry reads + job creation.
-
-No url_prefix here — this blueprint's routes span two different path
-prefixes (/cases/... and /analysis/...) so each route spells out its
-full path.
-
-GET routes require no extra org permission beyond case visibility (reading
-which modules exist is not a management action). The POST /analyze route
-additionally requires the EVIDENCE_ANALYZE org permission, enforced via
-policy.check_can_run.
-
-JSON POST routes send the CSRF token as an X-CSRF-Token request header
-(the cookie double-submit pattern still applies — the client must echo the
-csrf_token cookie value in this header). Form POST routes use the hidden
-field as usual.
-"""
+"""Analysis routes: module registry reads + job creation."""
 
 from __future__ import annotations
 
@@ -94,19 +79,7 @@ async def get_module_view(module_id: str):
 @analysis_bp.route("/cases/<case_id>/evidence/<evidence_id>/analyze", methods=["POST"])
 @login_required
 async def analyze_evidence_view(case_id: str, evidence_id: str):
-    """Submit selected modules for analysis against one evidence file.
-
-    Steps:
-      1. Confirm the user can access the case and evidence.
-      2. Parse the request body (module_ids, optional module_options).
-      3. Detect the evidence type for compatibility checks.
-      4. Policy check: permission + module validity.
-      5. Plan: group modules into the minimal set of jobs.
-      6. Persist: create analysis_jobs + analysis_tasks rows.
-      7. Return the created job IDs.
-
-    No worker is dispatched yet. All jobs land with status='queued'.
-    """
+    """Submit selected modules for analysis against one evidence file."""
     case = await _require_visible_case(case_id)
     evidence = await get_evidence(evidence_id)
     if not evidence or evidence["case_id"] != case_id:
@@ -122,7 +95,6 @@ async def analyze_evidence_view(case_id: str, evidence_id: str):
     org_id: str = case["organization_id"]
     evidence_type: str = detect_evidence_type(evidence)
 
-    # Policy check: org permission + per-module existence/compatibility.
     policy_result = await check_can_run(
         org_id=org_id,
         user_id=g.user_id,
@@ -130,18 +102,22 @@ async def analyze_evidence_view(case_id: str, evidence_id: str):
         evidence_type=evidence_type,
     )
     if not policy_result.allowed:
-        return jsonify({"error": policy_result.first_reason(), "violations": [
-            {"module_id": v.module_id, "reason": v.reason}
-            for v in policy_result.violations
-        ]}), 403
+        return (
+            jsonify(
+                {
+                    "error": policy_result.first_reason(),
+                    "violations": [
+                        {"module_id": v.module_id, "reason": v.reason} for v in policy_result.violations
+                    ],
+                }
+            ),
+            403,
+        )
 
-    # Load the full AnalysisModule objects (validated by policy above).
     selected_modules = await validate_selected_modules(module_ids, evidence_type)
 
-    # Group into the minimal set of jobs.
     plan = await create_analysis_plan(selected_modules)
 
-    # Persist jobs + tasks (dedup: skips modules already queued/running).
     result = await job_service.create_jobs_from_plan(
         case_id=case_id,
         evidence_id=evidence_id,
@@ -151,31 +127,36 @@ async def analyze_evidence_view(case_id: str, evidence_id: str):
         module_options=module_options or None,
     )
 
-    # Build the response — one entry per newly created job, including task IDs
-    # so the frontend can match poll results to the queue entries it built.
     jobs_response = []
     for job_id, job_plan in zip(result.job_ids, plan):
         tasks = await repository.list_tasks_for_job(job_id)
-        jobs_response.append({
-            "job_id": job_id,
-            "job_type": job_plan.job_type,
-            "tasks": [
-                {
-                    "task_id": t["id"],
-                    "module_id": t["module_id"],
-                    "module_name": t["module_name"],
-                }
-                for t in tasks
-            ],
-        })
+        jobs_response.append(
+            {
+                "job_id": job_id,
+                "job_type": job_plan.job_type,
+                "tasks": [
+                    {
+                        "task_id": t["id"],
+                        "module_id": t["module_id"],
+                        "module_name": t["module_name"],
+                    }
+                    for t in tasks
+                ],
+            }
+        )
 
-    return jsonify({
-        "case_id": case_id,
-        "evidence_id": evidence_id,
-        "evidence_type": evidence_type,
-        "jobs": jobs_response,
-        "skipped_modules": result.skipped_modules,
-    }), 201
+    return (
+        jsonify(
+            {
+                "case_id": case_id,
+                "evidence_id": evidence_id,
+                "evidence_type": evidence_type,
+                "jobs": jobs_response,
+                "skipped_modules": result.skipped_modules,
+            }
+        ),
+        201,
+    )
 
 
 def _serialize_dt(dt) -> str | None:
@@ -185,10 +166,7 @@ def _serialize_dt(dt) -> str | None:
 @analysis_bp.route("/cases/<case_id>/evidence/<evidence_id>/jobs")
 @login_required
 async def list_evidence_jobs_view(case_id: str, evidence_id: str):
-    """Return all jobs + tasks for one evidence file, with live statuses.
-
-    Polled by the frontend every 2 s while any job is in queued/running state.
-    """
+    """Return all jobs + tasks for one evidence file, with live statuses."""
     await _require_visible_case(case_id)
     evidence = await get_evidence(evidence_id)
     if not evidence or evidence["case_id"] != case_id:
@@ -198,27 +176,29 @@ async def list_evidence_jobs_view(case_id: str, evidence_id: str):
     result = []
     for job in jobs:
         tasks = await repository.list_tasks_for_job(job["id"])
-        result.append({
-            "id": job["id"],
-            "status": job["status"],
-            "job_type": job["job_type"],
-            "error_message": job.get("error_message"),
-            "created_at": _serialize_dt(job.get("created_at")),
-            "started_at": _serialize_dt(job.get("started_at")),
-            "finished_at": _serialize_dt(job.get("finished_at")),
-            "tasks": [
-                {
-                    "id": t["id"],
-                    "module_id": t["module_id"],
-                    "module_name": t["module_name"],
-                    "status": t["status"],
-                    "error_message": t.get("error_message"),
-                    "started_at": _serialize_dt(t.get("started_at")),
-                    "finished_at": _serialize_dt(t.get("finished_at")),
-                }
-                for t in tasks
-            ],
-        })
+        result.append(
+            {
+                "id": job["id"],
+                "status": job["status"],
+                "job_type": job["job_type"],
+                "error_message": job.get("error_message"),
+                "created_at": _serialize_dt(job.get("created_at")),
+                "started_at": _serialize_dt(job.get("started_at")),
+                "finished_at": _serialize_dt(job.get("finished_at")),
+                "tasks": [
+                    {
+                        "id": t["id"],
+                        "module_id": t["module_id"],
+                        "module_name": t["module_name"],
+                        "status": t["status"],
+                        "error_message": t.get("error_message"),
+                        "started_at": _serialize_dt(t.get("started_at")),
+                        "finished_at": _serialize_dt(t.get("finished_at")),
+                    }
+                    for t in tasks
+                ],
+            }
+        )
 
     return jsonify({"jobs": result})
 
@@ -226,11 +206,7 @@ async def list_evidence_jobs_view(case_id: str, evidence_id: str):
 @analysis_bp.route("/cases/<case_id>/evidence/<evidence_id>/results")
 @login_required
 async def get_evidence_results_view(case_id: str, evidence_id: str):
-    """Return parsed results for every completed task on one evidence file.
-
-    Backed by the analysis_results table written by the worker after parsing.
-    Returns an empty jobs list (not 404) when no jobs have been run yet.
-    """
+    """Return parsed results for every completed task on one evidence file."""
     await _require_visible_case(case_id)
     evidence = await get_evidence(evidence_id)
     if not evidence or evidence["case_id"] != case_id:
@@ -244,12 +220,7 @@ async def get_evidence_results_view(case_id: str, evidence_id: str):
 @analysis_bp.route("/analysis/tasks/<task_id>/output")
 @login_required
 async def get_task_output_view(task_id: str):
-    """Return the raw stdout + stderr produced by the analyzer container for one task.
-
-    Reads files from the job workspace on disk. Returns empty strings if the
-    output files don't exist yet (task still running) or the job workspace was
-    cleaned up.
-    """
+    """Return the raw stdout + stderr produced by the analyzer container for one task."""
     task = await repository.get_task(task_id)
     if not task:
         abort(404)
@@ -258,7 +229,6 @@ async def get_task_output_view(task_id: str):
     if not job:
         abort(404)
 
-    # Authorization: the caller must be able to see the case this task belongs to.
     await _require_visible_case(job["case_id"])
 
     safe_module = task["module_id"].replace(".", "_").replace("/", "_")
@@ -269,23 +239,20 @@ async def get_task_output_view(task_id: str):
     stdout = stdout_file.read_text(errors="replace") if stdout_file.exists() else ""
     stderr = stderr_file.read_text(errors="replace") if stderr_file.exists() else ""
 
-    return jsonify({
-        "task_id": task_id,
-        "module_id": task["module_id"],
-        "stdout": stdout,
-        "stderr": stderr,
-    })
+    return jsonify(
+        {
+            "task_id": task_id,
+            "module_id": task["module_id"],
+            "stdout": stdout,
+            "stderr": stderr,
+        }
+    )
 
 
 @analysis_bp.route("/analysis/jobs/<job_id>/cancel", methods=["POST"])
 @login_required
 async def cancel_job_view(job_id: str):
-    """Cancel a queued or running job and all its tasks.
-
-    Idempotent: already-terminal jobs (completed/failed/cancelled) return 200
-    without touching the DB. The frontend updates its local state optimistically;
-    this route makes the DB and worker consistent with that.
-    """
+    """Cancel a queued or running job and all its tasks."""
     job = await repository.get_job(job_id)
     if not job:
         abort(404)
@@ -299,11 +266,7 @@ async def cancel_job_view(job_id: str):
 @analysis_bp.route("/cases/<case_id>/evidence/<evidence_id>/notes/<module_id>", methods=["PUT"])
 @login_required
 async def save_note_view(case_id: str, evidence_id: str, module_id: str):
-    """Create or update the caller's note for one evidence+module pair.
-
-    One note per (evidence, module, author). Subsequent PUTs overwrite the body.
-    Returns 204 on success.
-    """
+    """Create or update the caller's note for one evidence+module pair."""
     await _require_visible_case(case_id)
     evidence = await get_evidence(evidence_id)
     if not evidence or evidence["case_id"] != case_id:
@@ -329,11 +292,7 @@ async def save_note_view(case_id: str, evidence_id: str, module_id: str):
 @analysis_bp.route("/cases/<case_id>/evidence/<evidence_id>/notes")
 @login_required
 async def list_notes_view(case_id: str, evidence_id: str):
-    """Return all notes the caller authored for one evidence file.
-
-    Keyed as { "<module_id>": "<body>" } so the frontend can populate
-    notesByKey on canvas open without a note-per-module round trip.
-    """
+    """Return all notes the caller authored for one evidence file."""
     await _require_visible_case(case_id)
     evidence = await get_evidence(evidence_id)
     if not evidence or evidence["case_id"] != case_id:
@@ -343,8 +302,6 @@ async def list_notes_view(case_id: str, evidence_id: str):
     my_notes = {n["module_id"]: n["body"] for n in notes if n["author_id"] == g.user_id}
     return jsonify({"notes": my_notes})
 
-
-# ── Findings ──────────────────────────────────────────────────────────────────
 
 @analysis_bp.route("/cases/<case_id>/findings", methods=["POST"])
 @login_required
@@ -376,36 +333,37 @@ async def list_findings_view(case_id: str):
     """Return all findings for a case, ordered oldest-first."""
     await _require_visible_case(case_id)
     findings = await findings_service.list_findings(case_id)
-    return jsonify({"findings": [
+    return jsonify(
         {
-            "id": f["id"],
-            "title": f["title"],
-            "description": f["description"],
-            "severity": f["severity"],
-            "confidence": f["confidence"],
-            "evidence_id": f["evidence_id"],
-            "module_id": f["module_id"],
-            "source_evidence": f["source_evidence"],
-            "source_module": f["source_module"],
-            "author_id": f["author_id"],
-            "included_in_report": bool(f["included_in_report"]),
-            "created_at": _serialize_dt(f.get("created_at")),
+            "findings": [
+                {
+                    "id": f["id"],
+                    "title": f["title"],
+                    "description": f["description"],
+                    "severity": f["severity"],
+                    "confidence": f["confidence"],
+                    "evidence_id": f["evidence_id"],
+                    "module_id": f["module_id"],
+                    "source_evidence": f["source_evidence"],
+                    "source_module": f["source_module"],
+                    "author_id": f["author_id"],
+                    "included_in_report": bool(f["included_in_report"]),
+                    "created_at": _serialize_dt(f.get("created_at")),
+                }
+                for f in findings
+            ]
         }
-        for f in findings
-    ]})
+    )
 
 
 @analysis_bp.route("/cases/<case_id>/findings/<finding_id>/include", methods=["POST"])
 @login_required
 async def include_finding_view(case_id: str, finding_id: str):
-    """Mark a finding as already inserted into the report draft, so it drops
-    out of the pending "Saved Items" list and stays out across a refresh."""
+    """Mark a finding as already inserted into the report draft, so it drops out of the pending "Saved Items" list and stays out across a refresh."""
     await _require_visible_case(case_id)
     await findings_service.mark_finding_included(case_id, finding_id)
     return jsonify({"ok": True})
 
-
-# ── Indicators ────────────────────────────────────────────────────────────────
 
 @analysis_bp.route("/cases/<case_id>/indicators", methods=["POST"])
 @login_required
@@ -428,7 +386,6 @@ async def create_indicator_view(case_id: str):
         )
     except findings_service.FindingError as exc:
         return jsonify({"error": str(exc)}), 400
-    # 200 for a silently-skipped duplicate (no resource was created), 201 for new.
     status = 201 if indicator_id is not None else 200
     return jsonify({"id": indicator_id}), status
 
@@ -439,31 +396,33 @@ async def list_indicators_view(case_id: str):
     """Return all indicators for a case, ordered oldest-first."""
     await _require_visible_case(case_id)
     indicators = await findings_service.list_indicators(case_id)
-    return jsonify({"indicators": [
+    return jsonify(
         {
-            "id": i["id"],
-            "type": i["ioc_type"],
-            "value": i["value"],
-            "severity": i["severity"],
-            "confidence": i["confidence"],
-            "evidence_id": i["evidence_id"],
-            "module_id": i["module_id"],
-            "source_evidence": i["source_evidence"],
-            "source_module": i["source_module"],
-            "author_id": i["author_id"],
-            "included_in_report": bool(i["included_in_report"]),
-            "created_at": _serialize_dt(i.get("created_at")),
+            "indicators": [
+                {
+                    "id": i["id"],
+                    "type": i["ioc_type"],
+                    "value": i["value"],
+                    "severity": i["severity"],
+                    "confidence": i["confidence"],
+                    "evidence_id": i["evidence_id"],
+                    "module_id": i["module_id"],
+                    "source_evidence": i["source_evidence"],
+                    "source_module": i["source_module"],
+                    "author_id": i["author_id"],
+                    "included_in_report": bool(i["included_in_report"]),
+                    "created_at": _serialize_dt(i.get("created_at")),
+                }
+                for i in indicators
+            ]
         }
-        for i in indicators
-    ]})
+    )
 
 
 @analysis_bp.route("/cases/<case_id>/indicators/<indicator_id>/include", methods=["POST"])
 @login_required
 async def include_indicator_view(case_id: str, indicator_id: str):
-    """Mark an indicator as already inserted into the report draft, so it
-    drops out of the pending "Saved Items" list and stays out across a
-    refresh (see include_finding_view for the same fix on findings)."""
+    """Mark an indicator as already inserted into the report draft, so it drops out of the pending "Saved Items" list and stays out across a refresh (see include_finding_view for the same fix on findings)."""
     await _require_visible_case(case_id)
     await findings_service.mark_indicator_included(case_id, indicator_id)
     return jsonify({"ok": True})

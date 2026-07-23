@@ -1,20 +1,4 @@
-"""Evidence routes: JSON endpoints behind the upload table (init, presigned
-part-URL issuance, status/resume, finalize, pause/resume, delete) - driven
-by client-side JS, not full page renders. Read-only routes (list/status/
-part-url) are gated purely by the same case-membership visibility check as
-case detail (owner/creator/case member) - viewing evidence on a case you
-have access to never requires a separate org-wide permission, same
-reasoning as cases/routes.py's view routes. State-changing upload-lifecycle
-routes (init/finalize/pause/resume) still require EVIDENCE_UPLOAD on top of
-that, and delete still requires EVIDENCE_DELETE - those are real management
-actions, not viewing.
-
-Only the routes the app's own JS calls are CSRF-protected form posts
-(init/finalize/pause/resume/delete) - the part-URL route is a GET (CSRF
-only ever guards state-changing methods, see core/security/csrf.py) and the
-part bytes themselves never touch this app at all: the browser PUTs them
-straight to MinIO using the presigned URL this route hands back.
-"""
+"""Evidence routes: JSON endpoints behind the upload table (init, presigned part-URL issuance, status/resume, finalize, pause/resume, delete) - driven by client-side JS, not full page renders."""
 
 from __future__ import annotations
 
@@ -64,9 +48,7 @@ async def _require_visible_case(case_id: str):
 
 
 async def _require_evidence_in_case(evidence_id: str, case_id: str):
-    """404 if evidence_id doesn't exist or belongs to a different case.
-    Prevents IDOR: a user who can see case A cannot read evidence from case B
-    by guessing evidence IDs and substituting the case_id in the URL."""
+    """404 if evidence_id doesn't exist or belongs to a different case."""
     ev = await _get_evidence_row(evidence_id)
     if not ev or ev["case_id"] != case_id:
         abort(404)
@@ -101,9 +83,6 @@ async def list_view(case_id: str):
 @evidence_bp.route("/<case_id>/evidence/init", methods=["POST"])
 @require_org_permission(EVIDENCE_UPLOAD)
 async def init_view(case_id: str):
-    # Form-encoded, not JSON - the CSRF middleware only ever inspects
-    # request.form for the csrf_token field (see core/security/csrf.py), so
-    # every state-changing request in this app must be sent that way.
     await _require_visible_case(case_id)
     form = request.form
     try:

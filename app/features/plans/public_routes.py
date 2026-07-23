@@ -6,7 +6,6 @@ from flask import Blueprint, jsonify, make_response
 
 from app.features.plans import repository
 
-
 public_plans_bp = Blueprint("public_plans", __name__, url_prefix="/api")
 
 

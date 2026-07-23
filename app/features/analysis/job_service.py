@@ -1,13 +1,4 @@
-"""Orchestrates the persistence of a planner output into the database.
-
-This is the write side of the analysis feature. It takes the structured
-job plan from planner.create_analysis_plan and turns each AnalysisJobPlan
-into one analysis_jobs row + N analysis_tasks rows (one per module).
-
-Deduplication rule:
-  - If a module is already queued/running for the same evidence → skip it.
-  - If a module previously completed/failed → allow re-run (new rows created).
-"""
+"""Orchestrates the persistence of a planner output into the database."""
 
 from __future__ import annotations
 
@@ -32,13 +23,7 @@ async def create_jobs_from_plan(
     plan: list[AnalysisJobPlan],
     module_options: dict[str, dict] | None = None,
 ) -> CreateJobsResult:
-    """Persist new job plans as DB rows, skipping modules already in flight.
-
-    Modules already queued/running for this evidence are filtered out before
-    any DB write. Plans that become empty after filtering are dropped entirely.
-    Modules that previously completed or failed are NOT filtered — they get
-    fresh rows (re-run semantics).
-    """
+    """Persist new job plans as DB rows, skipping modules already in flight."""
     active_module_ids = await repository.get_active_module_ids_for_evidence(evidence_id)
 
     result = CreateJobsResult()
@@ -51,11 +36,6 @@ async def create_jobs_from_plan(
         if not new_modules:
             continue
 
-        # batch_group/batchable/isolation_level are legacy analysis_jobs
-        # columns from the pre-instance grouping model — container grouping
-        # is now entirely decided by instance_id (see planner.py). They're
-        # kept here as informational/display fields only, derived from
-        # whether this job bundles more than one module.
         job_id = await repository.create_job(
             case_id=case_id,
             evidence_id=evidence_id,

@@ -1,8 +1,4 @@
-"""Raw DB access for analysis jobs and tasks.
-
-Thin ORM wrappers only — no policy checks, no planner logic, no queue
-dispatch, no business decisions. See job_service.py for orchestration.
-"""
+"""Raw DB access for analysis jobs and tasks."""
 
 from __future__ import annotations
 
@@ -81,11 +77,7 @@ async def list_jobs_for_evidence(evidence_id: str) -> list[dict]:
 
 
 async def get_active_module_ids_for_evidence(evidence_id: str) -> set[str]:
-    """Return module_ids that are currently queued or running for this evidence.
-
-    Used by job_service to skip re-queuing a module that's already in flight.
-    Completed/failed modules are not included — those are eligible for re-run.
-    """
+    """Return module_ids that are currently queued or running for this evidence."""
     active_jobs = await (
         db.table("analysis_jobs")
         .where("evidence_id", evidence_id)
@@ -95,11 +87,7 @@ async def get_active_module_ids_for_evidence(evidence_id: str) -> set[str]:
     if not active_jobs:
         return set()
     job_ids = [j["id"] for j in active_jobs]
-    tasks = await (
-        db.table("analysis_tasks")
-        .where_in("job_id", job_ids)
-        .all(allow_full_table=True)
-    )
+    tasks = await db.table("analysis_tasks").where_in("job_id", job_ids).all(allow_full_table=True)
     return {t["module_id"] for t in tasks}
 
 
@@ -204,6 +192,4 @@ async def cancel_job(job_id: str) -> None:
         await db.table("analysis_tasks").where("id", task["id"]).patch(
             {"status": "cancelled", "finished_at": now}
         )
-    await db.table("analysis_jobs").where("id", job_id).patch(
-        {"status": "cancelled", "finished_at": now}
-    )
+    await db.table("analysis_jobs").where("id", job_id).patch({"status": "cancelled", "finished_at": now})

@@ -7,42 +7,27 @@ import json
 from app.core.db.orm import Page, db
 from app.core.utils.ids import new_id
 
-# ── roles ─────────────────────────────────────────────────────────────────────
-
 
 async def list_roles(*, search: str = "", page: int = 1, per_page: int = 20) -> Page:
     query = db.table("roles")
     if search:
         query = query.search(["name", "description"], search)
-    return await query.order_by("priority", "DESC").paginate(
-        page=page, per_page=per_page
-    )
+    return await query.order_by("priority", "DESC").paginate(page=page, per_page=per_page)
 
 
-# grabs every role, sorted by priority (descending)
 async def get_all_roles_ordered() -> list:
-    return (
-        await db.table("roles").order_by("priority", "DESC").all(allow_full_table=True)
-    )
+    return await db.table("roles").order_by("priority", "DESC").all(allow_full_table=True)
 
 
 async def get_member_counts(role_ids: list[str]) -> dict[str, int]:
     if not role_ids:
         return {}
-    rows = await (  # fetch the membership counts for the given role ids
-        db.table("user_roles")
-        .where_in("role_id", role_ids)
-        .select("role_id")
-        .all(allow_full_table=True)
+    rows = await (
+        db.table("user_roles").where_in("role_id", role_ids).select("role_id").all(allow_full_table=True)
     )
-    counts: dict[
-        str, int
-    ] = {}  # takes a list of role ids and returns a dict of role id -> count
-    # {"role-abc": 5, "role-xyz": 2}
+    counts: dict[str, int] = {}
     for row in rows:
-        counts[row["role_id"]] = (
-            counts.get(row["role_id"], 0) + 1
-        )  # tells this role's current count — or zero if we haven't seen it yet — and add one
+        counts[row["role_id"]] = counts.get(row["role_id"], 0) + 1
     return counts
 
 
@@ -50,7 +35,6 @@ async def get_role(role_id: str):
     return await db.table("roles").where("id", role_id).first()
 
 
-# Finds a unique role name by appending a suffix if necessary (e.g. "admin" -> "admin 2")
 async def get_unique_role_name(base: str) -> str:
     """`roles.name` is UNIQUE - find the first free '{base}', '{base} 2', '{base} 3', ... ."""
     existing = {r["name"] for r in await get_all_roles_ordered()}
@@ -62,9 +46,7 @@ async def get_unique_role_name(base: str) -> str:
     return f"{base} {suffix}"
 
 
-async def create_role(
-    *, name: str, description: str = "", color: str = "#5865F2"
-) -> str:
+async def create_role(*, name: str, description: str = "", color: str = "#5865F2") -> str:
     role_id = new_id()
     name = await get_unique_role_name(name)
     await db.table("roles").create(
@@ -82,10 +64,7 @@ async def create_role(
     return role_id
 
 
-# patch() updates only those specific fields, leaving everything else untouched.
-async def update_role_display(
-    role_id: str, *, name: str, description: str, color: str
-) -> None:
+async def update_role_display(role_id: str, *, name: str, description: str, color: str) -> None:
     await (
         db.table("roles")
         .where("id", role_id)
@@ -98,12 +77,7 @@ async def set_assignable(role_id: str, is_assignable: bool) -> None:
 
 
 async def set_sidebar_keys(role_id: str, keys: list[str] | None) -> None:
-    # The JSON column comes back auto-parsed as a list/None on read, but the
-    # driver needs an actual JSON string (not a raw Python list) on write.
-    # since a normal database column doesn't have a natural "list" type, we store it as JSON text
-    value = (
-        json.dumps(keys) if keys is not None else None
-    )  # json.dumps() converts a Python list to a JSON string
+    value = json.dumps(keys) if keys is not None else None
     await db.table("roles").where("id", role_id).patch({"sidebar_keys": value})
 
 
@@ -134,9 +108,9 @@ async def duplicate_role(role_id: str) -> str:
                 "is_system": False,
                 "is_default": False,
                 "is_assignable": True,
-                "sidebar_keys": json.dumps(original["sidebar_keys"])
-                if original["sidebar_keys"] is not None
-                else None,
+                "sidebar_keys": (
+                    json.dumps(original["sidebar_keys"]) if original["sidebar_keys"] is not None else None
+                ),
             }
         )
         permission_ids = await get_role_permission_ids(role_id)
@@ -147,16 +121,8 @@ async def duplicate_role(role_id: str) -> str:
     return new_role_id
 
 
-# ── permissions ───────────────────────────────────────────────────────────────
-
-
 async def get_all_permissions() -> list:
-    return await (
-        db.table("permissions")
-        .order_by("category")
-        .order_by("name")
-        .all(allow_full_table=True)
-    )
+    return await db.table("permissions").order_by("category").order_by("name").all(allow_full_table=True)
 
 
 async def get_role_permission_ids(role_id: str) -> set[str]:
@@ -173,12 +139,7 @@ async def set_role_permissions(role_id: str, permission_ids: list[str]) -> None:
     async with db.transaction():
         await db.table("role_permissions").where("role_id", role_id).delete()
         for permission_id in permission_ids:
-            await db.table("role_permissions").create(
-                {"role_id": role_id, "permission_id": permission_id}
-            )
-
-
-# ── members ───────────────────────────────────────────────────────────────────
+            await db.table("role_permissions").create({"role_id": role_id, "permission_id": permission_id})
 
 
 async def get_role_members(role_id: str) -> list:
@@ -195,10 +156,7 @@ async def get_role_members(role_id: str) -> list:
 async def search_assignable_users(role_id: str, search: str) -> list:
     """Users NOT already holding this role, for the 'add member' picker."""
     existing = await (
-        db.table("user_roles")
-        .where("role_id", role_id)
-        .select("user_id")
-        .all(allow_full_table=True)
+        db.table("user_roles").where("role_id", role_id).select("user_id").all(allow_full_table=True)
     )
     existing_ids = [row["user_id"] for row in existing]
 
@@ -212,15 +170,8 @@ async def search_assignable_users(role_id: str, search: str) -> list:
 
 
 async def add_member(role_id: str, user_id: str, assigned_by: str) -> None:
-    await db.table("user_roles").create(
-        {"user_id": user_id, "role_id": role_id, "assigned_by": assigned_by}
-    )
+    await db.table("user_roles").create({"user_id": user_id, "role_id": role_id, "assigned_by": assigned_by})
 
 
 async def remove_member(role_id: str, user_id: str) -> None:
-    await (
-        db.table("user_roles")
-        .where("role_id", role_id)
-        .where("user_id", user_id)
-        .delete()
-    )
+    await db.table("user_roles").where("role_id", role_id).where("user_id", user_id).delete()

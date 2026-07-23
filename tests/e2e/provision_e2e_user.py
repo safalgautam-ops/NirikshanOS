@@ -1,14 +1,5 @@
-"""Provisions one real, verified user (+ an approved org they own) directly
-in the real dev database, for the E2E tier to log into via a real browser.
+"""Provisions one real, verified user (+ an approved org they own) directly in the real dev database, for the E2E tier to log into via a real browser."""
 
-Run inside the web container, where the app package and its DB pool config
-already point at the real "nirikshan" database - the E2E tier deliberately
-tests against the live app, not the disposable test DB the other tiers use.
-Skips the email-OTP activation step (out of this suite's scope, and would
-otherwise need a real inbox) the same way the other tiers' make_user does.
-
-Prints one line of JSON to stdout: {"email", "password", "user_id", "org_id"}.
-"""
 import asyncio
 import json
 import sys
@@ -23,8 +14,11 @@ from app.config import Config
 
 async def main() -> None:
     await init_pool(
-        host=Config.DB_HOST, port=Config.DB_PORT,
-        user=Config.DB_USER, password=Config.DB_PASSWORD, db=Config.DB_NAME,
+        host=Config.DB_HOST,
+        port=Config.DB_PORT,
+        user=Config.DB_USER,
+        password=Config.DB_PASSWORD,
+        db=Config.DB_NAME,
     )
     from app.features.auth.repository import create_user_with_password
     from app.features.organizations.repository import add_member, create_organization

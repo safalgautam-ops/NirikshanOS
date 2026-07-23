@@ -1,13 +1,3 @@
-// Loads the Rive-based hero animation and keeps the floating scene labels
-// in sync with whichever stage of the animation is currently on screen.
-//
-// The .riv file only stores generic placeholder image names - Rive's
-// assetLoader callback intercepts every one of those references and swaps
-// in our own PNGs (see the `files` map below). There's no "which scene is
-// showing" event from the state machine either, so `watch()` samples a
-// single pixel per scene every 80ms and treats the darkest match as active
-// - the sample points are tuned to land on a patch of the animation that
-// changes brightness distinctly between scenes.
 import { RiveLib } from "/static/vendor/rive/rive.js";
 
 const stage = document.getElementById("hero-animation");
@@ -33,7 +23,6 @@ if (stage) {
         "pasted_file-4727677.png": "label_5.png",
     };
 
-    // [name, description, side, verticalPercent, samplePoint, accentColor]
     const scenes = [
         ["INTAKE", "secure evidence upload", "left", 29.9, [0.108, 0.299], "#6948ff"],
         ["ANALYZE", "modular analysis pipeline", "right", 40.7, [0.823, 0.407], "#1edc7c"],

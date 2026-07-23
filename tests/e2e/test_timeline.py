@@ -1,15 +1,5 @@
-"""E2E test: the per-case manual investigation timeline, through a real
-browser against the actual running app.
+"""E2E test: the per-case manual investigation timeline, through a real browser against the actual running app."""
 
-Regression guard for a real bug: app/templates/timeline/case_timeline.html
-was accidentally overwritten by a copy of the Timeline Center's case-picker
-list during an unrelated refactor. Every route, service, and validation
-rule underneath kept working and kept returning 200 - nothing in the
-existing test suite exercises the actual rendered page, so nothing caught
-that "Open Timeline" silently led to a page with no way to add anything at
-all. Only a real, rendered-page E2E test like this one can catch that class
-of bug; a route/integration test asserting a 200 status code cannot.
-"""
 import re
 
 from playwright.sync_api import expect
@@ -43,31 +33,25 @@ def test_add_task_note_and_milestone_on_a_real_case_timeline(page, e2e_user):
     page.goto(f"{BASE_URL}/cases/{case_id}/timeline")
     expect(page.locator("body")).to_contain_text(case_title, timeout=10_000)
 
-    # The page must offer real ways to add to the timeline, not just show a
-    # dead list - this is the direct assertion against the regression.
     expect(page.locator("[data-target='#add-task-dialog']")).to_be_visible()
     expect(page.locator("[data-target='#add-note-dialog']")).to_be_visible()
     expect(page.locator("[data-target='#add-milestone-dialog']")).to_be_visible()
 
-    # --- Add Task ---
     page.click("[data-target='#add-task-dialog']")
     page.fill("#task-title", "Isolate infected host")
     page.click("#add-task-dialog button[type=submit]:has-text('Create')")
     expect(page.locator("body")).to_contain_text("Isolate infected host", timeout=10_000)
 
-    # --- Add Note ---
     page.click("[data-target='#add-note-dialog']")
     page.fill("#note-title", "Client notified")
     page.fill("#note-body", "Called the client to report the incident.")
     page.click("#add-note-dialog button[type=submit]:has-text('Create')")
     expect(page.locator("body")).to_contain_text("Client notified", timeout=10_000)
 
-    # --- Add Milestone ---
     page.click("[data-target='#add-milestone-dialog']")
     page.fill("#milestone-title", "Containment complete")
     page.click("#add-milestone-dialog button[type=submit]:has-text('Create')")
     expect(page.locator("body")).to_contain_text("Containment complete", timeout=10_000)
 
-    # --- Edit dialog opens pre-filled for one of the created items ---
     page.click("[data-edit-timeline-item]")
     expect(page.locator("#edit-timeline-item-title")).not_to_have_value("", timeout=5_000)

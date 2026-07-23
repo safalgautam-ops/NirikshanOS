@@ -1,7 +1,4 @@
-"""Assembles the two dashboard variants (admin/platform-wide, org-scoped)
-into chart-ready dicts - every number the templates need is precomputed
-here (bar percentages, formatted display strings) so dashboard.html stays
-presentation-only, same as every other macro/template in this app."""
+"""Assembles the two dashboard variants (admin/platform-wide, org-scoped) into chart-ready dicts - every number the templates need is precomputed here (bar percentages, formatted display strings) so dashboard.html stays presentation-only, same as every other macro/template in this app."""
 
 from __future__ import annotations
 
@@ -26,15 +23,6 @@ from app.features.plans import service as plans_service
 
 _CASE_STATUSES = [("open", "Open"), ("active", "Active"), ("closed", "Closed"), ("archived", "Archived")]
 
-# Matches the badge color convention this app already uses for these same
-# status strings elsewhere (see cases/list.html's status_variant) - open is
-# the "needs attention" info color, active is in-progress/warning, closed
-# is the success color, archived is neutral/secondary.
-#
-# Uses the raw (unprefixed) token names, not the --color-* Tailwind-utility
-# aliases (--color-info etc) that @theme declares for `bg-info`/`text-info`
-# class generation. The underlying --info/--warning/--success/--secondary
-# tokens are the stable runtime values consumed by the chart renderer.
 _CASE_STATUS_COLORS = {
     "open": "var(--info)",
     "active": "var(--warning)",
@@ -44,36 +32,41 @@ _CASE_STATUS_COLORS = {
 
 
 def _pie_slices(triples: list[tuple[str, float, str]]) -> list[dict]:
-    """Turn (label, value, color) triples into pie_chart-ready slices - the
-    one place conic-gradient start/end stops (0-100) get computed, so
-    chart.html's pie_chart() macro only ever formats a CSS string, never
-    does math. An all-zero total renders as a single flat muted ring
-    instead of an empty/invalid gradient."""
+    """Turn (label, value, color) triples into pie_chart-ready slices - the one place conic-gradient start/end stops (0-100) get computed, so chart.html's pie_chart() macro only ever formats a CSS string, never does math."""
     total = sum(value for _, value, _ in triples)
     if not total:
-        return [{"label": "No data yet", "value": 0, "display": "0", "color": "var(--muted)", "start": 0, "end": 100}]
+        return [
+            {
+                "label": "No data yet",
+                "value": 0,
+                "display": "0",
+                "color": "var(--muted)",
+                "start": 0,
+                "end": 100,
+            }
+        ]
 
     slices = []
     cursor = 0.0
     for label, value, color in triples:
         pct = (value / total) * 100
         end = cursor + pct
-        slices.append({
-            "label": label,
-            "value": value,
-            "display": str(int(value)),
-            "color": color,
-            "start": round(cursor, 2),
-            "end": round(end, 2),
-        })
+        slices.append(
+            {
+                "label": label,
+                "value": value,
+                "display": str(int(value)),
+                "color": color,
+                "start": round(cursor, 2),
+                "end": round(end, 2),
+            }
+        )
         cursor = end
     return slices
 
 
 def _bars(pairs: list[tuple[str, float]], display_fmt) -> list[dict]:
-    """Turn (label, value) pairs into bar_chart/hbar_chart-ready items -
-    the one place `pct` (0-100, relative to the largest value in the set)
-    gets computed, so chart.html's macros never touch raw numbers."""
+    """Turn (label, value) pairs into bar_chart/hbar_chart-ready items - the one place `pct` (0-100, relative to the largest value in the set) gets computed, so chart.html's macros never touch raw numbers."""
     max_value = max((value for _, value in pairs), default=0)
     return [
         {
@@ -87,11 +80,7 @@ def _bars(pairs: list[tuple[str, float]], display_fmt) -> list[dict]:
 
 
 def _bars_labeled(pairs: list[tuple[str, float]], display_fmt, *, min_pct: float = 14) -> list[dict]:
-    """Like _bars(), but for bar_chart_labeled(), where the label renders
-    inside the bar itself rather than beside it - a true zero/near-zero
-    value still needs a visually non-empty bar for the label to sit on, so
-    `bar_pct` is floored to `min_pct`. `display` always shows the real,
-    unfloored value, so the floor is purely cosmetic - never misleading."""
+    """Like _bars(), but for bar_chart_labeled(), where the label renders inside the bar itself rather than beside it - a true zero/near-zero value still needs a visually non-empty bar for the label to sit on, so `bar_pct` is floored to `min_pct`."""
     max_value = max((value for _, value in pairs), default=0)
     return [
         {
@@ -105,16 +94,7 @@ def _bars_labeled(pairs: list[tuple[str, float]], display_fmt, *, min_pct: float
 
 
 def _line_series(pairs: list[tuple[str, float]], label_every: int = 5) -> dict:
-    """Turn chronologically-ordered (label, value) pairs into line_chart-
-    ready data: points as 0-100 x/y percentages (y inverted and padded so
-    peaks/troughs never touch the SVG edge), a sparser set of x-axis labels
-    - one every `label_every` points, since e.g. 90 daily labels would
-    otherwise collide into unreadable text - and value_labels marking just
-    the turning points (local peaks/troughs, plus both endpoints) with
-    their actual number, so the reader can see real values without every
-    single one of 90 points being individually labeled. x itself is inset
-    to [2, 98] rather than the full [0, 100] so the first/last labels (and
-    the line's endpoints) have room to render without clipping."""
+    """Turn chronologically-ordered (label, value) pairs into line_chart- ready data: points as 0-100 x/y percentages (y inverted and padded so peaks/troughs never touch the SVG edge), a sparser set of x-axis labels - one every `label_every` points, since e.g. 90 daily labels would otherwise collide into unreadable text - and value_labels marking just the turning points (local peaks/troughs, plus both endpoints) with their actual number, so the reader can see real values without every single one of 90 points being individually labeled."""
     values = [v for _, v in pairs]
     n = len(pairs)
     max_value = max(values, default=0)
@@ -146,13 +126,7 @@ def _line_series(pairs: list[tuple[str, float]], label_every: int = 5) -> dict:
 
 
 def _radar_series(pairs: list[tuple[str, float]], *, rings: int = 4) -> dict:
-    """Turn (label, value) pairs into radar_chart-ready data: a polygon
-    grid (concentric rings + spokes) plus the data polygon/dots/outer
-    labels, all in the same 0-100 coordinate space every other chart macro
-    uses. Axes are placed clockwise starting at 12 o'clock (the
-    conventional radar/spider chart layout) - one axis per pair, so
-    callers should pass every category they want an axis for (including
-    zero-value ones), not just the ones with a nonzero value."""
+    """Turn (label, value) pairs into radar_chart-ready data: a polygon grid (concentric rings + spokes) plus the data polygon/dots/outer labels, all in the same 0-100 coordinate space every other chart macro uses."""
     cx = cy = 50.0
     r_max = 32.0
     n = len(pairs)
@@ -197,19 +171,17 @@ def _radar_series(pairs: list[tuple[str, float]], *, rings: int = 4) -> dict:
     }
 
 
-_RADIAL_PALETTE = ["var(--info)", "var(--success)", "var(--warning)", "var(--secondary)", "var(--destructive)"]
+_RADIAL_PALETTE = [
+    "var(--info)",
+    "var(--success)",
+    "var(--warning)",
+    "var(--secondary)",
+    "var(--destructive)",
+]
 
 
 def _radial_bars(pairs: list[tuple[str, float]]) -> list[dict]:
-    """Turn (label, value) pairs into radial_chart-ready rings - one
-    concentric ring per pair, innermost first, so callers should already
-    have the pairs in the order they want rendered from the center out
-    (e.g. Counter.most_common() - most popular gets the prominent inner
-    ring). Each ring's arc length (as an SVG stroke-dasharray) is
-    proportional to value against the shared max across ALL rings, not an
-    independent 0-100% per ring, so length differences stay meaningful.
-    fill/gap are precomputed dash lengths, not percentages, since the
-    dasharray needs real units matching each ring's own circumference."""
+    """Turn (label, value) pairs into radial_chart-ready rings - one concentric ring per pair, innermost first, so callers should already have the pairs in the order they want rendered from the center out (e.g. Counter.most_common() - most popular gets the prominent inner ring)."""
     n = len(pairs)
     max_value = max((v for _, v in pairs), default=0) or 1
     inner, outer = 14.0, 42.0
@@ -222,16 +194,18 @@ def _radial_bars(pairs: list[tuple[str, float]]) -> list[dict]:
         circumference = 2 * math.pi * r
         frac = min(max(value / max_value, 0.02), 0.985) if value > 0 else 0.0
         filled = circumference * frac
-        items.append({
-            "label": label,
-            "display": str(int(value)),
-            "radius": round(r, 2),
-            "thickness": round(thickness, 2),
-            "hit_thickness": round(thickness + 3, 2),
-            "dash": round(filled, 2),
-            "gap": round(circumference - filled, 2),
-            "color": _RADIAL_PALETTE[i % len(_RADIAL_PALETTE)],
-        })
+        items.append(
+            {
+                "label": label,
+                "display": str(int(value)),
+                "radius": round(r, 2),
+                "thickness": round(thickness, 2),
+                "hit_thickness": round(thickness + 3, 2),
+                "dash": round(filled, 2),
+                "gap": round(circumference - filled, 2),
+                "color": _RADIAL_PALETTE[i % len(_RADIAL_PALETTE)],
+            }
+        )
     return items
 
 
@@ -253,8 +227,7 @@ def _last_n_days(n: int):
 
 
 async def get_admin_dashboard() -> dict:
-    """Platform-wide widgets for staff/System Admin: traffic, users,
-    revenue, popular plan, popular modules, recent signups/transactions."""
+    """Platform-wide widgets for staff/System Admin: traffic, users, revenue, popular plan, popular modules, recent signups/transactions."""
     users_total = await repo.count_users()
     orgs = await repo.count_organizations()
     active_subs = await repo.count_active_subscriptions()
@@ -291,10 +264,6 @@ async def get_admin_dashboard() -> dict:
     plan_rows = await repo.list_active_subscription_plan_ids()
     all_plans = await plans_repository.list_plans()
     plan_counts = Counter(row["plan_id"] for row in plan_rows)
-    # Every plan gets a radar axis, including ones with zero active
-    # subscriptions - a radar's whole point is comparing across a fixed set
-    # of categories, so silently dropping an axis for "no data yet" would
-    # make the shape misleading rather than just sparse.
     popular_plans = _radar_series([(p["display_name"], plan_counts.get(p["id"], 0)) for p in all_plans])
 
     recent_orgs = await repo.list_recent_organizations(5)
@@ -318,12 +287,7 @@ async def get_admin_dashboard() -> dict:
 
 
 async def get_org_dashboard(user_id: str) -> dict | None:
-    """Org-scoped widgets, shaped by the viewer's role: an owner (or anyone
-    holding the matching org permission) sees organization-wide numbers and
-    tables; everyone else sees the same widgets scoped to only what they're
-    row-level allowed to see (see cases/service.py.can_access_case) - never
-    a permission error, just a narrower version of the same dashboard.
-    Returns None if the caller belongs to no organization at all."""
+    """Org-scoped widgets, shaped by the viewer's role: an owner (or anyone holding the matching org permission) sees organization-wide numbers and tables; everyone else sees the same widgets scoped to only what they're row-level allowed to see (see cases/service.py.can_access_case) - never a permission error, just a narrower version of the same dashboard."""
     membership = await get_user_org_membership(user_id)
     if not membership:
         return None

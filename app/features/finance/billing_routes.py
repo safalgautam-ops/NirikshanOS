@@ -1,10 +1,4 @@
-"""Org-facing billing: pick a plan, pay via eSewa, land on a public
-callback that verifies the payment server-side before activating anything.
-Kept in the finance feature (not onboarding) since it's really finance
-business logic wearing an org-facing UI, but registered as its own
-blueprint so the callback routes can be public while the plan-picker route
-stays org-gated.
-"""
+"""Org-facing billing: pick a plan, pay via eSewa, land on a public callback that verifies the payment server-side before activating anything."""
 
 from __future__ import annotations
 
@@ -44,9 +38,7 @@ async def plan_picker_view():
 @billing_bp.route("/subscribe-free", methods=["POST"])
 @require_org_permission(ORG_BILLING_MANAGE)
 async def subscribe_free_view():
-    """Activate a zero-cost plan directly — no eSewa involved. Re-validates
-    the plan is actually free server-side rather than trusting the form,
-    since this bypasses payment entirely."""
+    """Activate a zero-cost plan directly — no eSewa involved."""
     org = await get_user_organization(g.user_id)
     if not org:
         abort(404)
@@ -55,7 +47,9 @@ async def subscribe_free_view():
 
     plan = await plans_repository.get_plan(plan_id)
     if not plan or float(plan["price_monthly"]) != 0 or float(plan["price_annual"]) != 0:
-        return redirect(url_for("billing.plan_picker_view") + "?error=That plan is not available without payment.")
+        return redirect(
+            url_for("billing.plan_picker_view") + "?error=That plan is not available without payment."
+        )
 
     await plans_service.assign_plan(
         org_id=org["id"],
@@ -92,20 +86,12 @@ async def pay_view():
     except finance_service.PaymentError as exc:
         return redirect(url_for("billing.plan_picker_view") + f"?error={exc}")
 
-    # Same-origin auto-submitting form POSTing straight to eSewa — the
-    # server built and signed every field; the browser only carries it over.
     return render_template(
         "billing/esewa_redirect.html",
         form_action=result["form_action"],
         form_fields=result["form_fields"],
     )
 
-
-# ── eSewa callbacks — public, no login required ───────────────────────────────
-# eSewa's redirect must reach these regardless of session state. The handler
-# re-derives the org from the stored transaction row (see
-# finance/service.py), never from the request, so there is no session
-# dependency to exploit here.
 
 @billing_bp.route("/esewa/success")
 async def esewa_success_view():
@@ -116,15 +102,13 @@ async def esewa_success_view():
 
 @billing_bp.route("/esewa/failure")
 async def esewa_failure_view():
-    # eSewa's failure redirect carries the same base64 `data` param in some
-    # integrations and just a bare transaction_uuid in others - try the
-    # base64 payload first since it's more informative for the ledger.
     raw_payload = request.args.get("data", "")
     if raw_payload:
         payload = None
         try:
             import base64
             import json
+
             payload = json.loads(base64.b64decode(raw_payload))
         except Exception:
             payload = None

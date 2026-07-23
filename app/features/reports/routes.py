@@ -1,9 +1,4 @@
-"""Report persistence routes.
-
-One report per case (the analyst's draft). GET returns the latest version's
-content; PUT upserts the draft, creating the report row on first save and
-appending a new version row on every subsequent save.
-"""
+"""Report persistence routes."""
 
 from __future__ import annotations
 
@@ -42,18 +37,17 @@ async def get_report_view(case_id: str):
     if not report:
         return jsonify({"content": None, "title": None})
     version = await (
-        db.table("report_versions")
-        .where("report_id", report["id"])
-        .order_by("version", "desc")
-        .first()
+        db.table("report_versions").where("report_id", report["id"]).order_by("version", "desc").first()
     )
-    return jsonify({
-        "report_id": report["id"],
-        "title": report["title"],
-        "status": report["status"],
-        "content": version["content"] if version else None,
-        "version": version["version"] if version else 0,
-    })
+    return jsonify(
+        {
+            "report_id": report["id"],
+            "title": report["title"],
+            "status": report["status"],
+            "content": version["content"] if version else None,
+            "version": version["version"] if version else 0,
+        }
+    )
 
 
 @reports_bp.route("/cases/<case_id>/report", methods=["PUT"])
@@ -74,28 +68,29 @@ async def save_report_view(case_id: str):
         await db.table("reports").where("id", report_id).update({"title": title})
     else:
         report_id = new_id()
-        await db.table("reports").create({
-            "id": report_id,
-            "case_id": case_id,
-            "title": title,
-            "status": "draft",
-            "created_by": g.user_id,
-        })
+        await db.table("reports").create(
+            {
+                "id": report_id,
+                "case_id": case_id,
+                "title": title,
+                "status": "draft",
+                "created_by": g.user_id,
+            }
+        )
 
     last_version = await (
-        db.table("report_versions")
-        .where("report_id", report_id)
-        .order_by("version", "desc")
-        .first()
+        db.table("report_versions").where("report_id", report_id).order_by("version", "desc").first()
     )
     next_version = (last_version["version"] + 1) if last_version else 1
-    await db.table("report_versions").create({
-        "id": new_id(),
-        "report_id": report_id,
-        "version": next_version,
-        "content": content,
-        "created_by": g.user_id,
-    })
+    await db.table("report_versions").create(
+        {
+            "id": new_id(),
+            "report_id": report_id,
+            "version": next_version,
+            "content": content,
+            "created_by": g.user_id,
+        }
+    )
 
     await audit_service.record_case_activity(
         case_id=case_id,

@@ -82,20 +82,20 @@ def serialize_module(module: dict) -> dict:
         except (json.JSONDecodeError, TypeError):
             pass
     return {
-        "id":               module["id"],
-        "name":             module["display_name"],
-        "category":         module.get("category_name"),
-        "description":      module.get("description") or "",
-        "supported_types":  supported,
-        "tier":             module["tier"],
-        "required_plan":    module["tier"],
-        "queue_name":       module.get("queue_name"),
-        "runtime_image":    module.get("runtime_image"),
-        "instance_id":      module.get("instance_id"),
-        "timeout_seconds":  module["timeout_seconds"],
-        "parser_name":      module.get("parser_name") or "",
-        "source":           module["source"],
-        "fields":           fields,
+        "id": module["id"],
+        "name": module["display_name"],
+        "category": module.get("category_name"),
+        "description": module.get("description") or "",
+        "supported_types": supported,
+        "tier": module["tier"],
+        "required_plan": module["tier"],
+        "queue_name": module.get("queue_name"),
+        "runtime_image": module.get("runtime_image"),
+        "instance_id": module.get("instance_id"),
+        "timeout_seconds": module["timeout_seconds"],
+        "parser_name": module.get("parser_name") or "",
+        "source": module["source"],
+        "fields": fields,
     }
 
 

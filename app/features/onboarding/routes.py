@@ -1,6 +1,4 @@
-"""Onboarding routes: a single "Organization" page that shows the 3-step
-create/join wizard if the user has no org yet, or the org's profile/invite
-info if they do - see app/templates/onboarding/{index,invite}.html."""
+"""Onboarding routes: a single "Organization" page that shows the 3-step create/join wizard if the user has no org yet, or the org's profile/invite info if they do - see app/templates/onboarding/{index,invite}.html."""
 
 from __future__ import annotations
 
@@ -62,21 +60,13 @@ onboarding_bp = Blueprint("onboarding", __name__, url_prefix="/onboarding")
 
 @onboarding_bp.before_request
 async def _block_platform_staff() -> None:
-    """Organization create/join/staff/role self-service is for regular,
-    tenant-side users only. Platform staff (anyone holding a system role -
-    see permissions.py) already manage every organization from
-    /admin/organizations; they must never become a tenant member through
-    their own platform identity, so this entire blueprint doesn't exist for
-    them. Checked by role membership, not by granted permissions - a staff
-    role with zero permissions assigned is still staff."""
+    """Organization create/join/staff/role self-service is for regular, tenant-side users only."""
     if g.user_id is not None and await user_has_any_role(g.user_id):
         return redirect(url_for("dashboard"))
 
 
 async def _require_org_id() -> str:
-    """Every org-scoped route below is already gated by require_org_permission
-    (so the caller is necessarily a member of some org) - this just resolves
-    which one, for queries that need to scope by organization_id."""
+    """Every org-scoped route below is already gated by require_org_permission (so the caller is necessarily a member of some org) - this just resolves which one, for queries that need to scope by organization_id."""
     org = await get_user_organization(g.user_id)
     if not org:
         abort(404)
@@ -94,9 +84,6 @@ async def index():
         owner = bool(membership and is_org_owner(g.user_id, membership))
         granted = await get_user_org_permission_names(g.user_id)
         can_manage_org = ORG_SETTINGS_MANAGE.name in granted
-        # A role with only the narrower "view documents" grant should still
-        # see the documents list (just not the upload/delete controls or
-        # the invite code/link, which stay behind can_manage_org).
         can_view_documents = can_manage_org or ORG_DOCUMENT_VIEW.name in granted
         documents = await list_documents(org["id"]) if can_view_documents else []
         other_members = [m for m in await list_staff(org["id"]) if m["id"] != g.user_id]
@@ -170,9 +157,6 @@ async def create_view():
 @login_required
 async def join_view():
     if request.method == "GET":
-        # The actual invite *link* lands here - if they're already a member,
-        # send them to the org page (now showing profile/invite info)
-        # instead of re-running the join flow.
         org = await get_user_organization(g.user_id)
         if org:
             return redirect(url_for("onboarding.index"))
@@ -265,9 +249,6 @@ async def transfer_ownership_view():
     return redirect(url_for("onboarding.index"))
 
 
-# ── org staff (this org's own member list) ──────────────────────────────────
-
-
 @onboarding_bp.route("/staff")
 @require_org_permission(ORG_STAFF_VIEW)
 async def staff_list_view():
@@ -293,9 +274,6 @@ async def staff_remove_view(user_id: str):
     except OnboardingError as exc:
         return redirect(url_for("onboarding.staff_list_view", error=str(exc)))
     return redirect(url_for("onboarding.staff_list_view"))
-
-
-# ── org roles & permissions ──────────────────────────────────────────────────
 
 
 @onboarding_bp.route("/roles")
@@ -401,7 +379,9 @@ async def org_roles_add_member(role_id: str):
         if user_id:
             await assign_role_member(org_id, role_id, user_id)
     except OnboardingError as exc:
-        return redirect(url_for("onboarding.org_roles_edit_view", role_id=role_id, tab="members", error=str(exc)))
+        return redirect(
+            url_for("onboarding.org_roles_edit_view", role_id=role_id, tab="members", error=str(exc))
+        )
     return redirect(url_for("onboarding.org_roles_edit_view", role_id=role_id, tab="members"))
 
 
@@ -447,6 +427,4 @@ async def org_roles_search_members(role_id: str):
     org_id = await _require_org_id()
     search = request.args.get("q", "").strip()
     users = await org_repository.search_org_assignable_users(org_id, role_id, search)
-    return render_template(
-        "onboarding/roles/_member_options.html", users=users, role_id=role_id
-    )
+    return render_template("onboarding/roles/_member_options.html", users=users, role_id=role_id)

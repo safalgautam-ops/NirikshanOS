@@ -1,9 +1,4 @@
-"""DB access for the admin Users page.
-
-Reads/writes the existing `user` and `user_roles` tables — there is no
-separate "admin user" concept, this just manages the same `user` rows
-auth.repository already knows about, from an admin's point of view.
-"""
+"""DB access for the admin Users page."""
 
 from __future__ import annotations
 
@@ -27,16 +22,10 @@ async def list_users(
     elif status == "inactive":
         query = query.where("isActive", False)
     if role_id:
-        member_ids = (
-            await db.table("user_roles")
-            .where("role_id", role_id)
-            .all(allow_full_table=True)
-        )
+        member_ids = await db.table("user_roles").where("role_id", role_id).all(allow_full_table=True)
         query = query.where_in("id", [row["user_id"] for row in member_ids] or [""])
 
-    return await query.order_by("createdAt", "DESC").paginate(
-        page=page, per_page=per_page
-    )
+    return await query.order_by("createdAt", "DESC").paginate(page=page, per_page=per_page)
 
 
 async def get_top_roles_for_users(user_ids: list[str]) -> dict[str, dict]:
@@ -55,16 +44,12 @@ async def get_top_roles_for_users(user_ids: list[str]) -> dict[str, dict]:
 
     top_role: dict[str, dict] = {}
     for row in rows:
-        top_role.setdefault(
-            row["user_id"], row
-        )  # first occurrence per user = highest priority
+        top_role.setdefault(row["user_id"], row)
     return top_role
 
 
 async def get_all_roles() -> list:
-    return (
-        await db.table("roles").order_by("priority", "DESC").all(allow_full_table=True)
-    )
+    return await db.table("roles").order_by("priority", "DESC").all(allow_full_table=True)
 
 
 async def get_role_ids_for_users(user_ids: list[str]) -> dict[str, set[str]]:
@@ -93,9 +78,7 @@ async def delete_user(user_id: str) -> None:
     await db.table("user").where("id", user_id).delete()
 
 
-async def replace_user_roles(
-    user_id: str, role_ids: list[str], assigned_by: str
-) -> None:
+async def replace_user_roles(user_id: str, role_ids: list[str], assigned_by: str) -> None:
     async with db.transaction():
         await db.table("user_roles").where("user_id", user_id).delete()
         for role_id in role_ids:

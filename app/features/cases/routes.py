@@ -1,13 +1,4 @@
-"""Case routes: org-scoped CRUD plus the row-level visibility check that
-decides which specific cases a member may see/manage - owner, creator, or
-someone explicitly added as a case member (see
-app/features/cases/service.py's can_access_case). *Viewing* a case you have
-access to never requires a separate org-wide permission (there is no
-CASE_VIEW - see cases/permissions.py for why) - being added as a case
-member is itself the authorization decision, and shouldn't be silently
-overridden by a role that happens to grant nothing else. CASE_CREATE/
-CASE_EDIT/CASE_DELETE remain permission-gated on top of that row-level
-check, since those are real management actions, not viewing."""
+"""Case routes: org-scoped CRUD plus the row-level visibility check that decides which specific cases a member may see/manage - owner, creator, or someone explicitly added as a case member (see app/features/cases/service.py's can_access_case)."""
 
 from __future__ import annotations
 
@@ -41,7 +32,6 @@ from app.features.evidence.service import list_case_evidence
 from app.features.organizations import repository as org_repository
 from app.features.plans.service import get_active_subscription, get_highest_allowed_tier
 
-
 cases_bp = Blueprint("cases", __name__, url_prefix="/cases")
 
 
@@ -50,10 +40,7 @@ def _ip() -> str | None:
 
 
 async def _require_org_id() -> str:
-    """Resolves which org the caller belongs to, 404ing if they belong to
-    none - every route below needs this to scope queries by
-    organization_id, regardless of which (if any) CASE_* permission they
-    hold."""
+    """Resolves which org the caller belongs to, 404ing if they belong to none - every route below needs this to scope queries by organization_id, regardless of which (if any) CASE_* permission they hold."""
     membership = await get_user_org_membership(g.user_id)
     if not membership:
         abort(404)
@@ -61,13 +48,7 @@ async def _require_org_id() -> str:
 
 
 async def _owner_org_id() -> str | None:
-    """The id of the organization the current user OWNS (not just belongs
-    to), or None if they aren't an owner anywhere. Deliberately returns the
-    *specific* org rather than a bare bool - is_org_owner grants full access
-    within that one organization, never across organizations, so every
-    caller must compare this against the specific case/org in question
-    rather than treating "is an owner somewhere" as a blanket bypass (see
-    can_access_case)."""
+    """The id of the organization the current user OWNS (not just belongs to), or None if they aren't an owner anywhere."""
     membership = await get_user_org_membership(g.user_id)
     if membership and is_org_owner(g.user_id, membership):
         return membership["organization_id"]
@@ -75,8 +56,7 @@ async def _owner_org_id() -> str | None:
 
 
 async def _require_visible_case(case_id: str):
-    """The case row if the current user may access it, else a 404 - never a
-    403, so a non-member can't confirm a case id exists just by guessing."""
+    """The case row if the current user may access it, else a 404 - never a 403, so a non-member can't confirm a case id exists just by guessing."""
     case = await get_case_for_user(case_id, g.user_id, owner_org_id=await _owner_org_id())
     if not case:
         abort(404)
@@ -130,20 +110,15 @@ async def create_view():
         target_label=form.get("title", ""),
         ip_address=_ip(),
     )
-    # ?created=1 tells the case detail page to open the evidence-upload
-    # dialog immediately - the create-case dialog's "step 2" in spirit, just
-    # backed by a real page load instead of client-only dialog chaining, so
-    # evidence upload always has a real, persisted case_id behind it.
     return redirect(url_for("cases.detail_view", case_id=case_id, created="1"))
 
 
 async def _member_rows(case: dict, members: list, creator: dict | None, organization_id: str) -> list[dict]:
-    """Members-tab rows: the creator (who never needs a case_members row to
-    have access - see can_access_case) plus everyone explicitly added,
-    each annotated with their *organization* role (there's no separate
-    case-level role system - see cases/permissions.py) for the Role column."""
+    """Members-tab rows: the creator (who never needs a case_members row to have access - see can_access_case) plus everyone explicitly added, each annotated with their *organization* role (there's no separate case-level role system - see cases/permissions.py) for the Role column."""
     role_by_user_id = {
-        m["id"]: m["role_name"] for m in await org_repository.list_members(organization_id) if m.get("role_name")
+        m["id"]: m["role_name"]
+        for m in await org_repository.list_members(organization_id)
+        if m.get("role_name")
     }
     rows = []
     if creator:
@@ -179,9 +154,6 @@ async def detail_view(case_id: str):
     members = await get_case_members(case_id)
     evidence = await list_case_evidence(case_id)
     completed_evidence = [e for e in evidence if e["status"] == "completed"]
-    # Lightweight, JSON-safe subset for the Analyze tab's raw-JavaScript state - the
-    # full evidence rows carry datetime columns (uploaded_at) that don't
-    # belong baked into the page as JSON just to back a client-side planner.
     analyze_evidence = [
         {
             "id": e["id"],
@@ -232,11 +204,7 @@ async def detail_view(case_id: str):
 @cases_bp.route("/<case_id>/activity")
 @login_required
 async def activity_fragment_view(case_id: str):
-    """HTML fragment for the Activity tab, re-fetched via HTMX every time the
-    tab is clicked (see its hx-get/hx-target in detail.html). The tab itself
-    is a client-side show/hide panel on an already-loaded page, so a note or
-    report saved via fetch() after the page loaded would otherwise never
-    show up there without a full browser reload."""
+    """HTML fragment for the Activity tab, re-fetched via HTMX every time the tab is clicked (see its hx-get/hx-target in detail.html)."""
     await _require_visible_case(case_id)
     return render_template(
         "cases/_activity_list.html",

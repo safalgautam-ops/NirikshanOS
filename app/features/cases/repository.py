@@ -21,8 +21,6 @@ async def create_case(
         {
             "id": case_id,
             "organization_id": organization_id,
-            # id is already globally unique - reusing it rules out any
-            # collision without a retry loop or a second query.
             "case_number": f"CASE-{case_id[:8].upper()}",
             "title": title,
             "description": description,
@@ -70,8 +68,7 @@ async def delete_case(case_id: str) -> None:
 
 
 async def list_org_cases(organization_id: str, *, limit: int | None = None) -> list:
-    """Every case in the org - only valid for the org's owner, who bypasses
-    per-case membership the same way they bypass everything else."""
+    """Every case in the org - only valid for the org's owner, who bypasses per-case membership the same way they bypass everything else."""
     query = db.table("cases").where("organization_id", organization_id).order_by("created_at", "DESC")
     if limit:
         return await query.limit(limit).all()
@@ -128,9 +125,7 @@ async def get_case_members(case_id: str) -> list:
 
 
 async def search_org_members_not_in_case(organization_id: str, case_id: str, search: str) -> list:
-    """This org's members who aren't already on this case (and aren't the
-    case's own creator, who needs no membership row to access it) - for the
-    'add member' combobox."""
+    """This org's members who aren't already on this case (and aren't the case's own creator, who needs no membership row to access it) - for the 'add member' combobox."""
     case = await get_case(case_id)
     existing = await (
         db.table("case_members").where("case_id", case_id).select("user_id").all(allow_full_table=True)

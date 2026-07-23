@@ -1,6 +1,4 @@
-"""DB access for the admin Staff page.
-Staff = users who have at least one role assigned (user_roles junction table).
-"""
+"""DB access for the admin Staff page."""
 
 from __future__ import annotations
 
@@ -9,10 +7,7 @@ from app.core.db.orm import db
 
 async def list_staff(*, search: str = "") -> list:
     """All users who have at least one role assigned, with their roles."""
-    # Get user IDs who have at least one role
-    role_rows = await (
-        db.table("user_roles").select("user_id").all(allow_full_table=True)
-    )
+    role_rows = await db.table("user_roles").select("user_id").all(allow_full_table=True)
     staff_ids = list({row["user_id"] for row in role_rows})
     if not staff_ids:
         return []
@@ -22,7 +17,6 @@ async def list_staff(*, search: str = "") -> list:
         query = query.search(["name", "email"], search)
     users = await query.order_by("name").all(allow_full_table=True)
 
-    # Attach roles to each user
     role_assignments = await (
         db.table("user_roles")
         .join("roles", "user_roles.role_id", "roles.id")
@@ -53,17 +47,13 @@ async def get_staff_member(user_id: str):
         .select("roles.id", "roles.name", "roles.color")
         .all(allow_full_table=True)
     )
-    user["roles"] = [
-        {"id": r["id"], "name": r["name"], "color": r["color"]} for r in rows
-    ]
+    user["roles"] = [{"id": r["id"], "name": r["name"], "color": r["color"]} for r in rows]
     user["role_ids"] = {r["id"] for r in rows}
     return user
 
 
 async def create_staff_user(*, name: str, email: str, password_hash: str) -> str:
-    """Create the user + credential account atomically, so the new staff
-    member can actually log in (admin-created, so it skips the
-    email-ownership OTP self-registration normally requires)."""
+    """Create the user + credential account atomically, so the new staff member can actually log in (admin-created, so it skips the email-ownership OTP self-registration normally requires)."""
     from app.features.auth.repository import create_user_with_password
 
     return await create_user_with_password(
@@ -84,9 +74,7 @@ async def get_user_by_email(email: str):
     return await db.table("user").where("email", email).first()
 
 
-async def replace_staff_roles(
-    user_id: str, role_ids: list[str], assigned_by: str
-) -> None:
+async def replace_staff_roles(user_id: str, role_ids: list[str], assigned_by: str) -> None:
     """Replace all role assignments for a staff member."""
     async with db.transaction():
         await db.table("user_roles").where("user_id", user_id).delete()
@@ -101,6 +89,4 @@ async def replace_staff_roles(
 
 
 async def get_all_roles() -> list:
-    return (
-        await db.table("roles").order_by("priority", "DESC").all(allow_full_table=True)
-    )
+    return await db.table("roles").order_by("priority", "DESC").all(allow_full_table=True)

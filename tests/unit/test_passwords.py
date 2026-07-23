@@ -1,8 +1,5 @@
-"""Unit tests: Argon2id password hashing (app/core/utils/passwords.py).
+"""Unit tests: Argon2id password hashing (app/core/utils/passwords.py)."""
 
-Pure logic - no Flask app, no database, no network. Backs report §5.1's
-claim that password hashing is Argon2id, memory-hard, and salted per call.
-"""
 from app.core.utils.passwords import hash_password, verify_password
 
 
@@ -17,11 +14,9 @@ def test_wrong_password_fails():
 
 
 def test_same_password_hashed_twice_differs():
-    """Argon2id embeds a fresh random salt every call - two hashes of the
-    same password must never be byte-identical."""
+    """Argon2id embeds a fresh random salt every call - two hashes of the same password must never be byte-identical."""
     first = hash_password("same input twice")
     second = hash_password("same input twice")
     assert first != second
-    # ... yet both still verify correctly against the same plaintext.
     assert verify_password(first, "same input twice") is True
     assert verify_password(second, "same input twice") is True

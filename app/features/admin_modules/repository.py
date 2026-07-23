@@ -7,14 +7,7 @@ from app.core.utils.ids import new_id
 
 
 async def list_modules() -> list[dict]:
-    """All modules, with their category/instance display info joined in —
-    category_id/instance_id are FKs now, not free-text columns.
-
-    category_name defaults to "Uncategorized" in Python (not SQL COALESCE —
-    the query builder's .select() validates column identifiers and rejects
-    arbitrary SQL expressions) so Jinja's `groupby('category_name')` never
-    has to compare None against a string, which raises TypeError.
-    """
+    """All modules, with their category/instance display info joined in — category_id/instance_id are FKs now, not free-text columns."""
     rows = await (
         db.table("analysis_module_defs")
         .left_join("categories", "analysis_module_defs.category_id", "categories.id")
@@ -48,39 +41,30 @@ async def create_custom_module(
     instance_id: str | None,
     created_by: str,
 ) -> None:
-    await db.table("analysis_module_defs").create({
-        "id":              module_id,
-        "display_name":    display_name,
-        "description":     description,
-        "category_id":     category_id,
-        "tier":            tier,
-        "instance_id":     instance_id,
-        "timeout_seconds": 120,
-        "is_enabled":      0,
-        "status":          "published",
-        "source":          "custom",
-        "created_by":      created_by,
-    })
+    await db.table("analysis_module_defs").create(
+        {
+            "id": module_id,
+            "display_name": display_name,
+            "description": description,
+            "category_id": category_id,
+            "tier": tier,
+            "instance_id": instance_id,
+            "timeout_seconds": 120,
+            "is_enabled": 0,
+            "status": "published",
+            "source": "custom",
+            "created_by": created_by,
+        }
+    )
 
 
 async def delete_module(module_id: str) -> None:
-    """Deletes the module definition - module_files and module_test_runs
-    cascade automatically (fk_module_files_module/fk_module_test_runs_module
-    are both ON DELETE CASCADE). analysis_tasks.module_id is a plain
-    denormalized string with no FK to this table, so historical job/result
-    history for this module is untouched."""
+    """Deletes the module definition - module_files and module_test_runs cascade automatically (fk_module_files_module/fk_module_test_runs_module are both ON DELETE CASCADE)."""
     await db.table("analysis_module_defs").where("id", module_id).delete()
 
 
 async def set_enabled(module_id: str, enabled: bool) -> None:
-    await db.table("analysis_module_defs").where("id", module_id).update(
-        {"is_enabled": int(enabled)}
-    )
-
-
-# ---------------------------------------------------------------------------
-# Module files
-# ---------------------------------------------------------------------------
+    await db.table("analysis_module_defs").where("id", module_id).update({"is_enabled": int(enabled)})
 
 
 async def list_files(module_id: str) -> list[dict]:
@@ -104,13 +88,15 @@ async def create_file(
     is_entry_point: bool = False,
 ) -> str:
     file_id = new_id()
-    await db.table("module_files").create({
-        "id":            file_id,
-        "module_id":     module_id,
-        "filename":      filename,
-        "content":       content,
-        "is_entry_point": int(is_entry_point),
-    })
+    await db.table("module_files").create(
+        {
+            "id": file_id,
+            "module_id": module_id,
+            "filename": filename,
+            "content": content,
+            "is_entry_point": int(is_entry_point),
+        }
+    )
     return file_id
 
 
@@ -123,7 +109,6 @@ async def delete_file(file_id: str) -> None:
 
 
 async def set_entry_point(module_id: str, file_id: str) -> None:
-    # Set new entry point first — if clearing others fails, at least one entry point exists.
     await db.table("module_files").where("id", file_id).update({"is_entry_point": 1})
     await (
         db.table("module_files")
@@ -142,44 +127,37 @@ async def update_module_meta(
     tier: str,
     instance_id: str | None,
 ) -> None:
-    await db.table("analysis_module_defs").where("id", module_id).update({
-        "display_name": display_name,
-        "description":  description,
-        "category_id":  category_id,
-        "tier":         tier,
-        "instance_id":  instance_id,
-    })
+    await db.table("analysis_module_defs").where("id", module_id).update(
+        {
+            "display_name": display_name,
+            "description": description,
+            "category_id": category_id,
+            "tier": tier,
+            "instance_id": instance_id,
+        }
+    )
 
 
 async def save_options_schema(module_id: str, schema_json: str) -> None:
-    await db.table("analysis_module_defs").where("id", module_id).update(
-        {"options_schema": schema_json}
-    )
+    await db.table("analysis_module_defs").where("id", module_id).update({"options_schema": schema_json})
 
 
 async def save_pipeline(module_id: str, pipeline_json: str | None) -> None:
-    await db.table("analysis_module_defs").where("id", module_id).update(
-        {"pipeline_spec": pipeline_json}
-    )
+    await db.table("analysis_module_defs").where("id", module_id).update({"pipeline_spec": pipeline_json})
 
 
-# ---------------------------------------------------------------------------
-# Ad-hoc test runs (IDE "Test" button — no case/evidence involved)
-# ---------------------------------------------------------------------------
-
-
-async def create_test_run(
-    *, module_id: str, instance_id: str, s3_key: str, created_by: str
-) -> str:
+async def create_test_run(*, module_id: str, instance_id: str, s3_key: str, created_by: str) -> str:
     run_id = new_id()
-    await db.table("module_test_runs").create({
-        "id":          run_id,
-        "module_id":   module_id,
-        "instance_id": instance_id,
-        "s3_key":      s3_key,
-        "status":      "queued",
-        "created_by":  created_by,
-    })
+    await db.table("module_test_runs").create(
+        {
+            "id": run_id,
+            "module_id": module_id,
+            "instance_id": instance_id,
+            "s3_key": s3_key,
+            "status": "queued",
+            "created_by": created_by,
+        }
+    )
     return run_id
 
 
@@ -201,5 +179,6 @@ async def update_test_run_status(
         data["result_json"] = result_json
     if status in ("completed", "failed"):
         from datetime import datetime, timezone
+
         data["finished_at"] = datetime.now(timezone.utc)
     await db.table("module_test_runs").where("id", run_id).update(data)

@@ -1,13 +1,4 @@
-"""Onboarding business logic: create-or-join an organization.
-
-No new tables of its own for the org/membership data - organizations/
-organization_members already hold everything needed, owned by
-app.features.organizations. This just orchestrates that feature's
-repository for the self-service, member-facing flow (as opposed to the
-admin-only Organizations page, which only ever collects name/description/
-status). organization_documents is the one new table this feature actually
-owns the writes for.
-"""
+"""Onboarding business logic: create-or-join an organization."""
 
 from __future__ import annotations
 
@@ -51,9 +42,7 @@ async def create_and_join(
     logo: FileStorage | None,
     documents: list[FileStorage],
 ) -> str:
-    """Validate and create an organization from the 3-step wizard, then add
-    the creator as its first member. Raises OnboardingError - with a
-    message safe to show directly - on any validation failure."""
+    """Validate and create an organization from the 3-step wizard, then add the creator as its first member."""
     name = name.strip()
     address = address.strip()
     registration_number = registration_number.strip()
@@ -96,12 +85,6 @@ async def create_and_join(
     except ValueError as exc:
         raise OnboardingError(str(exc)) from exc
 
-    # Everything from here on writes to the database. Wrapped in one
-    # transaction so a failure partway through (e.g. add_member erroring
-    # after create_organization already succeeded) rolls back the whole
-    # sequence instead of leaving a half-created organization behind -
-    # note this does not cover the MinIO uploads above, which already
-    # happened and cannot be rolled back by a SQL transaction.
     async with db.transaction():
         org_id = await org_repository.create_organization(
             name=name,
@@ -109,9 +92,6 @@ async def create_and_join(
             description=description.strip(),
             status="active",
             created_by=created_by,
-            # Self-registered orgs wait for an administrator to review the
-            # submitted KYC details/documents before unlocking the rest of the
-            # app for their members - see app/core/security/organization_gate.py.
             verification_status="pending",
             logo_path=logo_path,
             org_type=org_type,
@@ -129,19 +109,8 @@ async def create_and_join(
         for file_path, original_filename in saved_documents:
             await org_repository.add_document(org_id, file_path, original_filename)
 
-        # No roles exist until the owner creates some - ownership is a separate,
-        # role-independent seat (see org_permissions.is_org_owner) that already
-        # bypasses every permission check, and a fresh org has no other members
-        # yet to need one either. The owner builds out roles (Discord-style)
-        # from the Roles page and decides who gets what, instead of inheriting
-        # a "Org Admin"/"Member" pair nobody asked for.
         await org_repository.add_member(org_id, created_by)
 
-        # Every new org starts on the zero-cost plan automatically — no payment
-        # step, no admin action needed. If no free-tier plan is configured yet
-        # (a fresh install before an admin has set one up), the org simply has
-        # no subscription until one is assigned later, same as before this
-        # existed - not a hard failure of org creation.
         free_plan = await plans_repository.get_free_plan()
         if free_plan:
             await plans_service.assign_plan(
@@ -168,8 +137,6 @@ async def join_by_code(*, code: str, user_id: str) -> str:
     if await org_repository.is_member(org["id"], user_id):
         raise OnboardingError("You're already a member of this organization.")
 
-    # New members join with no role - they get whatever the owner/an admin
-    # later decides to grant them, not an implicit "Member" role.
     await org_repository.add_member(org["id"], user_id)
     return org["id"]
 
@@ -183,12 +150,7 @@ async def list_documents(org_id: str):
 
 
 async def _ensure_org_not_yet_verified(org_id: str) -> None:
-    """Once a platform admin has approved an organization, its submitted
-    documents are locked from the org's own side - only a platform admin can
-    change them from then on (see organizations/routes.py's admin-side
-    upload/delete), so a verified org can't quietly swap out what was
-    reviewed. Before approval, the org can still fix/replace what it
-    submitted."""
+    """Once a platform admin has approved an organization, its submitted documents are locked from the org's own side - only a platform admin can change them from then on (see organizations/routes.py's admin-side upload/delete), so a verified org can't quietly swap out what was reviewed."""
     org = await org_repository.get_organization(org_id)
     if org and org["verification_status"] == "approved":
         raise OnboardingError(
@@ -197,10 +159,7 @@ async def _ensure_org_not_yet_verified(org_id: str) -> None:
 
 
 async def add_documents(org_id: str, files: list[FileStorage]) -> None:
-    """Uploads more government documents to an already-existing organization
-    - the 3-step wizard only collects these once, at creation, but an org
-    admin/owner may need to add or replace one before the organization is
-    verified."""
+    """Uploads more government documents to an already-existing organization - the 3-step wizard only collects these once, at creation, but an org admin/owner may need to add or replace one before the organization is verified."""
     await _ensure_org_not_yet_verified(org_id)
     real_files = [file for file in files if file and file.filename]
     if not real_files:
@@ -230,9 +189,7 @@ async def regenerate_invite_code(user_id: str) -> str:
 
 
 async def get_document_for_download(*, doc_id: str, user_id: str):
-    """Returns (presigned download URL, original filename) if the
-    requesting user belongs to the document's organization, else None - the
-    route turns that into a 404 rather than leaking whether the id exists."""
+    """Returns (presigned download URL, original filename) if the requesting user belongs to the document's organization, else None - the route turns that into a 404 rather than leaking whether the id exists."""
     doc = await org_repository.get_document(doc_id)
     if not doc:
         return None
@@ -242,12 +199,7 @@ async def get_document_for_download(*, doc_id: str, user_id: str):
 
 
 async def delete_organization(org_id: str, *, requested_by: str) -> None:
-    """Permanently deletes the organization - members, roles, and document
-    records all cascade at the DB level (see repository.delete_organization),
-    this just adds the one rule the DB can't express: only the org's owner
-    (whoever created it, see org_permissions.is_org_owner) may do this, no
-    matter what permissions some other role grants - same "owner is above
-    the role system" guarantee as remove_staff's owner-removal block."""
+    """Permanently deletes the organization - members, roles, and document records all cascade at the DB level (see repository.delete_organization), this just adds the one rule the DB can't express: only the org's owner (whoever created it, see org_permissions.is_org_owner) may do this, no matter what permissions some other role grants - same "owner is above the role system" guarantee as remove_staff's owner-removal block."""
     org = await org_repository.get_organization(org_id)
     if not org:
         raise OnboardingError("Organization not found.")
@@ -258,9 +210,6 @@ async def delete_organization(org_id: str, *, requested_by: str) -> None:
         await storage.delete_file(logo_path)
     for document_path in document_paths:
         await storage.delete_file(document_path)
-
-
-# ── org staff (the org's own member list) ───────────────────────────────────
 
 
 async def list_staff(org_id: str):
@@ -277,22 +226,14 @@ async def remove_staff(org_id: str, user_id: str, *, removed_by: str) -> None:
 
 
 async def leave_organization(org_id: str, user_id: str) -> None:
-    """Any member can leave on their own - this isn't gated by ORG_STAFF_REMOVE,
-    it's a basic membership right, not an admin action. The one exception is
-    the owner: leaving would orphan the organization (no one left who can
-    manage roles/settings/billing-equivalent decisions), so they must transfer
-    ownership to another member first - see transfer_ownership below."""
+    """Any member can leave on their own - this isn't gated by ORG_STAFF_REMOVE, it's a basic membership right, not an admin action."""
     if await _is_owner(org_id, user_id):
         raise OnboardingError("Transfer ownership to another member before leaving.")
     await org_repository.remove_member(org_id, user_id)
 
 
 async def transfer_ownership(org_id: str, *, current_owner_id: str, new_owner_id: str) -> None:
-    """Discord-style ownership transfer: the only way an owner's special,
-    role-independent access (see org_permissions.is_org_owner) ever moves to
-    someone else. The new owner must already be a member - this doesn't
-    invite anyone, it just hands off the one seat that bypasses the role
-    system entirely."""
+    """Discord-style ownership transfer: the only way an owner's special, role-independent access (see org_permissions.is_org_owner) ever moves to someone else."""
     if new_owner_id == current_owner_id:
         raise OnboardingError("Choose a different member to transfer ownership to.")
     if not await _is_owner(org_id, current_owner_id):
@@ -300,14 +241,6 @@ async def transfer_ownership(org_id: str, *, current_owner_id: str, new_owner_id
     if not await org_repository.is_member(org_id, new_owner_id):
         raise OnboardingError("That user isn't a member of this organization.")
     await org_repository.transfer_ownership(org_id, new_owner_id)
-    # Both sides keep whatever role they already held (likely none, for
-    # either) - ownership isn't a role and doesn't grant or require one. The
-    # outgoing owner becomes a perfectly ordinary roleless member, same as
-    # anyone else who hasn't been granted a role yet.
-
-
-# ── org roles & permissions ──────────────────────────────────────────────────
-# Mirrors app/features/rbac/service.py exactly, just org_id-scoped throughout.
 
 
 async def get_org_roles_page(org_id: str):
@@ -341,11 +274,6 @@ async def toggle_org_role_assignable(role_id: str, *, requested_by: str) -> None
     role = await org_repository.get_org_role(role_id)
     if not role:
         raise OnboardingError("Role not found.")
-    # is_system (the bootstrap "Org Admin" role) is locked against everyone
-    # except the org's owner - same "owner is above the role system"
-    # guarantee as everywhere else owner bypasses apply. Discord-style: the
-    # owner has full, unrestricted role customization; nobody else gets to
-    # touch the one role that's otherwise structurally protected.
     if role["is_system"] and not await _is_owner(role["organization_id"], requested_by):
         raise OnboardingError("Only the organization's owner can change this role.")
     await org_repository.set_org_role_assignable(role_id, not role["is_assignable"])
@@ -355,13 +283,8 @@ async def delete_org_role(org_id: str, role_id: str, *, requested_by: str) -> No
     role = await org_repository.get_org_role(role_id)
     if not role:
         raise OnboardingError("Role not found.")
-    # No role is structurally protected anymore - members don't need *some*
-    # role to fall back to (see remove_role_member/join_by_code), so even
-    # the role flagged is_default can be deleted, owner or not.
     if role["is_system"] and not await _is_owner(org_id, requested_by):
         raise OnboardingError("Only the organization's owner can delete this role.")
-    # Members holding the deleted role simply lose it - no implicit
-    # fallback role to land on.
     for member in await org_repository.get_org_role_members(role_id):
         await org_repository.clear_member_role(org_id, member["id"])
     await org_repository.delete_org_role(role_id)
@@ -385,8 +308,7 @@ async def update_org_role_permissions(role_id: str, permission_ids: list[str]) -
 
 
 async def update_org_role_sidebar(role_id: str, selected_keys: list[str]) -> None:
-    """NULL = unrestricted (every nav key was checked); otherwise store
-    exactly what's checked - same contract as the system rbac's sidebar."""
+    """NULL = unrestricted (every nav key was checked); otherwise store exactly what's checked - same contract as the system rbac's sidebar."""
     all_keys = {key for key, _ in ORG_NAV_KEYS}
     keys = None if set(selected_keys) >= all_keys else selected_keys
     await org_repository.set_org_role_sidebar_keys(role_id, keys)
@@ -394,7 +316,9 @@ async def update_org_role_sidebar(role_id: str, selected_keys: list[str]) -> Non
 
 async def assign_role_member(org_id: str, role_id: str, user_id: str) -> None:
     if await _is_owner(org_id, user_id):
-        raise OnboardingError("The organization's owner doesn't hold a role - ownership already grants full access.")
+        raise OnboardingError(
+            "The organization's owner doesn't hold a role - ownership already grants full access."
+        )
     role = await org_repository.get_org_role(role_id)
     if role and not role["is_assignable"]:
         raise OnboardingError("This role's assignment is currently blocked.")
@@ -402,7 +326,5 @@ async def assign_role_member(org_id: str, role_id: str, user_id: str) -> None:
 
 
 async def remove_role_member(org_id: str, user_id: str) -> None:
-    """"Removing" a member from a role in the Members tab just clears their
-    role - it doesn't kick them out of the organization, and there's no
-    fallback role to land on since none is mandatory."""
+    """ "Removing" a member from a role in the Members tab just clears their role - it doesn't kick them out of the organization, and there's no fallback role to land on since none is mandatory."""
     await org_repository.clear_member_role(org_id, user_id)

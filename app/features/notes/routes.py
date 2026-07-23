@@ -15,7 +15,9 @@ notes_bp = Blueprint("notes", __name__)
 
 async def _require_visible_case(case_id: str):
     membership = await get_user_org_membership(g.user_id)
-    owner_org_id = membership["organization_id"] if membership and is_org_owner(g.user_id, membership) else None
+    owner_org_id = (
+        membership["organization_id"] if membership and is_org_owner(g.user_id, membership) else None
+    )
     case = await get_case_for_user(case_id, g.user_id, owner_org_id=owner_org_id)
     if not case:
         abort(404)

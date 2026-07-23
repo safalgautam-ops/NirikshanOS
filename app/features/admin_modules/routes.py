@@ -21,27 +21,31 @@ from app.features.plans.service import KNOWN_TIERS
 
 admin_modules_bp = Blueprint("admin_modules", __name__, url_prefix="/admin/modules")
 
-# Ad-hoc test-run uploads are sample files, not full forensic evidence images —
-# capped much lower than the evidence pipeline's 100GB ceiling.
-_MAX_TEST_UPLOAD_BYTES = 200 * 1024 * 1024  # 200MB
+_MAX_TEST_UPLOAD_BYTES = 200 * 1024 * 1024
 
 _ALLOWED_EXTENSIONS = {
-    ".py", ".yaml", ".yml", ".sh", ".json", ".txt", ".md", ".toml", ".ini", ".conf",
+    ".py",
+    ".yaml",
+    ".yml",
+    ".sh",
+    ".json",
+    ".txt",
+    ".md",
+    ".toml",
+    ".ini",
+    ".conf",
 }
 _ID_RE = re.compile(r"^[a-z0-9_\-]{1,100}$")
 
 
 def _ext_ok(filename: str) -> bool:
     import os
+
     return os.path.splitext(filename.lower())[1] in _ALLOWED_EXTENSIONS
 
 
 async def _validate_meta_fields(body: dict) -> tuple[dict | None, str | None]:
-    """Shared validation for create/update. Returns (clean_fields, error).
-
-    instance_id is looked up against the `instances` table directly — the FK
-    itself is the allowlist now, no separate env-var/frozenset check needed.
-    """
+    """Shared validation for create/update."""
     display_name = (body.get("display_name") or "").strip()
     if not display_name:
         return None, "Display name is required"
@@ -69,8 +73,6 @@ async def _validate_meta_fields(body: dict) -> tuple[dict | None, str | None]:
         "instance_id": instance_id,
     }, None
 
-
-# ── List + create ─────────────────────────────────────────────────────────────
 
 @admin_modules_bp.route("/")
 @require_permission(MODULE_VIEW)
@@ -111,8 +113,6 @@ async def create_view():
     return jsonify({"ok": True, "id": module_id})
 
 
-# ── IDE ───────────────────────────────────────────────────────────────────────
-
 @admin_modules_bp.route("/<module_id>/ide")
 @require_permission(MODULE_VIEW)
 async def ide_view(module_id: str):
@@ -120,39 +120,33 @@ async def ide_view(module_id: str):
     if not mod:
         return redirect(url_for("admin_modules.list_view"))
     raw_files = await repository.list_files(module_id)
-    # Strip content + timestamps — fileTree only needs id/filename/is_entry_point.
-    # Content is loaded lazily via GET when a file is opened.
     files = [
         {"id": f["id"], "filename": f["filename"], "is_entry_point": bool(f["is_entry_point"])}
         for f in raw_files
     ]
     categories = await categories_repository.list_categories()
     instances = await instances_repository.list_ready_instances()
-    # If the module's currently-assigned instance isn't ready (e.g. its image
-    # was never built, or build broke later), still show it in the dropdown
-    # so the current selection isn't silently dropped from view — but no
-    # *other* not-ready instance is ever offered as a new choice.
     if mod["instance_id"] and not any(i["id"] == mod["instance_id"] for i in instances):
         current = await instances_repository.get_instance(mod["instance_id"])
         if current:
             instances = [current] + instances
     instances_for_js = [
-        {"id": i["id"], "display_name": i["display_name"], "image_tag": i["image_tag"], "image_status": i["image_status"]}
+        {
+            "id": i["id"],
+            "display_name": i["display_name"],
+            "image_tag": i["image_tag"],
+            "image_status": i["image_status"],
+        }
         for i in instances
     ]
     visible_keys = await get_visible_nav_keys(g.user_id)
     module_meta = {
         "display_name": mod["display_name"],
-        "description":  mod["description"] or "",
-        "category_id":  mod["category_id"],
-        "tier":         mod["tier"],
-        "instance_id":  mod["instance_id"],
+        "description": mod["description"] or "",
+        "category_id": mod["category_id"],
+        "tier": mod["tier"],
+        "instance_id": mod["instance_id"],
     }
-    # Plans don't reference a module directly - a plan grants tiers, and a
-    # module declares which tier it needs (see KNOWN_TIERS) - so "which
-    # plans would lose this module" is whichever plans currently grant its
-    # tier. Computed here (not client-side) so the delete-confirmation
-    # dialog can name real, current plans instead of a generic warning.
     all_plans = await plans_repository.list_plans()
     affected_plans = [p["display_name"] for p in all_plans if mod["tier"] in (p["allowed_tiers"] or [])]
     return render_template(
@@ -169,8 +163,6 @@ async def ide_view(module_id: str):
     )
 
 
-# ── Update module metadata ────────────────────────────────────────────────────
-
 @admin_modules_bp.route("/<module_id>", methods=["PATCH"])
 @require_permission(MODULE_EDIT)
 async def update_meta_view(module_id: str):
@@ -185,8 +177,6 @@ async def update_meta_view(module_id: str):
     return jsonify({"ok": True})
 
 
-# ── Toggle enabled ────────────────────────────────────────────────────────────
-
 @admin_modules_bp.route("/<module_id>/toggle", methods=["POST"])
 @require_permission(MODULE_EDIT)
 async def toggle_view(module_id: str):
@@ -200,8 +190,6 @@ async def toggle_view(module_id: str):
     return jsonify({"ok": True, "is_enabled": new_state})
 
 
-# ── Delete ────────────────────────────────────────────────────────────────────
-
 @admin_modules_bp.route("/<module_id>", methods=["DELETE"])
 @require_permission(MODULE_DELETE)
 async def delete_view(module_id: str):
@@ -210,8 +198,6 @@ async def delete_view(module_id: str):
     await repository.delete_module(module_id)
     return jsonify({"ok": True})
 
-
-# ── Module file CRUD ──────────────────────────────────────────────────────────
 
 @admin_modules_bp.route("/<module_id>/files", methods=["POST"])
 @require_permission(MODULE_EDIT)
@@ -223,7 +209,10 @@ async def create_file_view(module_id: str):
     if not filename:
         return jsonify({"error": "filename required"}), 400
     if not _ext_ok(filename):
-        return jsonify({"error": f"Extension not allowed. Use: {', '.join(sorted(_ALLOWED_EXTENSIONS))}"}), 400
+        return (
+            jsonify({"error": f"Extension not allowed. Use: {', '.join(sorted(_ALLOWED_EXTENSIONS))}"}),
+            400,
+        )
     existing = await repository.list_files(module_id)
     if any(f["filename"] == filename for f in existing):
         return jsonify({"error": "A file with that name already exists"}), 409
@@ -238,12 +227,14 @@ async def get_file_view(module_id: str, file_id: str):
     f = await repository.get_file(file_id)
     if not f or f["module_id"] != module_id:
         return jsonify({"error": "not found"}), 404
-    return jsonify({
-        "id":             f["id"],
-        "filename":       f["filename"],
-        "content":        f["content"] or "",
-        "is_entry_point": bool(f["is_entry_point"]),
-    })
+    return jsonify(
+        {
+            "id": f["id"],
+            "filename": f["filename"],
+            "content": f["content"] or "",
+            "is_entry_point": bool(f["is_entry_point"]),
+        }
+    )
 
 
 @admin_modules_bp.route("/<module_id>/files/<file_id>", methods=["PUT"])
@@ -329,8 +320,6 @@ async def save_pipeline_view(module_id: str):
     return jsonify({"ok": True})
 
 
-# ── Ad-hoc test runs (real, in-IDE — no case/evidence involved) ───────────────
-
 @admin_modules_bp.route("/<module_id>/test/upload", methods=["POST"])
 @require_permission(MODULE_EDIT)
 async def test_upload_view(module_id: str):
@@ -342,7 +331,12 @@ async def test_upload_view(module_id: str):
         return jsonify({"error": "No file provided"}), 400
     data = file.read()
     if len(data) > _MAX_TEST_UPLOAD_BYTES:
-        return jsonify({"error": f"File too large — max {_MAX_TEST_UPLOAD_BYTES // (1024*1024)}MB for test uploads"}), 400
+        return (
+            jsonify(
+                {"error": f"File too large — max {_MAX_TEST_UPLOAD_BYTES // (1024*1024)}MB for test uploads"}
+            ),
+            400,
+        )
     upload_id = new_id()
     safe_filename = re.sub(r"[^A-Za-z0-9._-]", "_", file.filename)
     s3_key = f"module-tests/{module_id}/{upload_id}/{safe_filename}"
@@ -365,9 +359,23 @@ async def test_run_view(module_id: str):
         return jsonify({"error": "Assign an instance in Settings before testing this module."}), 400
     instance = await instances_repository.get_instance(mod["instance_id"])
     if not instance or not instance["is_active"]:
-        return jsonify({"error": "This module's instance no longer exists or is inactive. Assign a different one in Settings."}), 400
+        return (
+            jsonify(
+                {
+                    "error": "This module's instance no longer exists or is inactive. Assign a different one in Settings."
+                }
+            ),
+            400,
+        )
     if instance["image_status"] != "ready":
-        return jsonify({"error": f"Instance '{instance['display_name']}' has not been built yet — build the image and click Recheck on /admin/instances before testing."}), 400
+        return (
+            jsonify(
+                {
+                    "error": f"Instance '{instance['display_name']}' has not been built yet — build the image and click Recheck on /admin/instances before testing."
+                }
+            ),
+            400,
+        )
     files = await repository.list_files(module_id)
     has_entry = any(f["is_entry_point"] for f in files)
     if not has_entry and not mod.get("pipeline_spec"):
@@ -401,10 +409,12 @@ async def test_status_view(module_id: str, run_id: str):
             raw_result = json.loads(raw_result)
         except json.JSONDecodeError:
             raw_result = None
-    return jsonify({
-        "id":             run["id"],
-        "status":         run["status"],
-        "error_message":  run["error_message"],
-        "result":         raw_result,
-        "finished_at":    run["finished_at"].isoformat() if run["finished_at"] else None,
-    })
+    return jsonify(
+        {
+            "id": run["id"],
+            "status": run["status"],
+            "error_message": run["error_message"],
+            "result": raw_result,
+            "finished_at": run["finished_at"].isoformat() if run["finished_at"] else None,
+        }
+    )

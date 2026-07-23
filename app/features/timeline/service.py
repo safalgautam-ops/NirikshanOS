@@ -1,14 +1,4 @@
-"""Manual investigation timeline business logic: per-type field validation
-and the Timeline Center's per-case summary counts.
-
-This is deliberately NOT gated by an org permission the way evidence
-upload/delete is (see app/features/cases/permissions.py) - a task/note/
-milestone is the analyst's own day-to-day investigation record, not a
-management action over the case itself. The same row-level case-access
-check used for *viewing* a case (see cases/service.py.can_access_case) is
-treated as sufficient authorization to read and maintain its timeline too;
-routes.py is the one place that enforces it, same split as everywhere else.
-"""
+"""Manual investigation timeline business logic: per-type field validation and the Timeline Center's per-case summary counts."""
 
 from __future__ import annotations
 
@@ -36,15 +26,14 @@ def _require_title(title: str) -> str:
 
 
 def _parse_timeline_time(value: str) -> datetime:
-    """Defaults to right now if left blank - every dialog pre-fills this
-    field, but a missing/blank submission shouldn't be a hard error."""
+    """Defaults to right now if left blank - every dialog pre-fills this field, but a missing/blank submission shouldn't be a hard error."""
     value = (value or "").strip()
     if not value:
         return datetime.now()
     try:
-        return datetime.strptime(value, "%Y-%m-%dT%H:%M")  # <input type="datetime-local">
-    except ValueError:
-        raise TimelineError("Enter a valid timeline date/time.")
+        return datetime.strptime(value, "%Y-%m-%dT%H:%M")
+    except ValueError as exc:
+        raise TimelineError("Enter a valid timeline date/time.") from exc
 
 
 def _parse_due_date(value: str) -> date | None:
@@ -53,8 +42,8 @@ def _parse_due_date(value: str) -> date | None:
         return None
     try:
         return datetime.strptime(value, "%Y-%m-%d").date()
-    except ValueError:
-        raise TimelineError("Enter a valid due date.")
+    except ValueError as exc:
+        raise TimelineError("Enter a valid due date.") from exc
 
 
 def _type_specific_fields(
@@ -85,13 +74,14 @@ def _type_specific_fields(
         if visibility not in _NOTE_VISIBILITY_VALUES:
             raise TimelineError("Select a valid visibility.")
         return {"visibility": visibility}
-    return {}  # milestone needs nothing beyond the shared fields
+    return {}
 
 
 async def _validate_case_foreign_keys(case_id: str, assigned_to: str, linked_evidence_id: str) -> None:
     """Verify that assigned_to is a case member and linked_evidence_id belongs to this case."""
     if assigned_to:
         from app.features.cases.repository import get_case, is_case_member
+
         case = await get_case(case_id)
         if case and assigned_to != case["created_by"]:
             if not await is_case_member(case_id, assigned_to):
@@ -187,10 +177,7 @@ async def list_items(case_id: str) -> list:
 
 
 async def case_timeline_summaries(cases: list) -> list[dict]:
-    """Annotates each case with its timeline counts + last-updated time for
-    the Timeline Center's cards - one bulk query across every visible case,
-    aggregated here in Python rather than a COUNT-per-card SQL query (same
-    approach already used for evidence counts on the case detail page)."""
+    """Annotates each case with its timeline counts + last-updated time for the Timeline Center's cards - one bulk query across every visible case, aggregated here in Python rather than a COUNT-per-card SQL query (same approach already used for evidence counts on the case detail page)."""
     items = await repository.list_items_for_cases([c["id"] for c in cases])
     by_case: dict[str, list] = {}
     for item in items:

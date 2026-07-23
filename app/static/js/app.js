@@ -1,4 +1,3 @@
-// Apply the saved theme before first paint. Light is the default; dark is opt-in.
 if (localStorage.theme === "dark") document.documentElement.classList.add("dark");
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -31,7 +30,6 @@ window.closeAppDialog = function (dialog) {
   else dialog.hidden = true;
 };
 
-// Find text in the current server-rendered page.
 (function () {
   function initPageSearch(root) {
     const input = root.querySelector("[data-page-search-input]");
@@ -140,8 +138,6 @@ window.closeAppDialog = function (dialog) {
   });
 })();
 
-// ─── ui-runtime ─────────────────────────────────────────────────────────────
-// Small event-delegation layer for the Jinja macros used by this project.
 (function () {
   const slot = (name) => `[data-slot="${name}"]`;
   const all = (root, selector) => Array.from(root.querySelectorAll(selector));
@@ -180,14 +176,8 @@ window.closeAppDialog = function (dialog) {
     popup.style.margin = "0";
     popup.style.minWidth = `${trigger.offsetWidth}px`;
 
-    // A <dialog> opened with showModal() (see openAppDialog) is promoted to
-    // the browser's top layer, which makes the dialog itself - not the
-    // viewport - the containing block for any position:fixed descendant.
-    // Every coordinate below has to be re-based against that dialog's own
-    // box whenever the trigger lives inside one, or the popup lands
-    // wherever the dialog happens to be instead of next to its trigger.
     const modalAncestor = trigger.closest("dialog[open]");
-
+    // An open <dialog> is its own containing block for position:fixed, not the viewport.
     const reposition = () => {
       const rect = trigger.getBoundingClientRect();
       const originRect = modalAncestor
@@ -202,12 +192,6 @@ window.closeAppDialog = function (dialog) {
       popup.style.left = `${left}px`;
       popup.style.top = openUp ? "auto" : `${bottom + 4}px`;
       popup.style.bottom = openUp ? `${viewportHeight - top + 4}px` : "auto";
-      // A long option list can be taller than the space actually available
-      // in whichever direction it opens (especially inside a <dialog>,
-      // which clips fixed descendants to its own scrollable box - see the
-      // containing-block note above). Cap the popup to that real space and
-      // let it scroll internally, or the tail end renders outside the
-      // dialog's clipped box and becomes unclickable.
       const available = (openUp ? top : viewportHeight - bottom) - 8;
       popup.style.maxHeight = `${Math.max(available, 120)}px`;
       popup.style.overflowY = "auto";
@@ -354,10 +338,6 @@ window.closeAppDialog = function (dialog) {
       return;
     }
 
-    // Sheets (the mobile sidebar drawer) dismiss on a backdrop click, unlike
-    // the confirm/edit dialogs above - clicking outside a real <dialog> lands
-    // a click on the dialog element itself (its ::backdrop), never on a
-    // descendant, so this only fires when nothing inside was clicked.
     if (target.matches('dialog[data-slot="sheet"]')) {
       window.closeAppDialog(target);
       return;
@@ -384,9 +364,6 @@ window.closeAppDialog = function (dialog) {
     const item = target.closest(slot("select-item"));
     if (item && !item.hasAttribute("data-disabled")) {
       const select = item.closest(slot("select"));
-      // Captured before the marker loop below - item.textContent would
-      // otherwise pick up the "✓" this same click stamps into its own
-      // marker span, leaking the checkmark glyph into the trigger label.
       const value = item.dataset.value || item.textContent.trim();
       const label = item.textContent.trim();
       all(select || document, slot("select-item")).forEach((option) => {
@@ -435,9 +412,6 @@ window.closeAppDialog = function (dialog) {
   else scan();
 })();
 
-// ─── toast ───────────────────────────────────────────────────────────────────
-// Vanilla-JS toast manager. Scans for [data-flash] elements on load and
-// turns them into toasts. Exposes the error/info methods used by page controllers.
 (function () {
   const ICONS = {
     error:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></svg>',
@@ -454,14 +428,7 @@ window.closeAppDialog = function (dialog) {
   let viewport = null;
 
   function getViewport() {
-    // A <dialog> opened with showModal() is promoted to the browser's top
-    // layer, which renders above every ordinary element regardless of
-    // z-index - including a toast viewport sitting in <body>. Parenting the
-    // viewport under whichever dialog is currently open puts it in that same
-    // top layer so toasts stay visible while a modal is up; parenting back
-    // under <body> once nothing is open keeps them anchored to the real
-    // viewport corner the rest of the time. Re-checked on every call since
-    // dialogs open/close far more often than toasts fire.
+    // Re-parent into whichever dialog is open, or a toast paints behind it (top-layer issue again).
     const target = document.querySelector("dialog[open]") || document.body;
     if (viewport && viewport.parentElement === target) return viewport;
     if (!viewport) {
@@ -560,8 +527,6 @@ window.closeAppDialog = function (dialog) {
   }
 })();
 
-// ─── file-validate ───────────────────────────────────────────────────────────
-// Rejects oversized files before upload via data-max-size-bytes on <input type="file">.
 (function () {
   function formatMB(bytes) {
     return `${(bytes / (1024 * 1024)).toFixed(0)}MB`;

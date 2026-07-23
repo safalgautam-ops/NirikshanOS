@@ -1,12 +1,5 @@
-"""Integration tests: the included_in_report flag on case findings/indicators
-(migration 035, app/features/analysis/findings_repository.py).
+"""Integration tests: the included_in_report flag on case findings/indicators (migration 035, app/features/analysis/findings_repository.py)."""
 
-Regression guard for a real bug: whether a finding/indicator had already
-been inserted into the report draft used to live only in browser memory, so
-it reset to "not inserted" on every page refresh even for items already
-inserted. These tests exercise the real persisted fix directly - list a
-finding/indicator, mark it included, list again, confirm it stuck.
-"""
 from app.features.analysis import findings_service
 
 
@@ -49,11 +42,17 @@ def test_finding_included_flag_persists_after_marking(run_async, make_user, make
     author = make_user()
     org = make_org(created_by=author["id"])
     run_async(add_org_member(org["id"], author["id"]))
-    case_id = run_async(create_case(
-        organization_id=org["id"], title="Finding Inclusion Case", description="",
-        classification="internal", severity="low", forensic_status="not_started",
-        created_by=author["id"],
-    ))
+    case_id = run_async(
+        create_case(
+            organization_id=org["id"],
+            title="Finding Inclusion Case",
+            description="",
+            classification="internal",
+            severity="low",
+            forensic_status="not_started",
+            created_by=author["id"],
+        )
+    )
 
     finding_id = _make_finding(run_async, case_id, author["id"])
 
@@ -73,11 +72,17 @@ def test_indicator_included_flag_persists_after_marking(run_async, make_user, ma
     author = make_user()
     org = make_org(created_by=author["id"])
     run_async(add_org_member(org["id"], author["id"]))
-    case_id = run_async(create_case(
-        organization_id=org["id"], title="Indicator Inclusion Case", description="",
-        classification="internal", severity="low", forensic_status="not_started",
-        created_by=author["id"],
-    ))
+    case_id = run_async(
+        create_case(
+            organization_id=org["id"],
+            title="Indicator Inclusion Case",
+            description="",
+            classification="internal",
+            severity="low",
+            forensic_status="not_started",
+            created_by=author["id"],
+        )
+    )
 
     indicator_id = _make_indicator(run_async, case_id, author["id"])
 

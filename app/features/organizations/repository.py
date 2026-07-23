@@ -1,5 +1,4 @@
-"""DB access for organizations - the admin Organizations page, plus the
-member-facing reads/writes onboarding needs (membership, invite codes)."""
+"""DB access for organizations - the admin Organizations page, plus the member-facing reads/writes onboarding needs (membership, invite codes)."""
 
 from __future__ import annotations
 
@@ -10,9 +9,6 @@ from datetime import datetime, timezone
 from app.core.db.orm import Page, db
 from app.core.utils.ids import new_id
 
-
-# Excludes visually-ambiguous characters (0/O, 1/I/L) since this gets typed
-# by hand, not just clicked as a link.
 _INVITE_CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
 
 
@@ -85,8 +81,6 @@ async def create_organization(
     verification_status: str = "approved",
 ) -> str:
     org_id = new_id()
-    # Every org gets a code up front - admin-created or self-created, it's
-    # always ready to share, no separate "generate one" step needed later.
     invite_code = _generate_invite_code()
     await db.table("organizations").create(
         {
@@ -97,13 +91,7 @@ async def create_organization(
             "description": description or None,
             "status": status,
             "created_by": created_by,
-            # Admin-created orgs (app/features/organizations) skip review -
-            # only the onboarding wizard passes "pending" explicitly.
             "verification_status": verification_status,
-            # Only the onboarding wizard (app/features/onboarding) fills
-            # these in - the admin-side Organizations form still only
-            # collects name/description/status, so every field here is
-            # optional and defaults to NULL for that path.
             "logo_path": logo_path,
             "org_type": org_type,
             "employee_count": employee_count,
@@ -152,12 +140,7 @@ async def add_member(org_id: str, user_id: str, role_id: str | None = None) -> N
 
 
 async def remove_member(org_id: str, user_id: str) -> None:
-    await (
-        db.table("organization_members")
-        .where("organization_id", org_id)
-        .where("user_id", user_id)
-        .delete()
-    )
+    await db.table("organization_members").where("organization_id", org_id).where("user_id", user_id).delete()
 
 
 async def list_members(org_id: str) -> list:
@@ -195,8 +178,7 @@ async def transfer_ownership(org_id: str, new_owner_id: str) -> None:
 
 
 async def get_user_organization(user_id: str):
-    """The single organization this user belongs to, or None. Joined with
-    organizations for display on the onboarding/invite profile page."""
+    """The single organization this user belongs to, or None."""
     return await (
         db.table("organization_members")
         .join("organizations", "organization_members.organization_id", "organizations.id")
@@ -253,24 +235,13 @@ async def list_documents(org_id: str):
 
 
 async def delete_organization(org_id: str) -> tuple[str | None, list[str]]:
-    """Deletes the organization row - organization_members, organization_roles
-    (and its organization_role_permissions), and organization_documents all
-    cascade via FK ON DELETE CASCADE (see migrations 006/007). Returns
-    (logo_path, [document file_path, ...]) from before the delete, so the
-    caller can clean up the actual files on disk - those aren't DB rows, so
-    nothing cascades them automatically."""
+    """Deletes the organization row - organization_members, organization_roles (and its organization_role_permissions), and organization_documents all cascade via FK ON DELETE CASCADE (see migrations 006/007)."""
     org = await db.table("organizations").where("id", org_id).first()
     if not org:
         return None, []
     documents = await list_documents(org_id)
     await db.table("organizations").where("id", org_id).delete()
     return org["logo_path"], [doc["file_path"] for doc in documents]
-
-
-# ── org-scoped roles & permissions ──────────────────────────────────────────
-# Mirrors app/features/rbac/repository.py's role CRUD exactly, just scoped to
-# one organization_id throughout - see app/core/security/org_permission_registry.py
-# for why this is a fully separate table set rather than a shared one.
 
 
 async def list_org_roles(org_id: str) -> list:
@@ -365,7 +336,9 @@ async def duplicate_org_role(role_id: str) -> str:
                 "is_system": False,
                 "is_default": False,
                 "is_assignable": True,
-                "sidebar_keys": json.dumps(original["sidebar_keys"]) if original["sidebar_keys"] is not None else None,
+                "sidebar_keys": (
+                    json.dumps(original["sidebar_keys"]) if original["sidebar_keys"] is not None else None
+                ),
             }
         )
         permission_ids = await get_org_role_permission_ids(role_id)
@@ -378,10 +351,7 @@ async def duplicate_org_role(role_id: str) -> str:
 
 async def get_all_org_permissions() -> list:
     return await (
-        db.table("organization_permissions")
-        .order_by("category")
-        .order_by("name")
-        .all(allow_full_table=True)
+        db.table("organization_permissions").order_by("category").order_by("name").all(allow_full_table=True)
     )
 
 
@@ -420,10 +390,6 @@ async def search_org_assignable_users(org_id: str, role_id: str, search: str) ->
     other_members = await (
         db.table("organization_members")
         .where("organization_id", org_id)
-        # role_id IS NULL for most members (nobody's assigned them a role
-        # yet) - a plain `!= role_id` silently drops those rows, since SQL
-        # NULL != anything is UNKNOWN, not TRUE. Has to be spelled out as an
-        # explicit OR so members with no role still show up as assignable.
         .or_where([("role_id", None), ("role_id", "!=", role_id)])
         .select("user_id")
         .all(allow_full_table=True)
@@ -448,9 +414,7 @@ async def assign_member_role(org_id: str, user_id: str, role_id: str) -> None:
 
 
 async def clear_member_role(org_id: str, user_id: str) -> None:
-    """"Removing" a member from a role (Members tab) doesn't kick them out of
-    the org - it just leaves them with no role, same as any other member
-    nobody's assigned one to yet."""
+    """ "Removing" a member from a role (Members tab) doesn't kick them out of the org - it just leaves them with no role, same as any other member nobody's assigned one to yet."""
     await (
         db.table("organization_members")
         .where("organization_id", org_id)

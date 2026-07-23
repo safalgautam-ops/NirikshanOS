@@ -1,13 +1,4 @@
-"""eSewa payment gateway client — HMAC signing/verification and the
-server-to-server transaction-status check. No business logic here (that's
-app/features/finance/service.py); this module only knows eSewa's wire
-format, mirroring how object_storage.py isolates the S3 client from
-evidence/service.py.
-
-Every field name, the signature algorithm, and both endpoint pairs below
-are copied directly from eSewa's own developer docs
-(developer.esewa.com.np/pages/Epay), not guessed.
-"""
+"""eSewa payment gateway client — HMAC signing/verification and the server-to-server transaction-status check."""
 
 from __future__ import annotations
 
@@ -21,8 +12,6 @@ import httpx
 
 from app.config import Config
 
-# Sandbox vs production base URLs - eSewa uses entirely different hosts,
-# not just a path prefix.
 _FORM_URLS = {
     "sandbox": "https://rc-epay.esewa.com.np/api/epay/main/v2/form",
     "production": "https://epay.esewa.com.np/api/epay/main/v2/form",
@@ -38,19 +27,9 @@ def form_url() -> str:
 
 
 def _amount_str(value) -> str:
-    """eSewa's own docs give "100"/"110" as example amount values, not
-    "100.00" - their backend re-derives total_amount from amount + charges
-    and compares it against what was signed, so a forced ".00" suffix on a
-    whole-number amount makes the client's signed string diverge from
-    eSewa's own reconstruction and the payment page rejects it with
-    "Invalid payload signature" even though the HMAC math is internally
-    correct. Quantize first (still avoids float binary-representation
-    artifacts, e.g. Decimal(110.1) != Decimal("110.1")), then strip a
-    trailing ".00"/trailing zero so "1490.00" -> "1490" and "24.50" ->
-    "24.5", matching eSewa's own formatting exactly. Applied consistently
-    everywhere an amount is stringified so the signed value is
-    byte-identical to the submitted value."""
+    """eSewa's own docs give "100"/"110" as example amount values, not "100.00" - their backend re-derives total_amount from amount + charges and compares it against what was signed, so a forced ".00" suffix on a whole-number amount makes the client's signed string diverge from eSewa's own reconstruction and the payment page rejects it with "Invalid payload signature" even though the HMAC math is internally correct."""
     from decimal import Decimal
+
     quantized = str(Decimal(str(value)).quantize(Decimal("0.01")))
     if "." in quantized:
         quantized = quantized.rstrip("0").rstrip(".")
@@ -58,21 +37,13 @@ def _amount_str(value) -> str:
 
 
 def build_signature(*, total_amount, transaction_uuid: str, product_code: str) -> str:
-    """HMAC-SHA256, base64-encoded, over
-    "total_amount=<value>,transaction_uuid=<value>,product_code=<value>" -
-    eSewa signs "field=value" pairs joined by commas, not bare values in
-    field order (confirmed by brute-forcing eSewa's own documented example
-    against their live sandbox: the bare-value message this function used
-    to build was rejected with ES104 "Invalid payload signature", while the
-    field=value form was accepted)."""
+    """HMAC-SHA256, base64-encoded, over "total_amount=<value>,transaction_uuid=<value>,product_code=<value>" - eSewa signs "field=value" pairs joined by commas, not bare values in field order (confirmed by brute-forcing eSewa's own documented example against their live sandbox: the bare-value message this function used to build was rejected with ES104 "Invalid payload signature", while the field=value form was accepted)."""
     message = (
         f"total_amount={_amount_str(total_amount)},"
         f"transaction_uuid={transaction_uuid},"
         f"product_code={product_code}"
     )
-    digest = hmac.new(
-        Config.ESEWA_SECRET_KEY.encode(), message.encode(), hashlib.sha256
-    ).digest()
+    digest = hmac.new(Config.ESEWA_SECRET_KEY.encode(), message.encode(), hashlib.sha256).digest()
     return base64.b64encode(digest).decode()
 
 
@@ -83,9 +54,7 @@ def build_payment_form_fields(
     success_url: str,
     failure_url: str,
 ) -> dict[str, str]:
-    """Every field the signed HTML form needs. tax/service/delivery are
-    always 0 here - NirikshanOS plans have no separate tax/shipping line
-    items, so `amount` and `total_amount` are the same discounted price."""
+    """Every field the signed HTML form needs."""
     amount = _amount_str(total_amount)
     signature = build_signature(
         total_amount=total_amount,
@@ -108,17 +77,7 @@ def build_payment_form_fields(
 
 
 def verify_callback(raw_base64_payload: str) -> dict[str, Any] | None:
-    """Decode eSewa's redirect payload and confirm its signature was
-    actually produced with our secret key - the payload travels through the
-    user's browser, so it must never be trusted without this check.
-
-    Regenerates the signature over exactly the fields `signed_field_names`
-    lists (in that order), formatted the same "field=value" way as the
-    outbound request signature (see build_signature) - eSewa signs
-    different field sets for the request vs. the callback, so this can't
-    hardcode the request's 3-field list. Returns the parsed payload only if
-    the signature matches, else None.
-    """
+    """Decode eSewa's redirect payload and confirm its signature was actually produced with our secret key - the payload travels through the user's browser, so it must never be trusted without this check."""
     try:
         decoded = base64.b64decode(raw_base64_payload)
         payload = json.loads(decoded)
@@ -136,9 +95,7 @@ def verify_callback(raw_base64_payload: str) -> dict[str, Any] | None:
     except KeyError:
         return None
 
-    expected_digest = hmac.new(
-        Config.ESEWA_SECRET_KEY.encode(), message.encode(), hashlib.sha256
-    ).digest()
+    expected_digest = hmac.new(Config.ESEWA_SECRET_KEY.encode(), message.encode(), hashlib.sha256).digest()
     expected_signature = base64.b64encode(expected_digest).decode()
 
     if not hmac.compare_digest(expected_signature, provided_signature):
@@ -147,12 +104,7 @@ def verify_callback(raw_base64_payload: str) -> dict[str, Any] | None:
 
 
 async def check_transaction_status(*, transaction_uuid: str, total_amount) -> str:
-    """Server-to-server confirmation, independent of the browser callback -
-    eSewa's own docs recommend this as defense in depth. Returns one of:
-    COMPLETE, PENDING, FULL_REFUND, PARTIAL_REFUND, AMBIGUOUS, NOT_FOUND,
-    CANCELED. Any transport/parse failure is treated as PENDING (fail
-    closed - never treated as COMPLETE) rather than raising, so a flaky
-    network call can't accidentally read as a confirmed payment."""
+    """Server-to-server confirmation, independent of the browser callback - eSewa's own docs recommend this as defense in depth."""
     params = {
         "product_code": Config.ESEWA_PRODUCT_CODE,
         "total_amount": _amount_str(total_amount),

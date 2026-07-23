@@ -1,5 +1,4 @@
-"""DB access for the manual investigation timeline - thin wrappers around
-the ORM, no business rules (see service.py for validation/access checks)."""
+"""DB access for the manual investigation timeline - thin wrappers around the ORM, no business rules (see service.py for validation/access checks)."""
 
 from __future__ import annotations
 
@@ -54,9 +53,7 @@ async def update_timeline_item(item_id: str, fields: dict) -> None:
 
 
 async def list_timeline_items(case_id: str) -> list:
-    """Every item for one case, oldest first (chronological log), with the
-    assignee/creator names and linked evidence's filename joined in so the
-    template never has to issue its own lookups."""
+    """Every item for one case, oldest first (chronological log), with the assignee/creator names and linked evidence's filename joined in so the template never has to issue its own lookups."""
     return await (
         db.table("timeline_items")
         .left_join("user", "timeline_items.assigned_to", "assignee.id", alias="assignee")
@@ -75,16 +72,18 @@ async def list_timeline_items(case_id: str) -> list:
 
 
 async def list_items_for_cases(case_ids: list[str]) -> list:
-    """Every timeline item across a set of cases, unsorted - used purely to
-    compute the Timeline Center's per-case counts/last-updated in Python
-    rather than a SQL aggregate (same approach this app already uses for
-    evidence counts on the case detail page)."""
+    """Every timeline item across a set of cases, unsorted - used purely to compute the Timeline Center's per-case counts/last-updated in Python rather than a SQL aggregate (same approach this app already uses for evidence counts on the case detail page)."""
     if not case_ids:
         return []
     return await (
         db.table("timeline_items")
         .left_join("user", "timeline_items.created_by", "user.id")
         .where_in("timeline_items.case_id", case_ids)
-        .select("timeline_items.case_id", "timeline_items.type", "timeline_items.updated_at", "user.name as created_by_name")
+        .select(
+            "timeline_items.case_id",
+            "timeline_items.type",
+            "timeline_items.updated_at",
+            "user.name as created_by_name",
+        )
         .all(allow_full_table=True)
     )

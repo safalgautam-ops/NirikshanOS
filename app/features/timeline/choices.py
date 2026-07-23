@@ -1,5 +1,4 @@
-"""Fixed choice lists for the timeline item dialogs - same pattern as
-app/features/cases/choices.py."""
+"""Fixed choice lists for the timeline item dialogs - same pattern as app/features/cases/choices.py."""
 
 ITEM_TYPES: list[tuple[str, str]] = [
     ("task", "Task"),

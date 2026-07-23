@@ -26,9 +26,7 @@ async def list_view():
     status = request.args.get("status", "")
     page = request.args.get("page", 1, type=int)
 
-    result = await get_users_page(
-        search=search, role_id=role_id, status=status, page=page
-    )
+    result = await get_users_page(search=search, role_id=role_id, status=status, page=page)
     roles = await repository.get_all_roles()
     visible_keys = await get_visible_nav_keys(g.user_id)
 

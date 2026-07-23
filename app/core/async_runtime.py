@@ -1,14 +1,4 @@
-"""Persistent asyncio runtime used by the Flask application.
-
-NirikshanOS already has a mature asynchronous service/data layer based on
-asyncmy, redis.asyncio and aioboto3. Flask is a WSGI framework, and its default
-async-view adapter creates a short-lived event loop per request. Long-lived
-clients and background tasks cannot safely live on those temporary loops.
-
-AsyncFlask keeps one asyncio event loop per Flask process and dispatches every
-async route/hook to that loop. This preserves the existing service contracts
-while making Flask the actual HTTP/Jinja framework.
-"""
+"""Persistent asyncio runtime used by the Flask application."""
 
 from __future__ import annotations
 
@@ -50,25 +40,16 @@ class AsyncRuntime:
         for task in pending:
             task.cancel()
         if pending:
-            self._loop.run_until_complete(
-                asyncio.gather(*pending, return_exceptions=True)
-            )
+            self._loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
         self._loop.run_until_complete(self._loop.shutdown_asyncgens())
         self._loop.close()
 
     def run(self, awaitable: Awaitable[T]) -> T:
-        """Execute an awaitable on the persistent loop and return its result.
-
-        Flask's request/app locals are contextvars. Explicitly copying the
-        caller context makes ``request``, ``g`` and ``current_app`` available
-        inside the loop thread exactly as they are in the WSGI request thread.
-        """
+        """Execute an awaitable on the persistent loop and return its result."""
         if self._closed:
             raise RuntimeError("The application async runtime is closed.")
         if threading.current_thread() is self._thread:
-            raise RuntimeError(
-                "AsyncRuntime.run() cannot block its own event-loop thread."
-            )
+            raise RuntimeError("AsyncRuntime.run() cannot block its own event-loop thread.")
 
         context = copy_context()
         result: Future[T] = Future()
@@ -76,7 +57,7 @@ class AsyncRuntime:
         def schedule() -> None:
             try:
                 task = self._loop.create_task(awaitable, context=context)
-            except BaseException as exc:  # pragma: no cover - defensive
+            except BaseException as exc:
                 result.set_exception(exc)
                 return
 
@@ -100,13 +81,7 @@ class AsyncRuntime:
 
 
 class AsyncFlask(Flask):
-    """Flask subclass that runs async views/hooks on one persistent loop.
-
-    ``before_serving`` and ``after_serving`` are retained as small lifecycle
-    compatibility decorators so the original startup/shutdown functions stay
-    in the application factory. Startup is executed once, before the first
-    normal request hook; shutdown runs at process exit.
-    """
+    """Flask subclass that runs async views/hooks on one persistent loop."""
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         self._async_runtime = AsyncRuntime()
@@ -117,16 +92,11 @@ class AsyncFlask(Flask):
         self._shutdown_complete = False
         super().__init__(*args, **kwargs)
 
-        # Registered before app-level security/session hooks, guaranteeing the
-        # DB and Redis clients exist before those hooks use them.
         self.before_request(self._ensure_started)
         atexit.register(self._shutdown_async_runtime)
 
     def run_async(self, awaitable: Awaitable[T]) -> T:
-        """Run a coroutine on the app's own persistent loop from outside a
-        request - used by service/repository-layer tests (tests/integration)
-        to call async functions directly without a second, conflicting event
-        loop or a duplicate DB pool."""
+        """Run a coroutine on the app's own persistent loop from outside a request - used by service/repository-layer tests (tests/integration) to call async functions directly without a second, conflicting event loop or a duplicate DB pool."""
         self._ensure_started()
         return self._async_runtime.run(awaitable)
 
@@ -161,9 +131,7 @@ class AsyncFlask(Flask):
         with self._startup_lock:
             if self._startup_complete:
                 return
-            self._async_runtime.run(
-                self._invoke_callbacks(self._startup_callbacks)
-            )
+            self._async_runtime.run(self._invoke_callbacks(self._startup_callbacks))
             self._startup_complete = True
 
     def _shutdown_async_runtime(self) -> None:
@@ -172,8 +140,6 @@ class AsyncFlask(Flask):
         self._shutdown_complete = True
         try:
             if self._startup_complete:
-                self._async_runtime.run(
-                    self._invoke_callbacks(self._shutdown_callbacks)
-                )
+                self._async_runtime.run(self._invoke_callbacks(self._shutdown_callbacks))
         finally:
             self._async_runtime.stop()
